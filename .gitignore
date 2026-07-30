@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Production builds
+dist/
+.next/
+.vercel/
+
+# Environment files
+.env
+.env.local
+.env.*
+
+# Allow .env.example
+!.env.example

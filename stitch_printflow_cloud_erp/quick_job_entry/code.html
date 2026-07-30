@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Quick Job Entry | PrintFlow ERP</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-container": "#edeeef",
+                    "inverse-surface": "#2e3132",
+                    "primary-fixed-dim": "#adc7ff",
+                    "surface": "#f8f9fa",
+                    "status-delivered": "#1B5E20",
+                    "on-secondary-fixed": "#09006b",
+                    "border-subtle": "#E0E0E0",
+                    "on-primary-fixed": "#001a41",
+                    "outline-variant": "#c1c6d6",
+                    "surface-variant": "#e1e3e4",
+                    "tertiary-fixed-dim": "#ffb691",
+                    "surface-bright": "#f8f9fa",
+                    "on-tertiary-container": "#0e0200",
+                    "inverse-primary": "#adc7ff",
+                    "on-surface-variant": "#414754",
+                    "secondary-fixed-dim": "#c1c1ff",
+                    "surface-dim": "#d9dadb",
+                    "status-printing": "#1A73E8",
+                    "surface-tint": "#005bc0",
+                    "on-secondary-container": "#fffbff",
+                    "inverse-on-surface": "#f0f1f2",
+                    "surface-container-lowest": "#ffffff",
+                    "tertiary-fixed": "#ffdbcb",
+                    "on-surface": "#191c1d",
+                    "on-primary": "#ffffff",
+                    "surface-sidebar": "#FFFFFF",
+                    "on-tertiary-fixed-variant": "#783100",
+                    "on-primary-container": "#ffffff",
+                    "primary": "#005bbf",
+                    "secondary-container": "#5f5ffd",
+                    "tertiary": "#9e4300",
+                    "secondary": "#4442e3",
+                    "outline": "#727785",
+                    "surface-container-highest": "#e1e3e4",
+                    "status-new": "#9E9E9E",
+                    "primary-fixed": "#d8e2ff",
+                    "on-error": "#ffffff",
+                    "on-tertiary": "#ffffff",
+                    "status-outsource": "#9C27B0",
+                    "error": "#ba1a1a",
+                    "on-secondary": "#ffffff",
+                    "surface-container-high": "#e7e8e9",
+                    "status-ready": "#4CAF50",
+                    "on-error-container": "#93000a",
+                    "secondary-fixed": "#e1dfff",
+                    "primary-container": "#1a73e8",
+                    "on-primary-fixed-variant": "#004493",
+                    "on-background": "#191c1d",
+                    "status-design": "#FBC02D",
+                    "status-finishing": "#EF6C00",
+                    "surface-container-low": "#f3f4f5",
+                    "error-container": "#ffdad6",
+                    "status-alert": "#D32F2F",
+                    "tertiary-container": "#c55500",
+                    "background": "#f8f9fa",
+                    "on-tertiary-fixed": "#341100",
+                    "on-secondary-fixed-variant": "#2c24ce"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "cell-padding-h": "16px",
+                    "sidebar-width": "240px",
+                    "sidebar-collapsed": "64px",
+                    "gutter": "16px",
+                    "container-margin": "24px",
+                    "stack-gap": "8px",
+                    "cell-padding-v": "12px"
+            },
+            "fontFamily": {
+                    "label-mono": ["Inter"],
+                    "body-md": ["Inter"],
+                    "title-sm": ["Inter"],
+                    "data-tabular": ["Inter"],
+                    "label-bold": ["Inter"],
+                    "headline-md": ["Inter"],
+                    "body-sm": ["Inter"],
+                    "display-lg": ["Inter"]
+            },
+            "fontSize": {
+                    "label-mono": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "title-sm": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
+                    "data-tabular": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                    "label-bold": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "body-sm": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                    "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #005bbf !important;
+            box-shadow: 0 0 0 2px rgba(0, 91, 191, 0.2);
+        }
+        .sidebar-item-active {
+            color: #005bbf;
+            background-color: rgba(0, 91, 191, 0.1);
+            border-left: 4px solid #005bbf;
+            font-weight: 700;
+        }
+        /* Custom scrollbar for data density */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #E0E0E0; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-surface text-on-surface flex min-h-screen">
+<!-- Persistent SideNavBar Shell -->
+<aside class="fixed left-0 top-0 h-full z-40 flex flex-col w-[240px] bg-surface-sidebar border-r border-border-subtle">
+<div class="p-6 flex items-center gap-3">
+<div class="w-10 h-10 bg-primary flex items-center justify-center rounded-lg">
+<span class="material-symbols-outlined text-white" style="font-variation-settings: 'FILL' 1;">print</span>
+</div>
+<div>
+<h1 class="text-title-sm font-bold text-primary">PrintFlow ERP</h1>
+<p class="text-[10px] text-on-surface-variant uppercase tracking-widest">Production Manager</p>
+</div>
+</div>
+<nav class="flex-1 px-3 space-y-1 mt-4 overflow-y-auto">
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-body-md">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 sidebar-item-active transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">add_box</span>
+<span class="text-body-md">New Job</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">list_alt</span>
+<span class="text-body-md">Job List</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">groups</span>
+<span class="text-body-md">Customers</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">brush</span>
+<span class="text-body-md">Designers</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">factory</span>
+<span class="text-body-md">Vendors</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">settings_suggest</span>
+<span class="text-body-md">Production</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">local_shipping</span>
+<span class="text-body-md">Deliveries</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">payments</span>
+<span class="text-body-md">Payments</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">inventory_2</span>
+<span class="text-body-md">Inventory</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">assessment</span>
+<span class="text-body-md">Reports</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="text-body-md">Settings</span>
+</a>
+</nav>
+<div class="p-4 border-t border-border-subtle">
+<button class="flex items-center gap-3 w-full px-4 py-2 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200">
+<span class="material-symbols-outlined">first_page</span>
+<span class="text-body-md">Collapse Menu</span>
+</button>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 ml-[240px] flex flex-col min-h-screen">
+<!-- TopNavBar Shell -->
+<header class="h-16 flex items-center justify-between px-8 bg-surface border-b border-border-subtle sticky top-0 z-30">
+<div class="flex items-center flex-1 max-w-xl">
+<div class="relative w-full group">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full bg-surface-container-low border border-border-subtle rounded-lg py-2 pl-10 pr-4 text-body-md focus:bg-white transition-all" placeholder="Search orders, customers, or job IDs..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-4">
+<button class="relative text-on-surface-variant hover:text-primary">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-0 right-0 w-2 h-2 bg-error rounded-full border-2 border-surface"></span>
+</button>
+<button class="text-on-surface-variant hover:text-primary">
+<span class="material-symbols-outlined">account_circle</span>
+</button>
+</div>
+<button class="bg-primary text-white px-5 py-2 rounded-lg font-label-bold text-label-bold flex items-center gap-2 hover:bg-surface-tint transition-all active:scale-95 shadow-sm">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                    New Job
+                </button>
+</div>
+</header>
+<!-- Form Canvas -->
+<div class="flex-1 p-8 max-w-[1400px] w-full mx-auto">
+<div class="mb-8 flex items-center justify-between">
+<div>
+<h2 class="font-headline-md text-headline-md text-on-surface">Quick Job Entry</h2>
+<p class="text-body-md text-on-surface-variant">Create a new production order in seconds.</p>
+</div>
+<div class="flex gap-2">
+<span class="px-3 py-1 bg-surface-container-high text-on-surface-variant rounded-full text-label-bold">Draft ID: #PF-90210</span>
+</div>
+</div>
+<!-- Main Form Grid (Bento Style) -->
+<form class="grid grid-cols-12 gap-6 pb-24" id="jobForm">
+<!-- Section 1: Customer Info (Wide) -->
+<div class="col-span-12 lg:col-span-8 bg-white border border-border-subtle p-6 rounded-xl shadow-sm">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary">person</span>
+<h3 class="font-title-sm text-title-sm">Customer Info</h3>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="space-y-2">
+<label class="font-label-bold text-label-bold text-on-surface-variant uppercase tracking-wider">Customer Name</label>
+<div class="relative">
+<input class="w-full bg-surface-container-lowest border border-border-subtle rounded-lg py-3 px-4 text-body-md font-medium" placeholder="Start typing name..." type="text"/>
+<span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+</div>
+</div>
+<div class="space-y-2">
+<label class="font-label-bold text-label-bold text-on-surface-variant uppercase tracking-wider">Mobile Number</label>
+<input class="w-full bg-surface-container-lowest border border-border-subtle rounded-lg py-3 px-4 text-body-md font-medium" placeholder="+1 (555) 000-0000" type="tel"/>
+</div>
+</div>
+</div>
+<!-- Section 4: Timeline & Priority (Tall) -->
+<div class="col-span-12 lg:col-span-4 bg-white border border-border-subtle p-6 rounded-xl shadow-sm flex flex-col justify-between">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary">schedule</span>
+<h3 class="font-title-sm text-title-sm">Timeline &amp; Priority</h3>
+</div>
+<div class="space-y-6">
+<div class="space-y-2">
+<label class="font-label-bold text-label-bold text-on-surface-variant uppercase tracking-wider">Delivery Date</label>
+<input class="w-full bg-surface-container-lowest border border-border-subtle rounded-lg py-3 px-4 text-body-md font-medium" type="date"/>
+</div>
+<div class="space-y-2">
+<label class="font-label-bold text-label-bold text-on-surface-variant uppercase tracking-wider">Job Priority</label>
+<div class="grid grid-cols-3 gap-2">
+<label class="cursor-pointer">
+<input class="sr-only peer" name="priority" type="radio" value="low"/>
+<div class="text-center py-2 border border-border-subtle rounded-lg peer-checked:bg-status-ready/10 peer-checked:border-status-ready peer-checked:text-status-ready font-label-bold text-label-bold transition-all uppercase">Low</div>
+</label>
+<label class="cursor-pointer">
+<input checked="" class="sr-only peer" name="priority" type="radio" value="medium"/>
+<div class="text-center py-2 border border-border-subtle rounded-lg peer-checked:bg-status-design/10 peer-checked:border-status-design peer-checked:text-status-design font-label-bold text-label-bold transition-all uppercase">Medium</div>
+</label>
+<label class="cursor-pointer">
+<input class="sr-only peer" name="priority" type="radio" value="high"/>
+<div class="text-center py-2 border border-border-subtle rounded-lg peer-checked:bg-status-alert/10 peer-checked:border-status-alert peer-checked:text-status-alert font-label-bold text-label-bold transition-all uppercase">High</div>
+</label>
+</div>
+</div>
+</div>
+</div>
+<!-- Section 2: Job Details -->
+<div class="col-span-12 lg:col-span-8 bg-white border border-border-subtle p-6 rounded-xl shadow-sm">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary">layers</span>
+<h3 class="font-title-sm text-title-sm">Job Details</h3>
+</div>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+<div class="space-y-2 col-span-2">
+<label class="font-label-bold text-label-bold text-on-surface-variant uppercase tracking-wider">Product</label>
+<select class="w-full bg-surface-container-lowest border border-border-subtle rounded-lg py-3 px-4 text-body-md font-medium">
+<option>Select Product...</option>
+<option>Banner - PVC</option>
+<option>Vinyl - Adhesive</option>
+<option>Business Cards - Premium</option>
+<option>Foam Board Printing</option>
+<option>Backlit Film</option>
+</select>
+</div>
+<div class="space-y-2">
+<label class="font-label-bold text-label-bold text-on-surface-variant uppercase tracking-wider">Size (W x H)</label>
+<input class="w-full bg-surface-container-lowest border border-border-subtle rounded-lg py-3 px-4 text-body-md font-medium" placeholder="e.g. 10x4 ft" type="text"/>
+</div>
+<div class="space-y-2">
+<label class="font-label-bold text-label-bold text-on-surface-variant uppercase tracking-wider">Quantity</label>
+<input class="w-full bg-surface-container-lowest border border-border-subtle rounded-lg py-3 px-4 text-body-md font-medium" type="number" value="1"/>
+</div>
+<div class="space-y-2 col-span-4">
+<label class="font-label-bold text-label-bold text-on-surface-variant uppercase tracking-wider">Material / Substrate</label>
+<input class="w-full bg-surface-container-lowest border border-border-subtle rounded-lg py-3 px-4 text-body-md font-medium" placeholder="e.g. 13oz Scrim Banner Matte" type="text"/>
+</div>
+</div>
+</div>
+<!-- Section 5: Financials -->
+<div class="col-span-12 lg:col-span-4 bg-primary text-white p-6 rounded-xl shadow-md flex flex-col gap-4">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-white">payments</span>
+<h3 class="font-title-sm text-title-sm">Financials</h3>
+</div>
+<div class="space-y-4">
+<div class="flex justify-between items-center bg-white/10 p-4 rounded-lg">
+<span class="font-label-bold text-label-bold uppercase">Total Amount</span>
+<span class="font-display-lg text-display-lg">$ 0.00</span>
+</div>
+<div class="space-y-2">
+<label class="font-label-bold text-label-bold text-white/80 uppercase">Advance Payment</label>
+<div class="relative">
+<span class="absolute left-3 top-1/2 -translate-y-1/2 text-white/60">$</span>
+<input class="w-full bg-white/20 border border-white/30 rounded-lg py-3 pl-8 pr-4 text-body-md font-bold text-white placeholder:text-white/40" placeholder="0.00" type="number"/>
+</div>
+</div>
+<div class="flex justify-between items-center px-2">
+<span class="font-label-bold text-label-bold uppercase text-white/80">Balance Due</span>
+<span class="font-title-sm text-title-sm font-bold">$ 0.00</span>
+</div>
+</div>
+</div>
+<!-- Section 3: Production Settings (Wide) -->
+<div class="col-span-12 lg:col-span-8 bg-white border border-border-subtle p-6 rounded-xl shadow-sm">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary">settings_suggest</span>
+<h3 class="font-title-sm text-title-sm">Production Settings</h3>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<div class="space-y-6">
+<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-lg">
+<div>
+<p class="font-label-bold text-label-bold uppercase">Designer Required</p>
+<p class="text-[11px] text-on-surface-variant">Drafting or minor edits needed</p>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+</label>
+</div>
+<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-lg">
+<div>
+<p class="font-label-bold text-label-bold uppercase">Outsource Job</p>
+<p class="text-[11px] text-on-surface-variant">Send to external vendor</p>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" id="outsourceToggle" type="checkbox"/>
+<div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-status-outsource"></div>
+</label>
+</div>
+<div class="space-y-2 hidden opacity-0 transition-opacity duration-300" id="vendorSelection">
+<label class="font-label-bold text-label-bold text-on-surface-variant uppercase tracking-wider">Select Vendor</label>
+<select class="w-full bg-surface-container-lowest border border-border-subtle rounded-lg py-3 px-4 text-body-md font-medium">
+<option>Select Partner...</option>
+<option>MegaPrint Hub</option>
+<option>Express Sign Solutions</option>
+<option>Global Vinyl Co.</option>
+</select>
+</div>
+</div>
+<div class="space-y-2">
+<label class="font-label-bold text-label-bold text-on-surface-variant uppercase tracking-wider">Upload Artwork</label>
+<div class="border-2 border-dashed border-border-subtle rounded-xl p-8 flex flex-col items-center justify-center text-center hover:border-primary hover:bg-primary/5 transition-all cursor-pointer group">
+<span class="material-symbols-outlined text-[48px] text-outline group-hover:text-primary transition-colors">cloud_upload</span>
+<p class="mt-4 font-body-md text-on-surface">Drag and drop file here</p>
+<p class="text-body-sm text-on-surface-variant">or <span class="text-primary font-bold">browse files</span></p>
+<p class="mt-2 text-[10px] text-outline uppercase font-label-bold">Max Size: 500MB (PDF, TIFF, AI)</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Section 6: Notes -->
+<div class="col-span-12 lg:col-span-4 bg-white border border-border-subtle p-6 rounded-xl shadow-sm">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary">sticky_note_2</span>
+<h3 class="font-title-sm text-title-sm">Notes &amp; Instructions</h3>
+</div>
+<div class="space-y-2 h-full flex flex-col">
+<textarea class="w-full flex-1 bg-surface-container-lowest border border-border-subtle rounded-lg py-3 px-4 text-body-md font-medium min-h-[180px] resize-none" placeholder="Specify finishing instructions, eyelets placement, folding requirements..."></textarea>
+</div>
+</div>
+</form>
+</div>
+<!-- Sticky Bottom Actions -->
+<footer class="fixed bottom-0 right-0 left-[240px] h-20 bg-white border-t border-border-subtle px-8 flex items-center justify-between z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+<div class="flex gap-4">
+<button class="flex items-center gap-2 text-on-surface-variant hover:text-primary font-label-bold text-label-bold px-4 py-2 rounded-lg transition-colors">
+<span class="material-symbols-outlined">save</span>
+                    SAVE DRAFT
+                </button>
+<button class="flex items-center gap-2 text-on-surface-variant hover:text-primary font-label-bold text-label-bold px-4 py-2 rounded-lg transition-colors">
+<span class="material-symbols-outlined">print</span>
+                    PRINT JOB CARD
+                </button>
+</div>
+<div class="flex gap-4">
+<button class="bg-secondary text-white px-6 py-3 rounded-lg font-label-bold text-label-bold flex items-center gap-2 hover:bg-secondary-container transition-all active:scale-95 shadow-sm">
+<span class="material-symbols-outlined text-[20px]">send</span>
+                    SEND TO DESIGNER
+                </button>
+<button class="bg-primary text-white px-10 py-3 rounded-lg font-label-bold text-label-bold flex items-center gap-2 hover:bg-surface-tint transition-all active:scale-95 shadow-md shadow-primary/20">
+<span class="material-symbols-outlined text-[20px]">play_arrow</span>
+                    START PRODUCTION
+                </button>
+</div>
+</footer>
+</main>
+<script>
+        // Micro-interaction for Outsource Toggle
+        const outsourceToggle = document.getElementById('outsourceToggle');
+        const vendorSelection = document.getElementById('vendorSelection');
+
+        outsourceToggle.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                vendorSelection.classList.remove('hidden');
+                setTimeout(() => {
+                    vendorSelection.classList.add('opacity-100');
+                    vendorSelection.classList.remove('opacity-0');
+                }, 10);
+            } else {
+                vendorSelection.classList.add('opacity-0');
+                vendorSelection.classList.remove('opacity-100');
+                setTimeout(() => {
+                    vendorSelection.classList.add('hidden');
+                }, 300);
+            }
+        });
+
+        // Form calculation placeholder logic
+        const inputs = document.querySelectorAll('input[type="number"], select');
+        inputs.forEach(input => {
+            input.addEventListener('input', () => {
+                // Here you would normally calculate the price based on area and product type
+                // Visual update only for this demo
+            });
+        });
+
+        // Floating label/focus effects could be added here for even more "tool-first" feel
+    </script>
+</body></html>
