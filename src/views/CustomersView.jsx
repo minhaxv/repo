@@ -21,7 +21,7 @@ export const CustomersView = () => {
     return matchesSearch && c.type === selectedType;
   });
 
-  const totalOutstanding = customers.reduce((acc, c) => acc + c.outstanding, 0);
+  const totalOutstanding = (customers ?? []).reduce((acc, c) => acc + (Number(c.outstanding) || 0), 0);
 
   return (
     <div className="view-container">
@@ -129,10 +129,10 @@ export const CustomersView = () => {
                   <td style={{ fontFamily: 'var(--font-mono)' }}>{c.gstin || 'Unregistered'}</td>
                   <td>{c.state}</td>
                   <td style={{ fontWeight: 800, color: c.outstanding > 0 ? '#e11d48' : '#059669' }}>
-                    ₹{c.outstanding.toLocaleString()}
+                    ₹{Number(c.outstanding ?? 0).toLocaleString()}
                   </td>
-                  <td>₹{c.creditLimit.toLocaleString()}</td>
-                  <td style={{ fontWeight: 700 }}>{c.totalOrders}</td>
+                  <td>₹{Number(c.creditLimit ?? 0).toLocaleString()}</td>
+                  <td style={{ fontWeight: 700 }}>{Number(c.totalOrders ?? 0)}</td>
                 </tr>
               ))}
             </tbody>
