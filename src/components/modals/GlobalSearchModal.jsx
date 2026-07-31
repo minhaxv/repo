@@ -32,31 +32,31 @@ export const GlobalSearchModal = () => {
 
   if (!isSearchOpen) return null;
 
-  const q = query.trim().toLowerCase();
+  const q = (query || '').trim().toLowerCase();
 
   // Search matching
   const matchingOrders = q
-    ? salesOrders.filter(
+    ? (salesOrders || []).filter(
         (o) =>
-          o.id.toLowerCase().includes(q) ||
-          o.customerName.toLowerCase().includes(q) ||
-          o.customerMobile.includes(q) ||
+          (o.id || '').toLowerCase().includes(q) ||
+          (o.customerName || '').toLowerCase().includes(q) ||
+          (o.customerMobile || '').includes(q) ||
           (o.referenceNo && o.referenceNo.toLowerCase().includes(q))
       )
-    : salesOrders.slice(0, 4);
+    : (salesOrders || []).slice(0, 4);
 
   const matchingCustomers = q
-    ? customers.filter(
+    ? (customers || []).filter(
         (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.mobile.includes(q) ||
-          c.code.toLowerCase().includes(q) ||
+          (c.name || '').toLowerCase().includes(q) ||
+          (c.mobile || '').includes(q) ||
+          (c.code || '').toLowerCase().includes(q) ||
           (c.gstin && c.gstin.toLowerCase().includes(q))
       )
-    : customers.slice(0, 3);
+    : (customers || []).slice(0, 3);
 
   const matchingProducts = q
-    ? products.filter((p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q))
+    ? (products || []).filter((p) => (p.name || '').toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q))
     : [];
 
   const matchingVendors = q
@@ -128,7 +128,7 @@ export const GlobalSearchModal = () => {
                         {o.id} <span style={{ color: '#475569', fontWeight: 500 }}>— {o.customerName}</span>
                       </div>
                       <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        Mobile: {o.customerMobile} | Delivery: {o.deliveryDate} | Amount: ₹{o.grandTotal.toLocaleString()}
+                        Mobile: {o.customerMobile || 'N/A'} | Delivery: {o.deliveryDate || 'N/A'} | Amount: ₹{Number(o.grandTotal ?? 0).toLocaleString()}
                       </div>
                     </div>
                     <span className="badge badge-blue">{o.productionStatus}</span>
@@ -163,7 +163,7 @@ export const GlobalSearchModal = () => {
                         {c.name} <span style={{ color: '#059669', fontSize: '0.75rem' }}>({c.type})</span>
                       </div>
                       <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        Mobile: {c.mobile} | Code: {c.code} | Outstanding: ₹{c.outstanding.toLocaleString()}
+                        Mobile: {c.mobile || 'N/A'} | Code: {c.code || 'N/A'} | Outstanding: ₹{Number(c.outstanding ?? 0).toLocaleString()}
                       </div>
                     </div>
                     <span className="badge badge-slate">{c.code}</span>

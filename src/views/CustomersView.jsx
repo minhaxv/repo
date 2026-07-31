@@ -53,7 +53,7 @@ export const CustomersView = () => {
         <div className="card">
           <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>TOTAL OUTSTANDING LEDGER</span>
           <h3 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#e11d48', margin: '0.2rem 0' }}>
-            ₹{totalOutstanding.toLocaleString()}
+            ₹{Number(totalOutstanding ?? 0).toLocaleString()}
           </h3>
         </div>
 

@@ -104,7 +104,26 @@ export const ERPProvider = ({ children }) => {
 
       // 3. Customers
       const { data: custs } = await supabase.from('customers').select('*').order('name', { ascending: true });
-      setCustomers(custs || []);
+      const mappedCusts = (custs || []).map(c => ({
+        id: c.id,
+        code: c.code || '',
+        name: c.name || '',
+        mobile: c.mobile || '',
+        email: c.email || '',
+        gstin: c.gstin || '',
+        type: c.type || 'Retail Customer',
+        address: c.address || '',
+        state: c.state || 'Maharashtra (27)',
+        credit_limit: Number(c.credit_limit ?? 0),
+        creditLimit: Number(c.credit_limit ?? 0),
+        outstanding: Number(c.outstanding ?? 0),
+        outstandingAmount: Number(c.outstanding ?? 0),
+        total_orders: Number(c.total_orders ?? 0),
+        totalOrders: Number(c.total_orders ?? 0),
+        created_at: c.created_at || new Date().toISOString(),
+        createdAt: c.created_at || new Date().toISOString()
+      }));
+      setCustomers(mappedCusts);
 
       // 4. Sales Persons
       const { data: sps } = await supabase.from('sales_persons').select('*').order('name', { ascending: true });

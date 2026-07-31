@@ -182,17 +182,17 @@ export const TaxInvoicePrintModal = ({ order, isOpen, onClose }) => {
                     </td>
                     <td style={{ textAlign: 'center', fontFamily: 'var(--font-mono)' }}>9989</td>
                     <td style={{ textAlign: 'center', fontWeight: 700 }}>{item.qty}</td>
-                    <td style={{ textAlign: 'right' }}>{item.sellingRate.toLocaleString()}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700 }}>{item.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(item?.sellingRate ?? 0).toLocaleString()}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700 }}>{Number(item?.amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                     {isInterstate ? (
-                      <td style={{ textAlign: 'right' }}>{igstLine.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      <td style={{ textAlign: 'right' }}>{Number(igstLine ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                     ) : (
                       <>
-                        <td style={{ textAlign: 'right' }}>{cgstLine.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                        <td style={{ textAlign: 'right' }}>{sgstLine.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        <td style={{ textAlign: 'right' }}>{Number(cgstLine ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        <td style={{ textAlign: 'right' }}>{Number(sgstLine ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       </>
                     )}
-                    <td style={{ textAlign: 'right', fontWeight: 800 }}>{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 800 }}>{Number(lineTotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                   </tr>
                 );
               })}
@@ -218,41 +218,41 @@ export const TaxInvoicePrintModal = ({ order, isOpen, onClose }) => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.2rem 0' }}>
                 <span>Subtotal (Taxable Amount):</span>
-                <strong>₹{order.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                <strong>₹{Number(order?.subtotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
               </div>
               {isInterstate ? (
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.2rem 0', color: '#475569' }}>
                   <span>IGST (18%):</span>
-                  <span>₹{order.igst.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  <span>₹{Number(order?.igst ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                 </div>
               ) : (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.2rem 0', color: '#475569' }}>
                     <span>CGST (9%):</span>
-                    <span>₹{order.cgst.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    <span>₹{Number(order?.cgst ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.2rem 0', color: '#475569' }}>
                     <span>SGST (9%):</span>
-                    <span>₹{order.sgst.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    <span>₹{Number(order?.sgst ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                   </div>
                 </>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.2rem 0', color: '#64748b' }}>
                 <span>Round Off:</span>
-                <span>₹{order.roundOff}</span>
+                <span>₹{order?.roundOff ?? 0}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderTop: '2px solid #000', borderBottom: '2px solid #000', fontSize: '1.05rem', fontWeight: 900, color: '#0f172a' }}>
                 <span>Grand Total:</span>
-                <span>₹{order.grandTotal.toLocaleString()}</span>
+                <span>₹{Number(order?.grandTotal ?? 0).toLocaleString()}</span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.2rem 0', color: '#059669', fontWeight: 700 }}>
-                <span>Advance Paid ({order.paymentMethod}):</span>
-                <span>₹{order.advanceAmount.toLocaleString()}</span>
+                <span>Advance Paid ({order?.paymentMethod || 'UPI'}):</span>
+                <span>₹{Number(order?.advanceAmount ?? 0).toLocaleString()}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.2rem 0', color: order.balanceAmount > 0 ? '#e11d48' : '#059669', fontWeight: 800 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.2rem 0', color: (order?.balanceAmount || 0) > 0 ? '#e11d48' : '#059669', fontWeight: 800 }}>
                 <span>Balance Due:</span>
-                <span>₹{order.balanceAmount.toLocaleString()}</span>
+                <span>₹{Number(order?.balanceAmount ?? 0).toLocaleString()}</span>
               </div>
             </div>
           </div>

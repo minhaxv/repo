@@ -125,38 +125,59 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null 
   }, [initialSelectId]);
 
   // Customer search lookup
-  const filteredCusts = custSearchTerm.trim()
-    ? customers.filter(
+  const filteredCusts = (custSearchTerm || '').trim()
+    ? (customers || []).filter(
         (c) =>
-          c.mobile.includes(custSearchTerm) ||
-          c.name.toLowerCase().includes(custSearchTerm.toLowerCase()) ||
-          c.code.toLowerCase().includes(custSearchTerm.toLowerCase())
+          (c.mobile || '').includes(custSearchTerm) ||
+          (c.name || '').toLowerCase().includes(custSearchTerm.toLowerCase()) ||
+          (c.code || '').toLowerCase().includes(custSearchTerm.toLowerCase())
       )
     : [];
 
   const handleSelectCustomer = (cust) => {
-    setSelectedCust(cust);
-    setCustSearchTerm(`${cust.name} (${cust.mobile})`);
+    if (!cust) return;
+    const mappedCust = {
+      ...cust,
+      id: cust.id,
+      code: cust.code || '',
+      name: cust.name || '',
+      mobile: cust.mobile || '',
+      email: cust.email || '',
+      gstin: cust.gstin || '',
+      type: cust.type || 'Retail Customer',
+      address: cust.address || '',
+      state: cust.state || 'Maharashtra (27)',
+      credit_limit: Number(cust.credit_limit ?? cust.creditLimit ?? 0),
+      creditLimit: Number(cust.credit_limit ?? cust.creditLimit ?? 0),
+      outstanding: Number(cust.outstanding ?? cust.outstandingAmount ?? 0),
+      outstandingAmount: Number(cust.outstanding ?? cust.outstandingAmount ?? 0),
+      total_orders: Number(cust.total_orders ?? cust.totalOrders ?? 0),
+      totalOrders: Number(cust.total_orders ?? cust.totalOrders ?? 0)
+    };
+    setSelectedCust(mappedCust);
+    setCustSearchTerm(`${mappedCust.name}${mappedCust.mobile ? ` (${mappedCust.mobile})` : ''}`);
   };
 
   // Handle Edit Order action
   const handleEditOrder = (order) => {
+    if (!order) return;
     setEditingOrderId(order.id);
-    const cust = customers.find((c) => c.id === order.customerId);
+    const cust = (customers || []).find((c) => c.id === order.customerId);
     if (cust) {
-      setSelectedCust(cust);
-      setCustSearchTerm(`${cust.name} (${cust.mobile})`);
+      handleSelectCustomer(cust);
     } else {
       setSelectedCust({
-        id: order.customerId,
-        name: order.customerName,
-        mobile: order.customerMobile,
+        id: order.customerId || '',
+        name: order.customerName || '',
+        mobile: order.customerMobile || '',
         state: order.customerState || 'Maharashtra (27)',
-        outstanding: 0,
-        creditLimit: 0,
+        address: order.customerAddress || '',
+        gstin: order.customerGstin || '',
+        outstanding: Number(order.outstanding ?? 0),
+        credit_limit: Number(order.credit_limit ?? 0),
         type: 'Customer'
       });
-      setCustSearchTerm(order.customerName);
+      setCustSearchTerm(order.customerName || '');
     }
     setOrderHeader({
       orderDate: order.orderDate,
@@ -306,12 +327,12 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null 
     totalEstCost += calc.estCost;
   });
 
-  const isInterstate = selectedCust?.state && !selectedCust.state.includes('Maharashtra');
+  const isInterstate = selectedCust?.state ? !selectedCust.state.includes('Maharashtra') : false;
   const cgst = isInterstate ? 0 : totalGst / 2;
   const sgst = isInterstate ? 0 : totalGst / 2;
   const igst = isInterstate ? totalGst : 0;
 
-  const subtotal = parseFloat(totalTaxable.toFixed(2));
+  const subtotal = parseFloat((totalTaxable || 0).toFixed(2));
   const rawGrandTotal = subtotal + cgst + sgst + igst;
   const grandTotal = Math.round(rawGrandTotal);
   const roundOff = parseFloat((grandTotal - rawGrandTotal).toFixed(2));
@@ -321,34 +342,34 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null 
   const profitMarginPct = subtotal > 0 ? parseFloat(((grossProfit / subtotal) * 100).toFixed(1)) : 0;
 
   // Submit & Save Order (Create or Update)
-  const handleSaveOrder = (e) => {
+  const handleSaveOrder = async (e) => {
     e.preventDefault();
     if (!selectedCust) {
       alert('Please select or create a Customer for this order.');
       return;
     }
 
-    const sp = salesPersons.find((s) => s.id === orderHeader.salesPersonId);
-    const co = careOfPersons.find((c) => c.id === orderHeader.careOfId);
+    const sp = (salesPersons || []).find((s) => s.id === orderHeader.salesPersonId);
+    const co = (careOfPersons || []).find((c) => c.id === orderHeader.careOfId);
 
     const payload = {
       orderDate: orderHeader.orderDate,
       deliveryDate: orderHeader.deliveryDate,
       taxMode: orderHeader.taxMode,
       customerId: selectedCust.id,
-      customerName: selectedCust.name,
-      customerMobile: selectedCust.mobile,
-      customerState: selectedCust.state,
-      salesPersonId: orderHeader.salesPersonId,
+      customerName: selectedCust.name || '',
+      customerMobile: selectedCust.mobile || '',
+      customerState: selectedCust.state || 'Maharashtra (27)',
+      salesPersonId: orderHeader.salesPersonId || '',
       salesPersonName: sp?.name || 'House Sales',
-      careOfId: orderHeader.careOfId,
+      careOfId: orderHeader.careOfId || '',
       careOfName: co?.name || 'Production Coordinator',
-      orderSource: orderHeader.orderSource,
-      referenceNo: orderHeader.referenceNo,
-      remarks: orderHeader.remarks,
-      items: items.map((it) => {
-        const vendorObj = vendors.find((v) => v.id === it.vendorId);
-        const designerObj = designers.find((d) => d.id === it.designerId);
+      orderSource: orderHeader.orderSource || 'Walk-in Counter',
+      referenceNo: orderHeader.referenceNo || '',
+      remarks: orderHeader.remarks || '',
+      items: (items || []).map((it) => {
+        const vendorObj = (vendors || []).find((v) => v.id === it.vendorId);
+        const designerObj = (designers || []).find((d) => d.id === it.designerId);
         return {
           ...it,
           vendorName: vendorObj?.name || '',
@@ -357,30 +378,33 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null 
       }),
       advanceAmount: parseFloat(paymentInfo.advanceAmount) || 0,
       paymentMethod: paymentInfo.paymentMethod,
-      bankAccountId: paymentInfo.bankAccountId,
-      bankAccountName: paymentInfo.bankAccountName || companyBankAccounts.find((b) => b.id === paymentInfo.bankAccountId)?.bankName || '',
+      bankAccountId: paymentInfo.bankAccountId || '',
+      bankAccountName: paymentInfo.bankAccountName || (companyBankAccounts || []).find((b) => b.id === paymentInfo.bankAccountId)?.bankName || '',
       deliveryMode: 'Local Express Delivery'
     };
 
     if (editingOrderId) {
-      updateSalesOrder(editingOrderId, payload);
+      await updateSalesOrder(editingOrderId, payload);
       alert(`Sales Order ${editingOrderId} updated successfully!`);
       setSelectedOrderId(editingOrderId);
       setEditingOrderId(null);
     } else {
-      const newOrder = createSalesOrder(payload);
-      alert(`Order ${newOrder.id} confirmed successfully!\nJob Card automatically created in Production Queue.`);
-      setSelectedOrderId(newOrder.id);
+      const newOrder = await createSalesOrder(payload);
+      const createdId = newOrder?.id || 'New Order';
+      alert(`Order ${createdId} confirmed successfully!\nJob Card automatically created in Production Queue.`);
+      if (newOrder?.id) {
+        setSelectedOrderId(newOrder.id);
+      }
     }
     setViewMode('detail');
   };
 
   // Filtered Orders List
-  const filteredOrders = salesOrders.filter((o) => {
+  const filteredOrders = (salesOrders || []).filter((o) => {
     const matchesSearch =
-      o.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      o.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      o.customerMobile.includes(searchQuery);
+      (o.id || '').toLowerCase().includes((searchQuery || '').toLowerCase()) ||
+      (o.customerName || '').toLowerCase().includes((searchQuery || '').toLowerCase()) ||
+      (o.customerMobile || '').includes(searchQuery || '');
 
     if (activeTabFilter === 'ALL') return matchesSearch;
     if (activeTabFilter === 'PRODUCTION') return matchesSearch && ['New', 'Design', 'Printing', 'Outsource', 'Finishing', 'Quality Check'].includes(o.productionStatus);
@@ -389,7 +413,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null 
     return matchesSearch;
   });
 
-  const selectedOrder = salesOrders.find((o) => o.id === selectedOrderId) || salesOrders[0];
+  const selectedOrder = (salesOrders || []).find((o) => o.id === selectedOrderId) || (salesOrders || [])[0] || null;
 
   return (
     <div className="view-container">
@@ -489,12 +513,12 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null 
                         onMouseLeave={(e) => e.currentTarget.style.background = '#ffffff'}
                       >
                         <div>
-                          <strong style={{ fontSize: '0.88rem', color: '#0f172a' }}>{c.name}</strong>
+                          <strong style={{ fontSize: '0.88rem', color: '#0f172a' }}>{c.name || 'Unnamed'}</strong>
                           <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                            Mob: {c.mobile} | Code: {c.code} | Type: {c.type}
+                            Mob: {c.mobile || 'N/A'} | Code: {c.code || 'N/A'} | Type: {c.type || 'Retail'}
                           </div>
                         </div>
-                        <span className="badge badge-slate">{c.state}</span>
+                        <span className="badge badge-slate">{c.state || 'N/A'}</span>
                       </div>
                     ))}
                   </div>
@@ -505,15 +529,15 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null 
               {selectedCust ? (
                 <div style={{ background: '#eff6ff', padding: '0.85rem', borderRadius: '8px', border: '1px solid #bfdbfe', fontSize: '0.82rem' }}>
                   <div style={{ fontWeight: 800, color: '#1e40af', fontSize: '0.95rem', marginBottom: '0.2rem' }}>
-                    {selectedCust.name} <span className="badge badge-blue">{selectedCust.type}</span>
+                    {selectedCust.name || 'Unnamed Customer'} <span className="badge badge-blue">{selectedCust.type || 'Customer'}</span>
                   </div>
                   <div>GSTIN: <strong>{selectedCust.gstin || 'Unregistered'}</strong></div>
-                  <div>Address: {selectedCust.address} ({selectedCust.state})</div>
+                  <div>Address: {selectedCust.address || 'N/A'} ({selectedCust.state || 'Maharashtra (27)'})</div>
                   <div style={{ display: 'flex', gap: '1rem', marginTop: '0.4rem', paddingTop: '0.4rem', borderTop: '1px dashed #bfdbfe' }}>
                     <span style={{ color: '#e11d48', fontWeight: 700 }}>
-                      Outstanding: ₹{selectedCust.outstanding.toLocaleString()}
+                      Outstanding: ₹{Number(selectedCust.outstanding ?? selectedCust.outstandingAmount ?? 0).toLocaleString()}
                     </span>
-                    <span>Credit Limit: ₹{selectedCust.creditLimit.toLocaleString()}</span>
+                    <span>Credit Limit: ₹{Number(selectedCust.credit_limit ?? selectedCust.creditLimit ?? 0).toLocaleString()}</span>
                   </div>
                 </div>
               ) : (
@@ -894,10 +918,10 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null 
                         {/* Amount */}
                         <td>
                           <div style={{ fontWeight: 800, color: '#1e40af', fontSize: '0.88rem' }}>
-                            ₹{calc.grossLineTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ₹{Number(calc.grossLineTotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                           </div>
                           <span style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                            Taxable: ₹{calc.taxableVal.toFixed(1)}
+                            Taxable: ₹{Number(calc.taxableVal ?? 0).toFixed(1)}
                           </span>
                         </td>
 
@@ -1095,7 +1119,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.88rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Subtotal (Taxable Amount):</span>
-                  <strong>₹{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                  <strong>₹{Number(subtotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
                 </div>
 
                 {orderHeader.taxMode.includes('NTR') ? (
@@ -1106,17 +1130,17 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null 
                 ) : isInterstate ? (
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569' }}>
                     <span>IGST ({orderHeader.taxMode.includes('ITR') ? 'Incl.' : '18%'}):</span>
-                    <span>₹{igst.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    <span>₹{Number(igst ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                   </div>
                 ) : (
                   <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569' }}>
                       <span>CGST ({orderHeader.taxMode.includes('ITR') ? 'Incl.' : '9%'}):</span>
-                      <span>₹{cgst.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                      <span>₹{Number(cgst ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569' }}>
                       <span>SGST ({orderHeader.taxMode.includes('ITR') ? 'Incl.' : '9%'}):</span>
-                      <span>₹{sgst.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                      <span>₹{Number(sgst ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                     </div>
                   </>
                 )}
@@ -1128,18 +1152,18 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null 
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #cbd5e1', paddingTop: '0.5rem', fontSize: '1.2rem', fontWeight: 900, color: '#0f172a' }}>
                   <span>Grand Total:</span>
-                  <span>₹{grandTotal.toLocaleString()}</span>
+                  <span>₹{Number(grandTotal ?? 0).toLocaleString()}</span>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e11d48', fontWeight: 800 }}>
                   <span>Balance Payable:</span>
-                  <span>₹{balanceAmount.toLocaleString()}</span>
+                  <span>₹{Number(balanceAmount ?? 0).toLocaleString()}</span>
                 </div>
 
                 <div style={{ borderTop: '1px dashed #cbd5e1', marginTop: '0.4rem', paddingTop: '0.4rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                  <span>Estimated Cost: ₹{totalEstCost.toLocaleString()}</span>
+                  <span>Estimated Cost: ₹{Number(totalEstCost ?? 0).toLocaleString()}</span>
                   <span style={{ color: '#059669', fontWeight: 800 }}>
-                    Gross Profit: ₹{grossProfit.toLocaleString()} ({profitMarginPct}%)
+                    Gross Profit: ₹{Number(grossProfit ?? 0).toLocaleString()} ({profitMarginPct}%)
                   </span>
                 </div>
               </div>
@@ -1227,10 +1251,10 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null 
                           {order.productionStatus}
                         </span>
                       </td>
-                      <td style={{ fontWeight: 800 }}>₹{order.grandTotal.toLocaleString()}</td>
-                      <td style={{ color: '#059669', fontWeight: 600 }}>₹{order.advanceAmount.toLocaleString()}</td>
-                      <td style={{ color: order.balanceAmount > 0 ? '#e11d48' : '#059669', fontWeight: 700 }}>
-                        ₹{order.balanceAmount.toLocaleString()}
+                      <td style={{ fontWeight: 800 }}>₹{Number(order?.grandTotal ?? 0).toLocaleString()}</td>
+                      <td style={{ color: '#059669', fontWeight: 600 }}>₹{Number(order?.advanceAmount ?? 0).toLocaleString()}</td>
+                      <td style={{ color: (order?.balanceAmount || 0) > 0 ? '#e11d48' : '#059669', fontWeight: 700 }}>
+                        ₹{Number(order?.balanceAmount ?? 0).toLocaleString()}
                       </td>
                       <td>
                         <span className={`badge ${order.profitMarginPct >= 50 ? 'badge-emerald' : 'badge-amber'}`}>
@@ -1375,7 +1399,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null 
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedOrder.items.map((it, idx) => (
+                    {(selectedOrder?.items || []).map((it, idx) => (
                       <tr key={idx}>
                         <td style={{ fontWeight: 700 }}>{it.productName}</td>
                         <td>{it.width && it.height ? `${it.width} × ${it.height} ${it.unit}` : it.unit}</td>
@@ -1384,7 +1408,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null 
                         <td>₹{it.estimatedCost}</td>
                         <td>₹{it.actualVendorBill || it.estimatedVendorCost || 0}</td>
                         <td>₹{it.sellingRate}</td>
-                        <td style={{ fontWeight: 800 }}>₹{it.amount.toLocaleString()}</td>
+                        <td style={{ fontWeight: 800 }}>₹{Number(it?.amount ?? 0).toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1400,27 +1424,27 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.88rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Subtotal:</span>
-                  <strong>₹{selectedOrder.subtotal.toLocaleString()}</strong>
+                  <strong>₹{Number(selectedOrder?.subtotal ?? 0).toLocaleString()}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>GST Tax:</span>
-                  <span>₹{(selectedOrder.cgst + selectedOrder.sgst + selectedOrder.igst).toLocaleString()}</span>
+                  <span>₹{(Number(selectedOrder?.cgst ?? 0) + Number(selectedOrder?.sgst ?? 0) + Number(selectedOrder?.igst ?? 0)).toLocaleString()}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #cbd5e1', paddingTop: '0.4rem', fontSize: '1.1rem', fontWeight: 800 }}>
                   <span>Grand Total:</span>
-                  <span>₹{selectedOrder.grandTotal.toLocaleString()}</span>
+                  <span>₹{Number(selectedOrder?.grandTotal ?? 0).toLocaleString()}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#059669' }}>
                   <span>Advance Received:</span>
-                  <span>₹{selectedOrder.advanceAmount.toLocaleString()}</span>
+                  <span>₹{Number(selectedOrder?.advanceAmount ?? 0).toLocaleString()}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: selectedOrder.balanceAmount > 0 ? '#e11d48' : '#059669', fontWeight: 800 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: (selectedOrder?.balanceAmount || 0) > 0 ? '#e11d48' : '#059669', fontWeight: 800 }}>
                   <span>Balance Amount:</span>
-                  <span>₹{selectedOrder.balanceAmount.toLocaleString()}</span>
+                  <span>₹{Number(selectedOrder?.balanceAmount ?? 0).toLocaleString()}</span>
                 </div>
                 <div style={{ borderTop: '1px dashed #cbd5e1', marginTop: '0.4rem', paddingTop: '0.4rem', display: 'flex', justifyContent: 'space-between' }}>
                   <span>Gross Profit:</span>
-                  <strong style={{ color: '#059669' }}>₹{selectedOrder.grossProfit.toLocaleString()} ({selectedOrder.profitMarginPct}%)</strong>
+                  <strong style={{ color: '#059669' }}>₹{Number(selectedOrder?.grossProfit ?? 0).toLocaleString()} ({selectedOrder?.profitMarginPct || 0}%)</strong>
                 </div>
               </div>
             </div>
