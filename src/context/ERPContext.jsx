@@ -19,7 +19,8 @@ import {
   initialPayroll,
   initialProductMaterialSpecs,
   initialEmployees,
-  initialWorkerJobIncentives
+  initialWorkerJobIncentives,
+  initialOrderAuditLogs
 } from '../data/mockData';
 import { USER_ROLES, PRODUCTION_STATUS } from '../types';
 import { api } from '../utils/api';
@@ -120,6 +121,15 @@ export const ERPProvider = ({ children }) => {
     }
   });
 
+  const [orderAuditLogs, setOrderAuditLogs] = useState(() => {
+    try {
+      const saved = localStorage.getItem('stitch_erp_order_audit_logs');
+      return saved ? JSON.parse(saved) : initialOrderAuditLogs;
+    } catch (e) {
+      return initialOrderAuditLogs;
+    }
+  });
+
   const [followUps, setFollowUps] = useState([]);
 
   // Automatic LocalStorage Persistence Hooks so page refresh never loses sales orders or job data
@@ -128,6 +138,12 @@ export const ERPProvider = ({ children }) => {
       try { localStorage.setItem('stitch_erp_sales_orders', JSON.stringify(salesOrders)); } catch (e) {}
     }
   }, [salesOrders]);
+
+  useEffect(() => {
+    if (orderAuditLogs && orderAuditLogs.length > 0) {
+      try { localStorage.setItem('stitch_erp_order_audit_logs', JSON.stringify(orderAuditLogs)); } catch (e) {}
+    }
+  }, [orderAuditLogs]);
 
   useEffect(() => {
     if (workerJobIncentives && workerJobIncentives.length > 0) {
@@ -1281,6 +1297,27 @@ export const ERPProvider = ({ children }) => {
       console.warn("api.createSalesOrder exception, updating local state:", err);
       setSalesOrders((prev) => [finalOrder, ...prev.filter(o => o.id !== newOrderId)]);
     }
+
+    // Log creation activity
+    logOrderActivity({
+      orderId: newOrderId,
+      orderNumber: newOrderId,
+      customerName: finalOrder.customerName,
+      customerMobile: finalOrder.customerMobile,
+      actionType: isQuote ? 'CREATED' : 'CREATED',
+      actionTitle: `${isQuote ? 'Quotation' : 'Sales Order'} ${newOrderId} Created`,
+      actor: activeUser?.name || 'Authorized Staff',
+      role: activeRole || 'Sales',
+      reason: isQuote ? 'New quotation prepared' : 'New sales order registered',
+      newAmount: finalOrder.grandTotal,
+      changesSummary: [
+        `Created new ${isQuote ? 'Quotation' : 'Sales Order'} with ${finalOrder.items?.length || 0} line item(s)`,
+        `Grand Total: ₹${Number(finalOrder.grandTotal || 0).toLocaleString()}`,
+        `Advance received: ₹${Number(finalOrder.advanceAmount || 0).toLocaleString()} via ${finalOrder.paymentMethod || 'Cash/UPI'}`
+      ],
+      snapshot: finalOrder
+    });
+
     return finalOrder;
   };
 
@@ -1297,6 +1334,63 @@ export const ERPProvider = ({ children }) => {
       }
     }
     return true;
+  };
+
+  // Central Order Audit Activity Logger
+  const logOrderActivity = ({
+    orderId,
+    orderNumber,
+    customerName,
+    customerMobile,
+    actionType, // 'CREATED' | 'EDITED' | 'CANCELLED' | 'DELETED' | 'CONVERTED' | 'STATUS_CHANGED'
+    actionTitle,
+    actor,
+    role,
+    reason,
+    previousAmount,
+    newAmount,
+    diffAmount,
+    refundOrReversal,
+    changesSummary = [],
+    previousSnapshot = null,
+    newSnapshot = null,
+    snapshot = null
+  }) => {
+    const entry = {
+      id: `AUDIT-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      orderId: orderId || orderNumber || 'N/A',
+      orderNumber: orderNumber || orderId || 'N/A',
+      customerName: customerName || 'Customer',
+      customerMobile: customerMobile || '',
+      actionType: actionType || 'EDITED',
+      actionTitle: actionTitle || `Order ${orderId} Activity`,
+      actor: actor || activeUser?.name || 'Authorized Staff',
+      role: role || activeRole || 'Admin',
+      timestamp: new Date().toISOString(),
+      formattedTime: new Date().toLocaleString('en-IN', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      }),
+      reason: reason || '',
+      previousAmount: previousAmount !== undefined ? Number(previousAmount) : undefined,
+      newAmount: newAmount !== undefined ? Number(newAmount) : undefined,
+      diffAmount: diffAmount !== undefined ? Number(diffAmount) : undefined,
+      refundOrReversal: refundOrReversal !== undefined ? Number(refundOrReversal) : undefined,
+      changesSummary: Array.isArray(changesSummary) ? changesSummary : [String(changesSummary)],
+      previousSnapshot: previousSnapshot || null,
+      newSnapshot: newSnapshot || null,
+      snapshot: snapshot || null
+    };
+
+    setOrderAuditLogs((prev) => [entry, ...(prev || [])]);
+    return entry;
+  };
+
+  const clearAuditLogs = () => {
+    setOrderAuditLogs([]);
+    try {
+      localStorage.removeItem('stitch_erp_order_audit_logs');
+    } catch (e) {}
   };
 
   // Convert Quotation to Direct Sales Order with 1-Click
@@ -1435,11 +1529,31 @@ export const ERPProvider = ({ children }) => {
       );
     }
 
+    // Log Activity
+    logOrderActivity({
+      orderId: newOrderId,
+      orderNumber: newOrderId,
+      customerName: convertedOrder.customerName,
+      customerMobile: convertedOrder.customerMobile,
+      actionType: 'CONVERTED',
+      actionTitle: `Quotation ${quote.id} Converted to Direct Sales Order ${newOrderId}`,
+      actor: activeUser?.name || 'Authorized Staff',
+      role: activeRole || 'Sales',
+      reason: `Quotation converted by user`,
+      newAmount: convertedOrder.grandTotal,
+      changesSummary: [
+        `Converted Quotation ${quote.id} to active Sales Order ${newOrderId}`,
+        `Grand Total: ₹${Number(convertedOrder.grandTotal || 0).toLocaleString()}`,
+        `Job Card generated in Production Queue`
+      ],
+      snapshot: convertedOrder
+    });
+
     return convertedOrder;
   };
 
   // Edit / Revise Sales Order
-  const updateSalesOrder = async (orderId, updatedOrderPayload) => {
+  const updateSalesOrder = async (orderId, updatedOrderPayload, editReason = '') => {
     let oldBalance = 0;
     let customerId = updatedOrderPayload.customerId;
     const existing = salesOrders.find((o) => o.id === orderId);
@@ -1453,10 +1567,34 @@ export const ERPProvider = ({ children }) => {
 
     const changeLogs = [];
     if (existing) {
-      if (existing.subtotal !== processedOrder.subtotal) changeLogs.push(`Subtotal updated to ₹${processedOrder.subtotal}`);
-      if (existing.grandTotal !== processedOrder.grandTotal) changeLogs.push(`Grand Total changed to ₹${processedOrder.grandTotal}`);
-      if (existing.advanceAmount !== processedOrder.advanceAmount) changeLogs.push(`Advance updated to ₹${processedOrder.advanceAmount}`);
-      if (changeLogs.length === 0) changeLogs.push(`Order updated`);
+      if (existing.customerName !== processedOrder.customerName) {
+        changeLogs.push(`Customer updated: '${existing.customerName}' → '${processedOrder.customerName}'`);
+      }
+      if (existing.deliveryDate !== processedOrder.deliveryDate) {
+        changeLogs.push(`Delivery date: ${existing.deliveryDate} → ${processedOrder.deliveryDate}`);
+      }
+      if (existing.salesPersonName !== processedOrder.salesPersonName) {
+        changeLogs.push(`Sales person: ${existing.salesPersonName || 'None'} → ${processedOrder.salesPersonName || 'None'}`);
+      }
+      if (existing.subtotal !== processedOrder.subtotal) {
+        changeLogs.push(`Subtotal: ₹${Number(existing.subtotal || 0).toLocaleString()} → ₹${Number(processedOrder.subtotal || 0).toLocaleString()}`);
+      }
+      if (existing.grandTotal !== processedOrder.grandTotal) {
+        const diff = (processedOrder.grandTotal || 0) - (existing.grandTotal || 0);
+        changeLogs.push(`Grand Total: ₹${Number(existing.grandTotal || 0).toLocaleString()} → ₹${Number(processedOrder.grandTotal || 0).toLocaleString()} (${diff >= 0 ? '+' : ''}₹${diff.toLocaleString()})`);
+      }
+      if (existing.advanceAmount !== processedOrder.advanceAmount) {
+        changeLogs.push(`Advance: ₹${Number(existing.advanceAmount || 0).toLocaleString()} → ₹${Number(processedOrder.advanceAmount || 0).toLocaleString()}`);
+      }
+      if (existing.items?.length !== processedOrder.items?.length) {
+        changeLogs.push(`Line items count: ${existing.items?.length || 0} → ${processedOrder.items?.length || 0}`);
+      }
+      if (editReason) {
+        changeLogs.push(`Reason: ${editReason}`);
+      }
+      if (changeLogs.length === 0) {
+        changeLogs.push(`Order line items and technical specifications revised`);
+      }
     }
 
     const auditEntry = {
@@ -1526,7 +1664,166 @@ export const ERPProvider = ({ children }) => {
       );
     }
 
+    // Log to central audit trail
+    logOrderActivity({
+      orderId: orderId,
+      orderNumber: orderId,
+      customerName: finalUpdatedOrder.customerName,
+      customerMobile: finalUpdatedOrder.customerMobile,
+      actionType: 'EDITED',
+      actionTitle: `Sales Order ${orderId} Modified`,
+      actor: activeUser?.name || 'Authorized Staff',
+      role: activeRole || 'Admin',
+      reason: editReason || 'Order parameters modified',
+      previousAmount: existing?.grandTotal,
+      newAmount: finalUpdatedOrder.grandTotal,
+      diffAmount: (finalUpdatedOrder.grandTotal || 0) - (existing?.grandTotal || 0),
+      changesSummary: changeLogs,
+      previousSnapshot: existing,
+      newSnapshot: finalUpdatedOrder
+    });
+
     return finalUpdatedOrder;
+  };
+
+  // Cancel Sales Order
+  const cancelSalesOrder = async (orderId, cancelReason = 'Customer requested cancellation') => {
+    const existing = salesOrders.find(o => o.id === orderId);
+    if (!existing) throw new Error(`Order ${orderId} not found`);
+
+    const customerId = existing.customerId;
+    const unpaidBalance = Number(existing.balanceAmount) || 0;
+
+    const auditEntry = {
+      id: `AUDIT-${Date.now()}`,
+      editedBy: activeUser?.name || 'Authorized Staff',
+      role: activeRole || 'Admin',
+      editedAt: new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+      summary: `Order CANCELLED. Reason: ${cancelReason}`
+    };
+
+    const updatedHistory = [auditEntry, ...(existing?.editHistory || [])];
+
+    const cancelledOrder = {
+      ...existing,
+      productionStatus: 'Cancelled',
+      isCancelled: true,
+      cancelledAt: new Date().toISOString(),
+      cancelledBy: activeUser?.name || 'Authorized Staff',
+      cancelReason: cancelReason,
+      editHistory: updatedHistory
+    };
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase
+          .from('sales_orders')
+          .update({
+            production_status: 'Cancelled',
+            edit_history: updatedHistory
+          })
+          .eq('id', orderId);
+      } catch (err) {
+        console.warn("Supabase cancel order warning:", err);
+      }
+    }
+
+    setSalesOrders((prev) => prev.map(o => (o.id === orderId ? cancelledOrder : o)));
+
+    // Reversal of customer outstanding balance for the cancelled order
+    if (unpaidBalance > 0 && customerId) {
+      setCustomers((prev) =>
+        prev.map((c) => {
+          if (c.id === customerId) {
+            const currentOutstanding = Number(c.outstanding ?? c.outstandingAmount ?? 0);
+            const newOutstanding = Math.max(0, currentOutstanding - unpaidBalance);
+            return { ...c, outstanding: newOutstanding, outstandingAmount: newOutstanding };
+          }
+          return c;
+        })
+      );
+    }
+
+    // Log to central audit trail
+    logOrderActivity({
+      orderId: existing.id,
+      orderNumber: existing.id,
+      customerName: existing.customerName,
+      customerMobile: existing.customerMobile,
+      actionType: 'CANCELLED',
+      actionTitle: `Sales Order ${existing.id} Cancelled`,
+      actor: activeUser?.name || 'Authorized Staff',
+      role: activeRole || 'Admin',
+      reason: cancelReason,
+      previousAmount: existing.grandTotal,
+      refundOrReversal: unpaidBalance,
+      changesSummary: [
+        `Production status set to 'Cancelled'`,
+        `Customer outstanding reduced by -₹${unpaidBalance.toLocaleString()}`,
+        `Advance received: ₹${Number(existing.advanceAmount || 0).toLocaleString()} recorded in company accounts`,
+        `Cancellation Reason: ${cancelReason}`
+      ],
+      snapshot: existing
+    });
+
+    return cancelledOrder;
+  };
+
+  // Delete Sales Order Permanently
+  const deleteSalesOrder = async (orderId, deleteReason = 'Record purged by Administrator') => {
+    const existing = salesOrders.find(o => o.id === orderId);
+    if (!existing) throw new Error(`Order ${orderId} not found`);
+
+    const customerId = existing.customerId;
+    const unpaidBalance = Number(existing.balanceAmount) || 0;
+
+    // Log full snapshot in central audit log before removal
+    logOrderActivity({
+      orderId: existing.id,
+      orderNumber: existing.id,
+      customerName: existing.customerName,
+      customerMobile: existing.customerMobile,
+      actionType: 'DELETED',
+      actionTitle: `Sales Order ${existing.id} Deleted from ERP`,
+      actor: activeUser?.name || 'Authorized Staff',
+      role: activeRole || 'Admin',
+      reason: deleteReason,
+      previousAmount: existing.grandTotal,
+      changesSummary: [
+        `Permanently deleted order record (${existing.items?.length || 0} line items)`,
+        `Order Grand Total was ₹${Number(existing.grandTotal || 0).toLocaleString()}`,
+        `Customer ledger adjusted: -₹${unpaidBalance.toLocaleString()}`,
+        `Reason: ${deleteReason}`
+      ],
+      snapshot: existing
+    });
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('sales_order_items').delete().eq('sales_order_id', orderId);
+        await supabase.from('sales_orders').delete().eq('id', orderId);
+      } catch (err) {
+        console.warn("Supabase delete order warning:", err);
+      }
+    }
+
+    setSalesOrders((prev) => prev.filter(o => o.id !== orderId));
+
+    // Reversal of customer outstanding balance
+    if (unpaidBalance > 0 && customerId && existing.productionStatus !== 'Cancelled') {
+      setCustomers((prev) =>
+        prev.map((c) => {
+          if (c.id === customerId) {
+            const currentOutstanding = Number(c.outstanding ?? c.outstandingAmount ?? 0);
+            const newOutstanding = Math.max(0, currentOutstanding - unpaidBalance);
+            return { ...c, outstanding: newOutstanding, outstandingAmount: newOutstanding };
+          }
+          return c;
+        })
+      );
+    }
+
+    return true;
   };
 
   // Update Outsource Vendor Bill
@@ -2549,6 +2846,11 @@ export const ERPProvider = ({ children }) => {
         updateQuotationStatus,
         convertQuotationToSalesOrder,
         updateSalesOrder,
+        cancelSalesOrder,
+        deleteSalesOrder,
+        orderAuditLogs,
+        logOrderActivity,
+        clearAuditLogs,
         updateVendorBill,
         updateProductionStatus,
         updateItemProductionStatus,

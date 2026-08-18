@@ -21,6 +21,7 @@ import { PurchaseView } from './views/PurchaseView';
 import { InventoryView } from './views/InventoryView';
 import { DeliveryView } from './views/DeliveryView';
 import { GSTInvoicingView } from './views/GSTInvoicingView';
+import { SalesOrderAuditView } from './views/SalesOrderAuditView';
 import { ReportsView } from './views/ReportsView';
 import { AccountsView } from './views/AccountsView';
 import { UserManagementView } from './views/UserManagementView';
@@ -159,6 +160,7 @@ const MainAppContent = () => {
                 initialSelectId={salesOrderParams.selectId}
                 initialType={salesOrderParams.initialType || 'Direct'}
                 initialCust={salesOrderParams.initialCust || null}
+                onNavigate={handleNavigate}
               />
             )}
             {activeTab === 'customers' && <CustomersView onNavigate={handleNavigate} />}
@@ -175,7 +177,12 @@ const MainAppContent = () => {
             {activeTab === 'inventory' && <InventoryView />}
             {activeTab === 'delivery' && <DeliveryView />}
             {activeTab === 'gst-invoicing' && <GSTInvoicingView />}
-            {(activeTab === 'reports' || activeTab.startsWith('report-')) && <ReportsView key={activeTab} initialReportKey={activeTab} />}
+            {(activeTab === 'sales-order-audit' || activeTab === 'report-order-audit') && (
+              <SalesOrderAuditView onNavigate={handleNavigate} />
+            )}
+            {(activeTab === 'reports' || (activeTab.startsWith('report-') && activeTab !== 'report-order-audit')) && (
+              <ReportsView key={activeTab} initialReportKey={activeTab} />
+            )}
             {ACCOUNTS_SUB_ITEMS.includes(activeTab) && <AccountsView key={activeTab} initialTab={activeTab} />}
             {activeTab === 'user-management' && <UserManagementView />}
             {activeTab === 'settings' && <SettingsView />}

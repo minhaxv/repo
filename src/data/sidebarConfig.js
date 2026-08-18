@@ -31,7 +31,8 @@ import {
   CheckCircle2,
   Clock,
   Briefcase,
-  Cpu
+  Cpu,
+  History
 } from 'lucide-react';
 
 export const NAVIGATION_MODULES = [
@@ -60,6 +61,7 @@ export const NAVIGATION_MODULES = [
     roles: ['Admin', 'Manager', 'Sales', 'Designer', 'Accounts'],
     subItems: [
       { id: 'sales-orders', label: 'Sales Orders', icon: ShoppingCart, highlight: true, roles: ['Admin', 'Manager', 'Sales', 'Accounts'] },
+      { id: 'sales-order-audit', label: 'Order Edits & Audit Log', icon: History, highlight: true, roles: ['Admin', 'Manager', 'Sales', 'Accounts'] },
       { id: 'quotations', label: 'Quotations', icon: FileText, roles: ['Admin', 'Manager', 'Sales'] },
       { id: 'gst-invoicing', label: 'Sales Invoices', icon: Receipt, roles: ['Admin', 'Manager', 'Accounts'] },
       { id: 'delivery', label: 'Delivery Notes', icon: Truck, roles: ['Admin', 'Manager', 'Delivery', 'Production'] },
@@ -154,6 +156,7 @@ export const NAVIGATION_MODULES = [
       { id: 'report-sales', label: 'Sales Reports', icon: TrendingUp, roles: ['Admin', 'Manager'] },
       { id: 'report-quotation', label: 'Quotation Report', icon: FileText, roles: ['Admin', 'Manager'] },
       { id: 'report-sales-order', label: 'Sales Order Report', icon: ShoppingCart, roles: ['Admin', 'Manager'] },
+      { id: 'report-order-audit', label: 'Order Audit & Edits Report', icon: History, roles: ['Admin', 'Manager'] },
       { id: 'report-delivery', label: 'Delivery Report', icon: Truck, roles: ['Admin', 'Manager'] },
       { id: 'report-invoice', label: 'Sales Invoice Report', icon: Receipt, roles: ['Admin', 'Manager'] },
       { id: 'report-customer-outstanding', label: 'Customer Outstanding Report', icon: ArrowDownLeft, roles: ['Admin', 'Manager'] },

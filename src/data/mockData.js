@@ -1572,3 +1572,117 @@ export const initialWorkerJobIncentives = [
   }
 ];
 
+export const initialOrderAuditLogs = [
+  {
+    id: "AUDIT-1723901001",
+    orderId: "SO-2026-0894",
+    orderNumber: "SO-2026-0894",
+    customerName: "Phoenix Marketcity Mall (Management)",
+    customerMobile: "9820099881",
+    actionType: "EDITED",
+    actionTitle: "Sales Order SO-2026-0894 Modified",
+    actor: "Admin (Sanjay Sharma)",
+    role: "Admin",
+    timestamp: "2026-08-16T14:32:00Z",
+    formattedTime: "16 Aug 2026, 02:32 PM",
+    reason: "Client expanded event branding dimensions and added 2 extra Standees",
+    previousAmount: 18500,
+    newAmount: 26800,
+    diffAmount: 8300,
+    changesSummary: [
+      "Subtotal changed from ₹18,500 to ₹26,800 (+₹8,300)",
+      "Grand Total updated to ₹31,624 (GST added)",
+      "Line item 'Star Flex Banner' size altered from 8×3 ft to 10×4 ft",
+      "Added 2 units of 'Rollup Standee 3x6 ft Deluxe'",
+      "Delivery Date updated to 2026-08-19"
+    ]
+  },
+  {
+    id: "AUDIT-1723901002",
+    orderId: "SO-2026-0891",
+    orderNumber: "SO-2026-0891",
+    customerName: "Metro Realtors & Developers",
+    customerMobile: "9819077665",
+    actionType: "CANCELLED",
+    actionTitle: "Sales Order SO-2026-0891 Cancelled",
+    actor: "Priya Patel",
+    role: "Sales",
+    timestamp: "2026-08-15T11:15:00Z",
+    formattedTime: "15 Aug 2026, 11:15 AM",
+    reason: "Client postponed real estate site inauguration to next quarter",
+    previousAmount: 42000,
+    refundOrReversal: 21000,
+    changesSummary: [
+      "Status changed from 'Printing' to 'Cancelled'",
+      "Production Job Card #JC-0891 halted on Shop Floor",
+      "Customer outstanding balance reduced by ₹21,000",
+      "Advance ₹21,000 held as credit for future job order"
+    ]
+  },
+  {
+    id: "AUDIT-1723901003",
+    orderId: "QT-2026-0098",
+    orderNumber: "QT-2026-0098",
+    customerName: "Star Auto Garage",
+    customerMobile: "9820123490",
+    actionType: "DELETED",
+    actionTitle: "Quotation QT-2026-0098 Deleted from ERP",
+    actor: "Admin (Sanjay Sharma)",
+    role: "Admin",
+    timestamp: "2026-08-14T16:45:00Z",
+    formattedTime: "14 Aug 2026, 04:45 PM",
+    reason: "Duplicate test quotation entered mistakenly during staff training",
+    previousAmount: 12500,
+    changesSummary: [
+      "Purged temporary draft quotation with 1 item ('Vinyl Glow Sign')",
+      "Quotation value: ₹12,500",
+      "No customer ledger impact (Draft status)"
+    ]
+  },
+  {
+    id: "AUDIT-1723901004",
+    orderId: "SO-2026-0892",
+    orderNumber: "SO-2026-0892",
+    customerName: "QuickBite Cloud Kitchens",
+    customerMobile: "9820033441",
+    actionType: "EDITED",
+    actionTitle: "Sales Order SO-2026-0892 Outsource Vendor Assigned",
+    actor: "Amit Verma",
+    role: "Production",
+    timestamp: "2026-08-14T09:20:00Z",
+    formattedTime: "14 Aug 2026, 09:20 AM",
+    reason: "Assigned Laser Cutting process to LaserCraft India vendor",
+    previousAmount: 14500,
+    newAmount: 14500,
+    diffAmount: 0,
+    changesSummary: [
+      "Assigned Outsource Vendor 'LaserCraft India' for Acrylic Letter Cut",
+      "Internal Estimated Vendor Cost set to ₹4,200",
+      "Production status transitioned to 'Outsource Vendor Dispatched'"
+    ]
+  },
+  {
+    id: "AUDIT-1723901005",
+    orderId: "SO-2026-0895",
+    orderNumber: "SO-2026-0895",
+    customerName: "Apex Retail Solutions Pvt Ltd",
+    customerMobile: "9821011223",
+    actionType: "CREATED",
+    actionTitle: "Direct Sales Order SO-2026-0895 Created",
+    actor: "Priya Patel",
+    role: "Sales",
+    timestamp: "2026-08-17T10:00:00Z",
+    formattedTime: "17 Aug 2026, 10:00 AM",
+    reason: "New counter walk-in direct sales order confirmed",
+    previousAmount: 0,
+    newAmount: 18500,
+    diffAmount: 18500,
+    changesSummary: [
+      "Created Direct Sales Order with 1 line item",
+      "Advance ₹5,000 recorded via UPI (HDFC Bank)",
+      "Job Card auto-pushed to Design Queue"
+    ]
+  }
+];
+
+

@@ -32,10 +32,13 @@ import {
   Edit,
   UserCheck,
   MessageSquare,
-  X
+  X,
+  History,
+  XCircle,
+  AlertTriangle
 } from 'lucide-react';
 
-export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null, initialType = 'Direct', initialCust = null }) => {
+export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null, initialType = 'Direct', initialCust = null, onNavigate = null }) => {
   const {
     salesOrders,
     customers,
@@ -49,11 +52,15 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
     companyBankAccounts,
     companyProfile,
     activeUser,
+    activeRole,
     trackWhatsAppSent,
     createSalesOrder,
     convertQuotationToSalesOrder,
     updateQuotationStatus,
     updateSalesOrder,
+    cancelSalesOrder,
+    deleteSalesOrder,
+    orderAuditLogs,
     updateVendorBill
   } = useERP();
 
@@ -68,6 +75,12 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
   const [activeTabFilter, setActiveTabFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSavingOrder, setIsSavingOrder] = useState(false);
+
+  // Cancellation & Deletion Modal States
+  const [cancellingOrder, setCancellingOrder] = useState(null);
+  const [cancelReasonInput, setCancelReasonInput] = useState('Customer requested cancellation');
+  const [isCancellingOrder, setIsCancellingOrder] = useState(false);
+  const [editReasonInput, setEditReasonInput] = useState('');
 
   // Modals state
   const [isCreateCustModalOpen, setIsCreateCustModalOpen] = useState(false);
@@ -456,10 +469,11 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
     try {
       setIsSavingOrder(true);
       if (editingOrderId) {
-        await updateSalesOrder(editingOrderId, payload);
+        await updateSalesOrder(editingOrderId, payload, editReasonInput || 'Order parameters modified');
         alert(`${isQuote ? 'Quotation' : 'Sales Order'} ${editingOrderId} updated successfully!`);
         setSelectedOrderId(editingOrderId);
         setEditingOrderId(null);
+        setEditReasonInput('');
       } else {
         const newOrder = await createSalesOrder(payload);
         const createdId = newOrder?.id || 'New Record';
@@ -477,6 +491,43 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
       alert(`Error saving order: ${err.message}`);
     } finally {
       setIsSavingOrder(false);
+    }
+  };
+
+  // Confirm and Execute Cancel Order
+  const handleConfirmCancelOrder = async () => {
+    if (!cancellingOrder) return;
+    try {
+      setIsCancellingOrder(true);
+      await cancelSalesOrder(cancellingOrder.id, cancelReasonInput);
+      alert(`Order ${cancellingOrder.id} has been marked as CANCELLED.\n\nCustomer dues adjusted & recorded in the Order Audit Log.`);
+      setCancellingOrder(null);
+      setCancelReasonInput('Customer requested cancellation');
+    } catch (err) {
+      alert(`Error cancelling order: ${err.message}`);
+    } finally {
+      setIsCancellingOrder(false);
+    }
+  };
+
+  // Delete Order with Reason Prompt
+  const handleDeleteOrderClick = async (order) => {
+    if (!order) return;
+    const confirmReason = window.prompt(
+      `⚠️ WARNING: Are you sure you want to permanently delete order "${order.id}"?\n\nThis will remove the order record from the active ERP database.\nA permanent snapshot will be preserved in the Order Revision & Audit Logs.\n\nEnter deletion reason:`,
+      "Administrative order cleanup"
+    );
+    if (confirmReason !== null) {
+      try {
+        await deleteSalesOrder(order.id, confirmReason || 'Purged by user');
+        alert(`Order ${order.id} deleted successfully. View the snapshot in Order Revision & Audit Logs.`);
+        if (selectedOrderId === order.id) {
+          setSelectedOrderId(null);
+          setViewMode('list');
+        }
+      } catch (err) {
+        alert(`Error deleting order: ${err.message}`);
+      }
     }
   };
 
@@ -502,11 +553,12 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
       (o.customerMobile || '').includes(searchQuery || '');
 
     if (activeTabFilter === 'ALL') return matchesSearch;
-    if (activeTabFilter === 'DIRECT') return matchesSearch && (o.orderType === 'Direct' || !o.orderType) && !o.convertedFromQuotation;
-    if (activeTabFilter === 'QUOTATIONS') return matchesSearch && o.orderType === 'Quotation';
+    if (activeTabFilter === 'DIRECT') return matchesSearch && (o.orderType === 'Direct' || !o.orderType) && !o.convertedFromQuotation && o.productionStatus !== 'Cancelled';
+    if (activeTabFilter === 'QUOTATIONS') return matchesSearch && o.orderType === 'Quotation' && o.productionStatus !== 'Cancelled';
     if (activeTabFilter === 'CONVERTED') return matchesSearch && (o.convertedFromQuotation || o.quotationStatus === 'Converted');
     if (activeTabFilter === 'PRODUCTION') return matchesSearch && o.orderType !== 'Quotation' && ['New', 'Design', 'Printing', 'Outsource', 'Finishing', 'Quality Check'].includes(o.productionStatus);
     if (activeTabFilter === 'DELIVERED') return matchesSearch && o.productionStatus === 'Delivered';
+    if (activeTabFilter === 'CANCELLED') return matchesSearch && (o.productionStatus === 'Cancelled' || o.isCancelled);
     return matchesSearch;
   });
 
@@ -515,7 +567,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
   return (
     <div className="view-container">
       {/* View Header Tabs */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <ShoppingCart size={24} color="#2563eb" />
@@ -528,7 +580,15 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.65rem' }}>
+        <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => onNavigate ? onNavigate('sales-order-audit') : window.dispatchEvent(new CustomEvent('ERP_NAVIGATE_AUDIT'))}
+            className="btn btn-secondary"
+            style={{ color: '#7c3aed', borderColor: '#ddd6fe', background: '#f5f3ff', fontWeight: 700 }}
+            title="Open central audit trail of all order edits, cancellations, and deletions"
+          >
+            <History size={16} color="#7c3aed" /> Order Revision & Audit Logs ({orderAuditLogs?.length || 0})
+          </button>
           {viewMode !== 'list' && (
             <button onClick={() => setViewMode('list')} className="btn btn-secondary">
               <ArrowLeft size={16} /> Back to Order List
@@ -1438,9 +1498,25 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                 </div>
               </div>
 
+              {editingOrderId && (
+                <div style={{ marginTop: '1rem', background: '#fef3c7', padding: '0.75rem', borderRadius: '8px', border: '1px solid #fde68a' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#92400e', textTransform: 'uppercase', display: 'block', marginBottom: '0.3rem' }}>
+                    Reason for Revision / Modification (Recorded in Audit Trail):
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g., Client changed dimensions from 8x3 to 10x4 ft"
+                    value={editReasonInput}
+                    onChange={(e) => setEditReasonInput(e.target.value)}
+                    style={{ width: '100%', fontSize: '0.85rem' }}
+                  />
+                </div>
+              )}
+
               <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.75rem' }}>
                 <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }}>
-                  <Check size={18} /> Confirm Order & Auto-Generate Job Cards
+                  <Check size={18} /> {editingOrderId ? '💾 Save & Log Order Revision' : 'Confirm Order & Auto-Generate Job Cards'}
                 </button>
               </div>
             </div>
@@ -1454,14 +1530,15 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
           {/* Filters & Search Bar */}
           <div className="card" style={{ padding: '0.85rem 1.25rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', gap: '0.4rem' }}>
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                 {[
                   { id: 'ALL', label: 'ALL' },
                   { id: 'DIRECT', label: 'DIRECT ORDERS' },
                   { id: 'QUOTATIONS', label: 'QUOTATIONS' },
                   { id: 'CONVERTED', label: 'CONVERTED' },
                   { id: 'PRODUCTION', label: 'PRODUCTION QUEUE' },
-                  { id: 'DELIVERED', label: 'DELIVERED' }
+                  { id: 'DELIVERED', label: 'DELIVERED' },
+                  { id: 'CANCELLED', label: 'CANCELLED' }
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -1537,6 +1614,10 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                         <td>
                           {isQuote ? (
                             <span className="badge badge-amber">{order.quotationStatus || 'Quotation'}</span>
+                          ) : order.productionStatus === 'Cancelled' ? (
+                            <span className="badge badge-rose" style={{ background: '#ffe4e6', color: '#e11d48', fontWeight: 800 }}>
+                              <XCircle size={11} style={{ marginRight: '2px', verticalAlign: 'middle' }} /> Cancelled
+                            </span>
                           ) : (
                             <span className={`badge ${
                               order.productionStatus === 'Ready for Delivery' ? 'badge-emerald' :
@@ -1602,6 +1683,24 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                             >
                               <FileText size={14} color="#059669" />
                             </button>
+                            {order.productionStatus !== 'Cancelled' && (
+                              <button
+                                onClick={() => setCancellingOrder(order)}
+                                className="btn btn-sm btn-secondary"
+                                style={{ color: '#e11d48', borderColor: '#fecdd3' }}
+                                title="Cancel Order"
+                              >
+                                <XCircle size={14} />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteOrderClick(order)}
+                              className="btn btn-sm btn-secondary"
+                              style={{ color: '#64748b' }}
+                              title="Delete Order (Purge to Audit Trail)"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1617,11 +1716,48 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
       {/* ORDER DETAIL VIEW */}
       {viewMode === 'detail' && selectedOrder && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Cancelled Banner if applicable */}
+          {(selectedOrder.productionStatus === 'Cancelled' || selectedOrder.isCancelled) && (
+            <div style={{
+              padding: '0.85rem 1.25rem',
+              background: '#ffe4e6',
+              border: '1px solid #fecdd3',
+              borderRadius: '8px',
+              color: '#9f1239',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.5rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}>
+                <XCircle size={22} color="#e11d48" />
+                <div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 800 }}>THIS ORDER IS CANCELLED</div>
+                  {selectedOrder.cancelReason && (
+                    <div style={{ fontWeight: 500, fontSize: '0.8rem', color: '#881337', marginTop: '2px' }}>
+                      Reason: "{selectedOrder.cancelReason}" • Cancelled by {selectedOrder.cancelledBy || 'Staff'}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => onNavigate ? onNavigate('sales-order-audit') : window.dispatchEvent(new CustomEvent('ERP_NAVIGATE_AUDIT'))}
+                className="btn btn-sm btn-secondary"
+                style={{ background: '#fff', color: '#e11d48', borderColor: '#fecdd3', fontWeight: 700 }}
+              >
+                <History size={14} /> View in Revision & Audit Logs
+              </button>
+            </div>
+          )}
+
           {/* Header Summary */}
-          <div className="card" style={{ background: '#f8fafc', borderLeft: '4px solid #1e40af' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div className="card" style={{ background: '#f8fafc', borderLeft: selectedOrder.productionStatus === 'Cancelled' ? '4px solid #e11d48' : '4px solid #1e40af' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
               <div>
-                <span className="badge badge-blue">{selectedOrder.productionStatus}</span>
+                <span className={`badge ${selectedOrder.productionStatus === 'Cancelled' ? 'badge-rose' : 'badge-blue'}`}>
+                  {selectedOrder.productionStatus}
+                </span>
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: '0.3rem 0' }}>
                   {selectedOrder.id} — {selectedOrder.customerName}
                 </h2>
@@ -1642,6 +1778,23 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                 )}
                 <button onClick={() => handleEditOrder(selectedOrder)} className="btn btn-secondary" style={{ color: '#d97706', fontWeight: 700 }}>
                   <Edit size={16} /> Edit {selectedOrder.orderType === 'Quotation' ? 'Quotation' : 'Order'}
+                </button>
+                {selectedOrder.productionStatus !== 'Cancelled' && (
+                  <button
+                    onClick={() => setCancellingOrder(selectedOrder)}
+                    className="btn btn-secondary"
+                    style={{ color: '#e11d48', borderColor: '#fecdd3', fontWeight: 700 }}
+                  >
+                    <XCircle size={16} /> Cancel Order
+                  </button>
+                )}
+                <button
+                  onClick={() => handleDeleteOrderClick(selectedOrder)}
+                  className="btn btn-secondary"
+                  style={{ color: '#64748b' }}
+                  title="Purge Order from active list"
+                >
+                  <Trash2 size={16} />
                 </button>
                 <button onClick={() => setPrintJobCardOrder(selectedOrder)} className="btn btn-secondary">
                   <Printer size={16} color="#2563eb" /> Shop Floor Job Card
@@ -1754,15 +1907,24 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
 
           {/* Order Revision History & Edit Audit Trail */}
           <div className="card">
-            <div className="card-header">
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div className="card-title" style={{ fontSize: '0.95rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <Clock size={16} color="#7c3aed" /> Order Revision History & Edit Audit Trail
               </div>
-              {selectedOrder.lastEditedBy && (
-                <span className="badge badge-violet" style={{ fontSize: '0.72rem' }}>
-                  Last edited by {selectedOrder.lastEditedBy} on {selectedOrder.lastEditedAt}
-                </span>
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {selectedOrder.lastEditedBy && (
+                  <span className="badge badge-violet" style={{ fontSize: '0.72rem' }}>
+                    Last edited by {selectedOrder.lastEditedBy} on {selectedOrder.lastEditedAt}
+                  </span>
+                )}
+                <button
+                  onClick={() => onNavigate ? onNavigate('sales-order-audit') : window.dispatchEvent(new CustomEvent('ERP_NAVIGATE_AUDIT'))}
+                  className="btn btn-sm btn-secondary"
+                  style={{ fontSize: '0.74rem', color: '#7c3aed', fontWeight: 700 }}
+                >
+                  <History size={13} /> View Full ERP Audit Log
+                </button>
+              </div>
             </div>
             {(!selectedOrder.editHistory || selectedOrder.editHistory.length === 0) ? (
               <div style={{ fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic', padding: '0.4rem 0' }}>
@@ -2068,6 +2230,77 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
               </button>
               <button onClick={saveMultiVendorJobs} className="btn btn-primary" style={{ background: '#7c3aed', borderColor: '#7c3aed' }}>
                 <Check size={16} /> Save Outsource Vendors ({tempOutsourceJobs.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CANCEL ORDER MODAL */}
+      {cancellingOrder && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '1rem'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '520px', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '1rem', color: '#e11d48' }}>
+              <AlertTriangle size={28} />
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
+                  Cancel Order {cancellingOrder.id}?
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                  Customer: <strong>{cancellingOrder.customerName}</strong> • Grand Total: ₹{Number(cancellingOrder.grandTotal || 0).toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: '#475569', margin: '0 0 1rem 0', lineHeight: 1.5 }}>
+              Cancelling will mark this order status as <strong>Cancelled</strong>, halt shop floor job work, reverse customer outstanding dues (-₹{Number(cancellingOrder.balanceAmount || 0).toLocaleString()}), and create an entry in the central audit trail.
+            </p>
+
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
+                Reason for Cancellation (Required):
+              </label>
+              <textarea
+                className="form-input"
+                rows={3}
+                value={cancelReasonInput}
+                onChange={(e) => setCancelReasonInput(e.target.value)}
+                placeholder="e.g., Customer postponed campaign, design rejected, duplicate entry..."
+                style={{ width: '100%', fontSize: '0.85rem' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem' }}>
+              <button
+                type="button"
+                onClick={() => setCancellingOrder(null)}
+                className="btn btn-secondary"
+                disabled={isCancellingOrder}
+              >
+                Go Back
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCancelOrder}
+                className="btn"
+                style={{ background: '#e11d48', color: '#fff', fontWeight: 800, border: 'none', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                disabled={isCancellingOrder || !cancelReasonInput.trim()}
+              >
+                <XCircle size={16} />
+                {isCancellingOrder ? 'Cancelling...' : 'Confirm Order Cancellation'}
               </button>
             </div>
           </div>
