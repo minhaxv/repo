@@ -4,6 +4,7 @@ import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { GlobalSearchModal } from './components/modals/GlobalSearchModal';
 import { FollowUpsDrawer } from './components/modals/FollowUpsDrawer';
+import { MobileBottomNav } from './components/layout/MobileBottomNav';
 
 import { DashboardView } from './views/DashboardView';
 import { SalesOrdersView } from './views/SalesOrdersView';
@@ -198,6 +199,11 @@ const MainAppContent = () => {
 
       <GlobalSearchModal />
       <FollowUpsDrawer />
+      <MobileBottomNav
+        activeTab={activeTab}
+        onNavigate={handleNavigate}
+        onOpenMenu={() => setIsMobileOpen(true)}
+      />
     </div>
   );
 };
