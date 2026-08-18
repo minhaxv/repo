@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
   server: {
-    port: 3000,
+    port: 5180,
     open: true,
     proxy: {
       '/api': {

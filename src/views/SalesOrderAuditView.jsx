@@ -24,7 +24,8 @@ import {
   Layers,
   ArrowUpRight,
   ArrowDownLeft,
-  X
+  X,
+  ShoppingCart
 } from 'lucide-react';
 
 export const SalesOrderAuditView = ({ onNavigate }) => {

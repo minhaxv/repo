@@ -103,11 +103,17 @@ const MainAppContent = () => {
       handleNavigate('sales-orders', { create: true, initialType: type || 'Direct', initialCust: customer || null });
     };
 
+    const handleAuditNav = () => {
+      handleNavigate('sales-order-audit');
+    };
+
     window.addEventListener('ERP_NAVIGATE_ORDER', handleOrderNav);
     window.addEventListener('ERP_NAVIGATE_ORDER_CREATE', handleOrderCreateNav);
+    window.addEventListener('ERP_NAVIGATE_AUDIT', handleAuditNav);
     return () => {
       window.removeEventListener('ERP_NAVIGATE_ORDER', handleOrderNav);
       window.removeEventListener('ERP_NAVIGATE_ORDER_CREATE', handleOrderCreateNav);
+      window.removeEventListener('ERP_NAVIGATE_AUDIT', handleAuditNav);
     };
   }, []);
 
