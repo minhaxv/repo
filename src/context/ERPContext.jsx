@@ -1377,6 +1377,37 @@ export const ERPProvider = ({ children }) => {
       snapshot: snapshot || null
     };
 
+    if (isSupabaseConfigured) {
+      try {
+        supabase.from('order_audit_logs').insert({
+          id: entry.id,
+          order_id: entry.orderId,
+          order_number: entry.orderNumber,
+          customer_name: entry.customerName,
+          customer_mobile: entry.customerMobile,
+          action_type: entry.actionType,
+          action_title: entry.actionTitle,
+          actor: entry.actor,
+          role: entry.role,
+          timestamp: entry.timestamp,
+          formatted_time: entry.formattedTime,
+          reason: entry.reason,
+          previous_amount: entry.previousAmount,
+          new_amount: entry.newAmount,
+          diff_amount: entry.diffAmount,
+          refund_or_reversal: entry.refundOrReversal,
+          changes_summary: JSON.stringify(entry.changesSummary),
+          snapshot: entry.snapshot ? JSON.stringify(entry.snapshot) : null
+        }).then(({ error }) => {
+          if (error && !error.message?.includes('does not exist')) {
+            console.warn("Supabase order_audit_logs sync info:", error.message);
+          }
+        }).catch(() => {});
+      } catch (err) {
+        // Silently preserve local log
+      }
+    }
+
     setOrderAuditLogs((prev) => [entry, ...(prev || [])]);
     return entry;
   };
