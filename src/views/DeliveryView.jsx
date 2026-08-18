@@ -4,7 +4,7 @@ import { SignatureModal } from '../components/modals/SignatureModal';
 import { Truck, CheckCircle2, PenTool, Image, Clock, MapPin, AlertTriangle, DollarSign, Lock, Unlock, ShieldAlert, Package, Phone, Search, Filter } from 'lucide-react';
 
 export const DeliveryView = () => {
-  const { salesOrders, recordPayment, companyBankAccounts } = useERP();
+  const { salesOrders, workers, employees, recordPayment, companyBankAccounts, calculateJobProfitAndIncentive } = useERP();
   const [activeTab, setActiveTab] = useState('READY'); // 'READY', 'DELIVERED', 'ALL'
   const [sigOrder, setSigOrder] = useState(null);
   const [collectPaymentOrder, setCollectPaymentOrder] = useState(null);
@@ -185,8 +185,17 @@ export const DeliveryView = () => {
                       <td>
                         <span className="badge badge-blue">{order.deliveryMode || 'Local Express'}</span>
                         {order.deliveredBy && (
-                          <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>By: {order.deliveredBy}</div>
+                          <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>By: <strong>{order.deliveredBy}</strong></div>
                         )}
+                        {(() => {
+                          const orderProfit = Number(order.grossProfit || (order.grandTotal ? (order.grandTotal - (order.totalActualCost || order.totalEstimatedCost || 0)) : 0)) || Math.round(Number(order.subtotal || 0) * 0.35);
+                          const deliveryIncentive = Math.round(orderProfit * 0.005 * 100) / 100;
+                          return (
+                            <div style={{ fontSize: '0.68rem', color: '#059669', background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '0.15rem 0.3rem', borderRadius: '4px', marginTop: '3px', fontWeight: 700 }}>
+                              🚚 Delivery 0.5% Incentive: ₹{deliveryIncentive.toFixed(2)}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       <td style={{ fontWeight: 700, color: '#d97706' }}>

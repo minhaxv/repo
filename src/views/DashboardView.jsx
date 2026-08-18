@@ -29,34 +29,51 @@ export const DashboardView = ({ onNavigate }) => {
   const todayStr = new Date().toISOString().split('T')[0];
 
   // Today KPI Metrics
-  const todayOrders = salesOrders.filter((o) => o.orderDate === todayStr || o.createdAt?.startsWith(todayStr));
-  const todaySalesVal = todayOrders.reduce((acc, o) => acc + o.grandTotal, 0);
-  const todayProfitVal = todayOrders.reduce((acc, o) => acc + o.grossProfit, 0);
+  const todayOrders = (salesOrders || []).filter((o) => o.orderDate === todayStr || o.createdAt?.startsWith(todayStr));
+  const todaySalesVal = todayOrders.reduce((acc, o) => acc + (Number(o.grandTotal) || 0), 0);
+  const todayProfitVal = todayOrders.reduce((acc, o) => acc + (Number(o.grossProfit) || 0), 0);
 
-  const todayCollections = payments
+  const todayCollections = (payments || [])
     .filter((p) => p.date === todayStr)
-    .reduce((acc, p) => acc + p.amount, 0);
+    .reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
 
   // Operational Queues
-  const productionQueue = salesOrders.filter((o) =>
+  const productionQueue = (salesOrders || []).filter((o) =>
     ['New', 'Design', 'Printing', 'Outsource', 'Finishing', 'Quality Check'].includes(o.productionStatus)
   );
 
-  const pendingDesign = salesOrders.filter((o) => o.productionStatus === 'Design' || o.items.some((i) => i.artworkStatus === 'In Design'));
-  const pendingDelivery = salesOrders.filter((o) => o.productionStatus === 'Ready for Delivery');
-  const pendingPayments = salesOrders.filter((o) => o.balanceAmount > 0);
+  const pendingDesign = (salesOrders || []).filter((o) => o.productionStatus === 'Design' || (o.items || []).some((i) => i.artworkStatus === 'In Design'));
+  const pendingDelivery = (salesOrders || []).filter((o) => o.productionStatus === 'Ready for Delivery');
+  const pendingPayments = (salesOrders || []).filter((o) => (Number(o.balanceAmount) || 0) > 0);
 
-  const totalOutstanding = customers.reduce((acc, c) => acc + c.outstanding, 0);
+  const totalOutstanding = (customers || []).reduce((acc, c) => acc + (Number(c.outstanding ?? c.outstandingAmount) || 0), 0);
 
   // Monthly Metrics
-  const monthlySales = salesOrders.reduce((acc, o) => acc + o.grandTotal, 0);
-  const monthlyProfit = salesOrders.reduce((acc, o) => acc + o.grossProfit, 0);
+  const monthlySales = (salesOrders || []).reduce((acc, o) => acc + (Number(o.grandTotal) || 0), 0);
+  const monthlyProfit = (salesOrders || []).reduce((acc, o) => acc + (Number(o.grossProfit) || 0), 0);
   const overallMarginPct = monthlySales > 0 ? ((monthlyProfit / monthlySales) * 100).toFixed(1) : 0;
 
+  // Direct Orders vs Quotation Intelligence Metrics
+  const directOrders = (salesOrders || []).filter((o) => (o.orderType === 'Direct' || !o.orderType) && !o.convertedFromQuotation);
+  const directOrdersCount = directOrders.length;
+  const directOrdersVal = directOrders.reduce((acc, o) => acc + (Number(o.grandTotal) || 0), 0);
+
+  const quotationDocs = (salesOrders || []).filter((o) => o.orderType === 'Quotation' || o.id?.startsWith('QT-'));
+  const totalQuotationsCount = quotationDocs.length;
+  const totalQuotationsVal = quotationDocs.reduce((acc, o) => acc + (Number(o.grandTotal) || 0), 0);
+
+  const convertedOrders = (salesOrders || []).filter((o) => o.convertedFromQuotation || o.quotationStatus === 'Converted');
+  const convertedQuotationsCount = convertedOrders.length;
+  const quotationConversionRate = totalQuotationsCount > 0 ? ((convertedQuotationsCount / totalQuotationsCount) * 100).toFixed(1) : 0;
+
+  const quoteDraftCount = quotationDocs.filter((q) => !q.quotationStatus || q.quotationStatus === 'Draft').length;
+  const quoteSentCount = quotationDocs.filter((q) => q.quotationStatus === 'Sent to Customer').length;
+  const quoteApprovedCount = quotationDocs.filter((q) => q.quotationStatus === 'Customer Approved').length;
+
   // Leaderboard computations
-  const topCustomers = [...customers].sort((a, b) => b.outstanding - a.outstanding).slice(0, 5);
-  const topProducts = [...products].slice(0, 5);
-  const topVendors = [...vendors].sort((a, b) => b.pendingPayment - a.pendingPayment).slice(0, 5);
+  const topCustomers = [...(customers || [])].sort((a, b) => (Number(b.outstanding ?? b.outstandingAmount) || 0) - (Number(a.outstanding ?? a.outstandingAmount) || 0)).slice(0, 5);
+  const topProducts = [...(products || [])].slice(0, 5);
+  const topVendors = [...(vendors || [])].sort((a, b) => (Number(b.pendingPayment) || 0) - (Number(a.pendingPayment) || 0)).slice(0, 5);
 
   return (
     <div className="view-container">
@@ -173,6 +190,74 @@ export const DashboardView = ({ onNavigate }) => {
             </div>
           </div>
           <span style={{ fontSize: '0.72rem', color: '#6d28d9', fontWeight: 600 }}>Active Print Jobs</span>
+        </div>
+      </div>
+
+      {/* QUOTATIONS & DIRECT SALES WORKFLOW DASHBOARD ROW */}
+      <div className="card" style={{ marginBottom: '1.25rem', borderTop: '4px solid #2563eb', padding: '1.25rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <ShoppingBag size={20} color="#2563eb" /> Dual Sales Workflows & Quotation Analytics
+            </h3>
+            <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+              Track Direct Sales Orders vs Optional Quotation Conversion Pipeline
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button onClick={() => onNavigate('sales-orders', { create: true, initialType: 'Direct' })} className="btn btn-sm btn-primary">
+              + Direct Order
+            </button>
+            <button onClick={() => onNavigate('sales-orders', { create: true, initialType: 'Quotation' })} className="btn btn-sm" style={{ background: '#f59e0b', color: '#fff', fontWeight: 700 }}>
+              + Optional Quote
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+          {/* Direct Sales Orders Card */}
+          <div style={{ background: '#eff6ff', padding: '1rem', borderRadius: '10px', border: '1px solid #bfdbfe' }}>
+            <span style={{ fontSize: '0.72rem', color: '#1e40af', fontWeight: 800, textTransform: 'uppercase' }}>DIRECT SALES ORDERS</span>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1e3a8a', margin: '0.2rem 0' }}>
+              {directOrdersCount} Orders
+            </div>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1d4ed8' }}>
+              {formatINR(directOrdersVal)} (Direct SO)
+            </span>
+          </div>
+
+          {/* Total Quotations Card */}
+          <div style={{ background: '#fffbeb', padding: '1rem', borderRadius: '10px', border: '1px solid #fde68a' }}>
+            <span style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 800, textTransform: 'uppercase' }}>TOTAL QUOTATIONS</span>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#92400e', margin: '0.2rem 0' }}>
+              {totalQuotationsCount} Quotes
+            </div>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#b45309' }}>
+              {formatINR(totalQuotationsVal)} Total Pipeline
+            </span>
+          </div>
+
+          {/* Quotation Conversion Rate Card */}
+          <div style={{ background: '#ecfdf5', padding: '1rem', borderRadius: '10px', border: '1px solid #a7f3d0' }}>
+            <span style={{ fontSize: '0.72rem', color: '#047857', fontWeight: 800, textTransform: 'uppercase' }}>QUOTATION CONVERSION RATE</span>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#065f46', margin: '0.2rem 0' }}>
+              {quotationConversionRate}%
+            </div>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#047857' }}>
+              {convertedQuotationsCount} Converted to Active SO
+            </span>
+          </div>
+
+          {/* Quotation Pipeline Breakdown */}
+          <div style={{ background: '#f8fafc', padding: '0.85rem 1rem', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <span style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 800, textTransform: 'uppercase', marginBottom: '0.3rem' }}>QUOTE PIPELINE BREAKDOWN</span>
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', fontSize: '0.75rem' }}>
+              <span className="badge badge-amber">Draft: {quoteDraftCount}</span>
+              <span className="badge badge-blue">Sent: {quoteSentCount}</span>
+              <span className="badge badge-emerald">Approved: {quoteApprovedCount}</span>
+              <span className="badge badge-purple">Converted: {convertedQuotationsCount}</span>
+            </div>
+          </div>
         </div>
       </div>
 

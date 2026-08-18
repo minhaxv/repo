@@ -3,7 +3,8 @@ import { X, UserCheck, Phone, Mail, Award, Percent, FileText, Check } from 'luci
 import { useERP } from '../../context/ERPContext';
 
 export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
-  const { addCareOfPerson } = useERP();
+  const { addCareOfPerson, careOfPersons } = useERP();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     mobile: '',
@@ -14,24 +15,67 @@ export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
   });
   const [error, setError] = useState('');
 
+  React.useEffect(() => {
+    if (isOpen) {
+      setError('');
+      setIsSubmitting(false);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name.trim()) {
+    if (isSubmitting) return;
+
+    setError('');
+    const cleanName = formData.name.trim();
+    const cleanMobile = formData.mobile.trim();
+
+    if (!cleanName) {
       setError('Care Of Person Name is required.');
       return;
     }
-    if (!formData.mobile.trim()) {
+    if (!cleanMobile) {
       setError('Mobile Number is required.');
       return;
     }
 
-    const newCareOf = addCareOfPerson(formData);
-    if (onCreated) {
-      onCreated(newCareOf);
+    const existing = (careOfPersons || []).find((c) => c.name && c.name.trim().toLowerCase() === cleanName.toLowerCase());
+    if (existing) {
+      if (!window.confirm(`Care Of Agent "${existing.name}" already exists. Select existing agent?`)) {
+        setError(`Care Of Agent "${cleanName}" already exists.`);
+        return;
+      } else {
+        if (onCreated) {
+          onCreated(existing);
+        }
+        onClose();
+        return;
+      }
     }
-    onClose();
+
+    try {
+      setIsSubmitting(true);
+      const newCareOf = await addCareOfPerson({
+        ...formData,
+        name: cleanName,
+        mobile: cleanMobile
+      });
+
+      if (newCareOf) {
+        if (onCreated) {
+          onCreated(newCareOf);
+        }
+        onClose();
+      } else {
+        setError('Failed to save Care Of Person.');
+      }
+    } catch (err) {
+      setError(err.message || 'An error occurred while saving.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -54,7 +98,7 @@ export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
               </span>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1.2rem' }} disabled={isSubmitting}>✕</button>
         </div>
 
         {/* Form */}
@@ -77,6 +121,7 @@ export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g. Rajesh Verma (Ad Agent)"
                 className="form-control"
+                disabled={isSubmitting}
               />
             </div>
 
@@ -92,6 +137,7 @@ export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
                   onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
                   placeholder="98200XXXXX"
                   className="form-control"
+                  disabled={isSubmitting}
                 />
               </div>
 
@@ -105,6 +151,7 @@ export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   placeholder="agent@domain.com"
                   className="form-control"
+                  disabled={isSubmitting}
                 />
               </div>
             </div>
@@ -118,6 +165,7 @@ export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
                   value={formData.role}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                   className="form-select"
+                  disabled={isSubmitting}
                 >
                   <option value="Referred Agent / Consultant">Referred Agent / Consultant</option>
                   <option value="Architect / Interior Partner">Architect / Interior Partner</option>
@@ -140,6 +188,7 @@ export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
                   onChange={(e) => setFormData({ ...formData, referralCommissionPct: parseFloat(e.target.value) || 0 })}
                   className="form-control"
                   style={{ fontWeight: 800, color: '#7c3aed' }}
+                  disabled={isSubmitting}
                 />
               </div>
             </div>
@@ -154,16 +203,21 @@ export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 placeholder="e.g. Special referral partner for architectural signage"
                 className="form-control"
+                disabled={isSubmitting}
               />
             </div>
           </div>
 
           <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-secondary">
+            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={isSubmitting}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary">
-              <Check size={16} /> Save Care Of Person
+            <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>⏳ Saving...</>
+              ) : (
+                <><Check size={16} /> Save Care Of Person</>
+              )}
             </button>
           </div>
         </form>

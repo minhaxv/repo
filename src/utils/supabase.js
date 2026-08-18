@@ -9,9 +9,19 @@ const supabaseAnonKey =
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 
   '';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error("WARNING: Supabase URL or Anon/Publishable Key is missing! Check your local .env file or Vercel Environment Variables.");
+export const isSupabaseConfigured = Boolean(
+  supabaseUrl &&
+  supabaseAnonKey &&
+  supabaseUrl !== 'https://placeholder.supabase.co' &&
+  !supabaseUrl.includes('your-project-id')
+);
+
+if (!isSupabaseConfigured) {
+  console.info("ℹ️ Supabase credentials not set in .env. Running in standalone mode. Paste your Supabase URL & Anon Key into .env when ready to connect live database.");
 }
 
-export const supabase = createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseAnonKey || 'placeholder');
+export const supabase = createClient(
+  isSupabaseConfigured ? supabaseUrl : 'https://placeholder.supabase.co',
+  isSupabaseConfigured ? supabaseAnonKey : 'placeholder'
+);
 

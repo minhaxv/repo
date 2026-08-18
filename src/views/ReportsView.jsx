@@ -25,12 +25,47 @@ import { BarChartWidget, DonutChartWidget, TrendLineWidget } from '../components
 import { PivotReportView } from '../components/reports/PivotReportView';
 import { EmailScheduleModal } from '../components/modals/EmailScheduleModal';
 
-export const ReportsView = () => {
+export const ReportsView = ({ initialReportKey = 'SALES' }) => {
   const { companyProfile, salesOrders, customers, salesPersons, careOfPersons, workers, vendors, products, inventory, designers, payments } = useERP();
 
+  // Map sidebar report key to category and sub-report
+  const getCategoryFromKey = (key) => {
+    switch (key) {
+      case 'report-dashboard': return { category: 'SALES', subReport: 'DAILY' };
+      case 'report-quotation': return { category: 'SALES', subReport: 'PENDING_SO' };
+      case 'report-sales-order': return { category: 'SALES', subReport: 'COMPLETED_SO' };
+      case 'report-delivery': return { category: 'DELIVERY', subReport: 'DELIVERY_PENDING' };
+      case 'report-invoice': return { category: 'GST', subReport: 'GSTR1' };
+      case 'report-customer-outstanding': return { category: 'CUSTOMER_DEBT', subReport: 'SUMMARY' };
+      case 'report-customer-ledger': return { category: 'CUSTOMER', subReport: 'LEDGER' };
+      case 'report-purchase': return { category: 'OUTSOURCE', subReport: 'VENDOR_SUMMARY' };
+      case 'report-supplier-outstanding': return { category: 'OUTSOURCE', subReport: 'VENDOR_PENDING' };
+      case 'report-production': return { category: 'PRODUCTION', subReport: 'JOB_CARD' };
+      case 'report-job-card': return { category: 'PRODUCTION', subReport: 'JOB_CARD' };
+      case 'report-outsource': return { category: 'OUTSOURCE', subReport: 'VENDOR_SUMMARY' };
+      case 'report-machine': return { category: 'PRODUCTION', subReport: 'MACHINE' };
+      case 'report-material-usage': return { category: 'INVENTORY', subReport: 'STOCK_MOVEMENT' };
+      case 'report-stock': return { category: 'INVENTORY', subReport: 'STOCK_SUMMARY' };
+      case 'report-stock-value': return { category: 'INVENTORY', subReport: 'STOCK_VALUATION' };
+      case 'report-stock-flow': return { category: 'INVENTORY', subReport: 'STOCK_MOVEMENT' };
+      case 'report-stock-detail': return { category: 'INVENTORY', subReport: 'STOCK_DETAILS' };
+      case 'report-inventory-aging': return { category: 'INVENTORY', subReport: 'INVENTORY_AGING' };
+      case 'report-other-charges': return { category: 'PNL', subReport: 'STATEMENT' };
+      case 'report-employee': return { category: 'EMPLOYEE', subReport: 'ATTENDANCE' };
+      case 'report-attendance': return { category: 'EMPLOYEE', subReport: 'ATTENDANCE' };
+      case 'report-payroll': return { category: 'EMPLOYEE', subReport: 'PAYROLL' };
+      case 'report-accounts': return { category: 'PNL', subReport: 'STATEMENT' };
+      case 'report-gst': return { category: 'GST', subReport: 'GSTR1' };
+      case 'report-profit': return { category: 'PROFIT', subReport: 'PROFITABILITY' };
+      default: return { category: 'SALES', subReport: 'DAILY' };
+    }
+  };
+
+  const initialResolved = getCategoryFromKey(initialReportKey);
+
   // Active Category & Sub-Report State
-  const [activeCategory, setActiveCategory] = useState('INCENTIVES');
-  const [activeSubReport, setActiveSubReport] = useState('SALES_INCENTIVES');
+  const [activeCategory, setActiveCategory] = useState(initialResolved.category);
+  const [activeSubReport, setActiveSubReport] = useState(initialResolved.subReport);
 
   // Filter Bar State
   const [filters, setFilters] = useState({
@@ -197,10 +232,12 @@ export const ReportsView = () => {
       { id: 'AVG_TIME', label: 'Average Production Time' }
     ],
     DESIGN: [
-      { id: 'WORKLOAD', label: 'Designer Workload' },
+      { id: 'JOBS_BY_DESIGNER', label: 'Jobs by Designer' },
+      { id: 'AVG_DESIGN_TIME', label: 'Average Design Time' },
+      { id: 'DESIGN_PENDING', label: 'Pending Design Jobs' },
+      { id: 'DESIGN_COMPLETED', label: 'Completed Design Jobs' },
       { id: 'PRODUCTIVITY', label: 'Designer Productivity' },
-      { id: 'DESIGN_PENDING', label: 'Design Pending' },
-      { id: 'DESIGN_COMPLETED', label: 'Design Completed' },
+      { id: 'WORKLOAD', label: 'Designer Workload' },
       { id: 'APPROVAL_PENDING', label: 'Design Approval Pending' }
     ],
     PAYMENT: [
@@ -272,27 +309,28 @@ export const ReportsView = () => {
           { key: 'earnedIncentive', label: 'Earned Referral Fee', align: 'right', accessor: (r) => formatINR(r.earnedIncentive) }
         ];
 
-        rows = careOfPersons.map((co) => {
-          const referred = filteredOrders.filter((o) => o.careOfId === co.id);
-          const totalSales = referred.reduce((sum, o) => sum + (o.subtotal || 0), 0);
-          const earnedIncentive = (totalSales * (co.referralCommissionPct || 5.0)) / 100;
+        rows = (careOfPersons || []).map((co) => {
+          const referred = (filteredOrders || []).filter((o) => o.careOfId === co.id);
+          const totalSales = referred.reduce((sum, o) => sum + (Number(o.subtotal) || 0), 0);
+          const commPct = Number(co.referralCommissionPct ?? co.referral_commission_pct ?? 5.0);
+          const earnedIncentive = (totalSales * commPct) / 100;
           return {
             id: co.id,
-            name: co.name,
+            name: co.name || '',
             role: co.role || 'Referred Agent',
             orderCount: referred.length,
             totalSales,
-            referralCommissionPct: co.referralCommissionPct || 5.0,
+            referralCommissionPct: commPct,
             earnedIncentive
           };
         });
 
-        const totVol = rows.reduce((a, r) => a + r.totalSales, 0);
-        const totInc = rows.reduce((a, r) => a + r.earnedIncentive, 0);
+        const totVol = rows.reduce((a, r) => a + (Number(r.totalSales) || 0), 0);
+        const totInc = rows.reduce((a, r) => a + (Number(r.earnedIncentive) || 0), 0);
         totals = {
           name: 'TOTAL REFERRAL INCENTIVES',
-          role: `${careOfPersons.length} Partners`,
-          orderCount: rows.reduce((a, r) => a + r.orderCount, 0),
+          role: `${(careOfPersons || []).length} Partners`,
+          orderCount: rows.reduce((a, r) => a + (Number(r.orderCount) || 0), 0),
           totalSales: formatINR(totVol),
           referralCommissionPct: '',
           earnedIncentive: formatINR(totInc)
@@ -380,7 +418,7 @@ export const ReportsView = () => {
       const netTaxableRevenue = filteredOrders.reduce((a, o) => a + (o.subtotal || 0), 0);
       const materialCosts = filteredOrders.reduce((a, o) => a + (o.totalEstimatedCost || 0), 0);
       const outsourceBills = filteredOrders.reduce((a, o) => a + (o.totalActualCost || 0), 0);
-      const totalIncentives = (salesPersons.reduce((a, s) => a + (s.achieved * s.commissionRate / 100), 0)) + (careOfPersons.reduce((a, c) => a + (c.totalReferredSales * c.referralCommissionPct / 100), 0));
+      const totalIncentives = ((salesPersons || []).reduce((a, s) => a + ((Number(s.achieved) || 0) * (Number(s.commissionRate ?? s.commission_rate) || 0) / 100), 0)) + ((careOfPersons || []).reduce((a, c) => a + ((Number(c.totalReferredSales ?? c.total_referred_sales) || 0) * (Number(c.referralCommissionPct ?? c.referral_commission_pct) || 0) / 100), 0));
       const totalCogs = outsourceBills + (materialCosts * 0.5) + totalIncentives;
       const grossProfit = netTaxableRevenue - totalCogs;
       const netProfitMarginPct = netTaxableRevenue > 0 ? parseFloat(((grossProfit / netTaxableRevenue) * 100).toFixed(1)) : 0;
@@ -654,14 +692,77 @@ export const ReportsView = () => {
       ];
       rows = filteredOrders;
     } else if (activeCategory === 'DESIGN') {
-      cols = [
-        { key: 'name', label: 'Designer Name', align: 'left' },
-        { key: 'mobile', label: 'Mobile', align: 'left' },
-        { key: 'activeJobs', label: 'Active Jobs', align: 'right' },
-        { key: 'pendingApprovals', label: 'Pending Proof Approvals', align: 'right' },
-        { key: 'completedMonth', label: 'Completed Jobs (This Month)', align: 'right' }
-      ];
-      rows = designers;
+      if (activeSubReport === 'DESIGN_PENDING') {
+        cols = [
+          { key: 'orderId', label: 'Order #', align: 'left' },
+          { key: 'customerName', label: 'Customer', align: 'left' },
+          { key: 'productName', label: 'Product & Spec', align: 'left' },
+          { key: 'jobPriority', label: 'Priority', align: 'center' },
+          { key: 'deliveryDate', label: 'Delivery Date', align: 'left' },
+          { key: 'estimatedDesignTime', label: 'Est. Hours', align: 'right', accessor: (r) => `${r.estimatedDesignTime} hrs` },
+          { key: 'designStatus', label: 'Design Status', align: 'center' }
+        ];
+
+        const pendingList = [];
+        (filteredOrders || []).forEach((o) => {
+          (o.items || []).forEach((it) => {
+            if ((it.designerRequired === 'YES' || it.designRequired === 'YES') && (it.designStatus !== 'Completed' && it.artworkStatus !== 'Approved')) {
+              pendingList.push({
+                orderId: o.id,
+                customerName: o.customerName,
+                productName: it.productName,
+                jobPriority: it.jobPriority || 'Normal',
+                deliveryDate: o.deliveryDate,
+                estimatedDesignTime: it.estimatedDesignTime || 1.5,
+                designStatus: it.designStatus || (it.designerId ? 'Assigned' : 'Pending')
+              });
+            }
+          });
+        });
+
+        rows = pendingList;
+        totals = { orderId: 'TOTAL PENDING', customerName: `${rows.length} Pending Tasks`, productName: '', jobPriority: '', deliveryDate: '', estimatedDesignTime: `${rows.reduce((a, r) => a + (Number(r.estimatedDesignTime) || 0), 0)} hrs`, designStatus: '' };
+      } else if (activeSubReport === 'DESIGN_COMPLETED') {
+        cols = [
+          { key: 'orderId', label: 'Order #', align: 'left' },
+          { key: 'customerName', label: 'Customer', align: 'left' },
+          { key: 'productName', label: 'Product Name', align: 'left' },
+          { key: 'designerName', label: 'Completed By', align: 'left' },
+          { key: 'deliveryDate', label: 'Delivery Date', align: 'left' },
+          { key: 'artworkStatus', label: 'Status', align: 'center' }
+        ];
+
+        const completedList = [];
+        (filteredOrders || []).forEach((o) => {
+          (o.items || []).forEach((it) => {
+            if (it.designStatus === 'Completed' || it.artworkStatus === 'Approved') {
+              completedList.push({
+                orderId: o.id,
+                customerName: o.customerName,
+                productName: it.productName,
+                designerName: it.designerName || 'In-House Studio',
+                deliveryDate: o.deliveryDate,
+                artworkStatus: 'Approved / Completed'
+              });
+            }
+          });
+        });
+
+        rows = completedList;
+        totals = { orderId: 'TOTAL COMPLETED', customerName: `${rows.length} Completed Tasks`, productName: '', designerName: '', deliveryDate: '', artworkStatus: '' };
+      } else {
+        cols = [
+          { key: 'name', label: 'Designer Name', align: 'left' },
+          { key: 'mobile', label: 'Mobile', align: 'left' },
+          { key: 'activeJobs', label: 'Active Tasks', align: 'right' },
+          { key: 'avgDesignTime', label: 'Avg Design Time', align: 'right', accessor: (r) => `${r.avgDesignTime || 1.5} hrs` },
+          { key: 'completedMonth', label: 'Completed Artwork', align: 'right' }
+        ];
+        rows = (designers || []).map((d) => ({
+          ...d,
+          avgDesignTime: 1.8
+        }));
+      }
     } else if (activeCategory === 'PAYMENT') {
       cols = [
         { key: 'id', label: 'Voucher #', align: 'left' },

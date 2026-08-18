@@ -59,7 +59,7 @@ export const LoginView = ({ onAuthSuccess }) => {
             .from('profiles')
             .select('*')
             .eq('id', authData.user.id)
-            .single();
+            .maybeSingle();
 
           // Create fallback profile if it doesn't exist
           if (!profileData) {

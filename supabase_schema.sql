@@ -218,7 +218,11 @@ CREATE TABLE IF NOT EXISTS public.sales_orders (
     whats_app_opened TEXT DEFAULT 'No',
     last_whats_app_date TEXT,
     last_whats_app_time TEXT,
-    whats_app_sent_by TEXT
+    whats_app_sent_by TEXT,
+    order_type TEXT DEFAULT 'Direct',
+    converted_from_quotation BOOLEAN DEFAULT FALSE,
+    quotation_id TEXT,
+    quotation_status TEXT DEFAULT 'Draft'
 );
 
 ALTER TABLE public.sales_orders ENABLE ROW LEVEL SECURITY;
@@ -259,7 +263,14 @@ CREATE TABLE IF NOT EXISTS public.sales_order_items (
     amount NUMERIC DEFAULT 0,
     production_status TEXT DEFAULT 'New',
     job_card_id TEXT,
-    internal_est_outsource_cost NUMERIC DEFAULT 0
+    internal_est_outsource_cost NUMERIC DEFAULT 0,
+    design_status TEXT DEFAULT 'Pending',
+    job_priority TEXT DEFAULT 'Normal',
+    estimated_design_time NUMERIC DEFAULT 1.0,
+    assignment_time TIMESTAMPTZ,
+    start_time TIMESTAMPTZ,
+    completed_time TIMESTAMPTZ,
+    internal_notes TEXT
 );
 
 ALTER TABLE public.sales_order_items ENABLE ROW LEVEL SECURITY;
@@ -423,6 +434,53 @@ ALTER TABLE public.payroll ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow authenticated read to payroll" ON public.payroll FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Allow authenticated write to payroll" ON public.payroll FOR ALL TO authenticated USING (true);
 
+-- 22. PRODUCT MATERIAL SPECIFICATIONS TABLE
+CREATE TABLE IF NOT EXISTS public.product_material_specifications (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL,
+    spec_name TEXT NOT NULL,
+    material_name TEXT,
+    description TEXT,
+    unit TEXT DEFAULT 'Sq.Ft',
+    gsm NUMERIC DEFAULT 0,
+    thickness TEXT,
+    color TEXT,
+    size TEXT,
+    cost_price NUMERIC DEFAULT 0,
+    selling_price NUMERIC DEFAULT 0,
+    gst_rate NUMERIC DEFAULT 18,
+    hsn_code TEXT DEFAULT '9989',
+    is_default BOOLEAN DEFAULT false,
+    status TEXT DEFAULT 'Active',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT unique_product_spec_name UNIQUE (product_id, spec_name)
+);
+
+ALTER TABLE public.product_material_specifications ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow authenticated read to product_material_specifications" ON public.product_material_specifications FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated write to product_material_specifications" ON public.product_material_specifications FOR ALL TO authenticated USING (true);
+
+-- 23. WORKER JOB INCENTIVES LEDGER (0.5% Profit Incentive per finished work stage)
+CREATE TABLE IF NOT EXISTS public.worker_job_incentives (
+    id TEXT PRIMARY KEY,
+    order_id TEXT REFERENCES public.sales_orders(id) ON DELETE CASCADE,
+    item_id TEXT,
+    job_card_id TEXT,
+    worker_id TEXT,
+    worker_name TEXT NOT NULL,
+    role_stage TEXT NOT NULL, -- 'Design', 'Printing', 'Finishing', 'Delivery'
+    job_amount NUMERIC DEFAULT 0,
+    job_profit NUMERIC DEFAULT 0,
+    incentive_pct NUMERIC DEFAULT 0.5,
+    incentive_amount NUMERIC DEFAULT 0,
+    completed_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.worker_job_incentives ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow authenticated read to worker_job_incentives" ON public.worker_job_incentives FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated write to worker_job_incentives" ON public.worker_job_incentives FOR ALL TO authenticated USING (true);
+
 -- Database indexes for optimized lookup & JOIN performance
 CREATE INDEX IF NOT EXISTS idx_sales_orders_customer ON public.sales_orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_sales_order_items_order ON public.sales_order_items(order_id);
@@ -431,3 +489,7 @@ CREATE INDEX IF NOT EXISTS idx_supplier_bills_vendor ON public.supplier_bills(ve
 CREATE INDEX IF NOT EXISTS idx_supplier_bills_order ON public.supplier_bills(order_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_date ON public.attendance(date);
 CREATE INDEX IF NOT EXISTS idx_payroll_month ON public.payroll(month);
+CREATE INDEX IF NOT EXISTS idx_spec_product_id ON public.product_material_specifications(product_id);
+CREATE INDEX IF NOT EXISTS idx_worker_incentives_worker ON public.worker_job_incentives(worker_id);
+CREATE INDEX IF NOT EXISTS idx_worker_incentives_order ON public.worker_job_incentives(order_id);
+

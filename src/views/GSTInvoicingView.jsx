@@ -16,10 +16,10 @@ export const GSTInvoicingView = () => {
   );
 
   // Compute total tax collected
-  const totalTaxable = salesOrders.reduce((acc, o) => acc + o.subtotal, 0);
-  const totalCGST = salesOrders.reduce((acc, o) => acc + o.cgst, 0);
-  const totalSGST = salesOrders.reduce((acc, o) => acc + o.sgst, 0);
-  const totalIGST = salesOrders.reduce((acc, o) => acc + o.igst, 0);
+  const totalTaxable = salesOrders.reduce((acc, o) => acc + (Number(o?.subtotal ?? 0) || 0), 0);
+  const totalCGST = salesOrders.reduce((acc, o) => acc + (Number(o?.cgst ?? 0) || 0), 0);
+  const totalSGST = salesOrders.reduce((acc, o) => acc + (Number(o?.sgst ?? 0) || 0), 0);
+  const totalIGST = salesOrders.reduce((acc, o) => acc + (Number(o?.igst ?? 0) || 0), 0);
 
   return (
     <div className="view-container">
@@ -100,11 +100,11 @@ export const GSTInvoicingView = () => {
                   <td style={{ fontWeight: 700 }}>{order.customerName}</td>
                   <td style={{ fontFamily: 'var(--font-mono)' }}>{order.customerGstin || 'URP'}</td>
                   <td>{order.customerState}</td>
-                  <td>₹{order.subtotal.toLocaleString()}</td>
-                  <td>₹{order.cgst.toLocaleString()}</td>
-                  <td>₹{order.sgst.toLocaleString()}</td>
-                  <td>₹{order.igst.toLocaleString()}</td>
-                  <td style={{ fontWeight: 800 }}>₹{order.grandTotal.toLocaleString()}</td>
+                  <td>₹{Number(order?.subtotal ?? 0).toLocaleString()}</td>
+                  <td>₹{Number(order?.cgst ?? 0).toLocaleString()}</td>
+                  <td>₹{Number(order?.sgst ?? 0).toLocaleString()}</td>
+                  <td>₹{Number(order?.igst ?? 0).toLocaleString()}</td>
+                  <td style={{ fontWeight: 800 }}>₹{Number(order?.grandTotal ?? 0).toLocaleString()}</td>
                   <td>
                     <div style={{ display: 'flex', gap: '0.35rem' }}>
                       <button

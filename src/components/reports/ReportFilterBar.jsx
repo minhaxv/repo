@@ -172,6 +172,18 @@ export const ReportFilterBar = ({
             <Mail size={14} color="#7c3aed" /> Email
           </button>
 
+          <button
+            onClick={() => {
+              const text = encodeURIComponent(`ScreenArts ERP Report Summary - Filtered View (${new Date().toLocaleDateString()})`);
+              window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
+            }}
+            className="btn btn-sm btn-secondary"
+            style={{ height: '36px', color: '#16a34a' }}
+            title="Share report summary via WhatsApp"
+          >
+            WhatsApp
+          </button>
+
           <button onClick={() => onOpenEmailModal('schedule')} className="btn btn-sm btn-secondary" style={{ height: '36px' }} title="Schedule automated recurring report">
             <Clock size={14} color="#d97706" /> Schedule
           </button>
@@ -311,6 +323,22 @@ export const ReportFilterBar = ({
               <option value="ETR">ETR (Exclusive Tax)</option>
               <option value="ITR">ITR (Inclusive Tax)</option>
               <option value="NTR">NTR (No Tax)</option>
+            </select>
+          </div>
+
+          {/* Order Workflow Filter */}
+          <div>
+            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '0.25rem' }}>Order Workflow</label>
+            <select
+              value={filters.orderWorkflow || ''}
+              onChange={(e) => onFilterChange('orderWorkflow', e.target.value)}
+              className="form-control"
+              style={{ fontSize: '0.78rem', height: '34px', fontWeight: 700, color: '#2563eb' }}
+            >
+              <option value="">All Workflows</option>
+              <option value="DIRECT">Direct Sales Orders</option>
+              <option value="QUOTATION">Quotations</option>
+              <option value="CONVERTED">Quotation Converted SOs</option>
             </select>
           </div>
 

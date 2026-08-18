@@ -232,6 +232,33 @@ export const SettingsView = () => {
           </div>
         </div>
 
+        {/* Navigation & Sidebar Preferences Card */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">
+              <Settings size={18} color="#8b5cf6" /> Navigation & Sidebar Preferences
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 600, color: '#1e293b' }}>
+              <input
+                type="checkbox"
+                checked={localStorage.getItem('erp_sidebar_multi_expand') === 'true'}
+                onChange={(e) => {
+                  localStorage.setItem('erp_sidebar_multi_expand', String(e.target.checked));
+                  window.dispatchEvent(new Event('ERP_SETTINGS_CHANGED'));
+                }}
+                style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#2563eb' }}
+              />
+              <span>Allow multiple main modules to stay expanded simultaneously (Disable auto-collapse)</span>
+            </label>
+            <span style={{ fontSize: '0.78rem', color: '#64748b', marginLeft: '2.1rem' }}>
+              By default (Accordion mode), opening a new main module automatically collapses previously opened modules. Check this option if you want to keep multiple modules expanded at the same time.
+            </span>
+          </div>
+        </div>
+
         <div>
           <button type="submit" className="btn btn-primary btn-lg">
             <Check size={18} /> Save Settings & Update Profile

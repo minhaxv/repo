@@ -55,7 +55,7 @@ export const JobCardPrintModal = ({ order, selectedItemCard, isOpen, onClose }) 
           <div style={{ borderBottom: '2px solid #000', paddingBottom: '1rem', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <h2 style={{ fontSize: '1.4rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.02em', margin: 0 }}>
-                {companyProfile.name}
+                {companyProfile?.name || 'Stitch & PrintFlow ERP'}
               </h2>
               <div style={{ fontSize: '0.8rem', color: '#333' }}>
                 PRODUCTION & SHOP FLOOR JOB CARD

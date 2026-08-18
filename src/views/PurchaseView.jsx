@@ -1,13 +1,21 @@
 import React, { useState } from 'react';
 import { useERP } from '../context/ERPContext';
+import { CreateSupplierModal } from '../components/modals/CreateSupplierModal';
 import { ShoppingBag, Plus, Search, Truck, CheckCircle2 } from 'lucide-react';
 
 export const PurchaseView = () => {
-  const { purchaseOrders, setPurchaseOrders } = useERP();
+const { purchaseOrders, setPurchaseOrders, vendors, products, productMaterialSpecs } = useERP();
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isCreateSupplierOpen, setIsCreateSupplierOpen] = useState(false);
+  const [selectedProductId, setSelectedProductId] = useState('');
+  const [selectedSpecId, setSelectedSpecId] = useState('');
+
+  const availableSpecs = selectedProductId
+    ? (productMaterialSpecs || []).filter((s) => s.productId === selectedProductId && s.status !== 'Inactive')
+    : [];
 
   const [newPo, setNewPo] = useState({
-    vendorName: 'Polymer Vinyl Co',
+    vendorName: vendors[0]?.name || 'Polymer Vinyl Co',
     items: '10 Rolls Frontlit Flex 240gsm (10ft x 100m)',
     amount: 42000,
     status: 'Pending Dispatch'
@@ -15,6 +23,10 @@ export const PurchaseView = () => {
 
   const handleCreatePo = (e) => {
     e.preventDefault();
+    if (!newPo.vendorName) {
+      alert('Please select or create a Supplier.');
+      return;
+    }
     const po = {
       id: `PO-2026-0${purchaseOrders.length + 1}`,
       orderDate: new Date().toISOString().split('T')[0],
@@ -77,24 +89,120 @@ export const PurchaseView = () => {
         </div>
       </div>
 
-      {/* Modal */}
+      {/* Create Purchase Order Modal */}
       {isAddOpen && (
         <div className="modal-overlay" onClick={() => setIsAddOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '540px' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>Raise Raw Material Purchase Order</h3>
             </div>
             <form onSubmit={handleCreatePo}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                 <div className="form-group">
-                  <label className="form-label">Supplier Name</label>
-                  <input
-                    type="text"
-                    className="form-control"
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label className="form-label">Supplier Name *</label>
+                    <button
+                      type="button"
+                      onClick={() => setIsCreateSupplierOpen(true)}
+                      style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      + New Supplier
+                    </button>
+                  </div>
+                  <select
+                    className="form-select"
                     value={newPo.vendorName}
-                    onChange={(e) => setNewPo({ ...newPo, vendorName: e.target.value })}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW_SUPPLIER__') {
+                        setIsCreateSupplierOpen(true);
+                        return;
+                      }
+                      setNewPo({ ...newPo, vendorName: e.target.value });
+                    }}
                     required
-                  />
+                  >
+                    <option value="">Select Supplier</option>
+                    <option value="__ADD_NEW_SUPPLIER__" style={{ fontWeight: 800, color: '#2563eb' }}>
+                      + Create New Supplier...
+                    </option>
+                    <optgroup label="Registered Vendors & Suppliers">
+                      {vendors.map((v) => (
+                        <option key={v.id} value={v.name}>{v.name} ({v.category})</option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </div>
+
+                {/* Product & Material Spec Quick Select */}
+                <div style={{ background: '#f8fafc', padding: '0.75rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e40af', marginBottom: '0.4rem' }}>
+                    Product & Dynamic Material Specification Auto-Fill
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                    <div>
+                      <label className="form-label" style={{ fontSize: '0.75rem' }}>Select Product</label>
+                      <select
+                        className="form-select form-select-sm"
+                        value={selectedProductId}
+                        onChange={(e) => {
+                          const prodId = e.target.value;
+                          setSelectedProductId(prodId);
+                          setSelectedSpecId('');
+                          const prod = products.find((p) => p.id === prodId);
+                          const pSpecs = (productMaterialSpecs || []).filter((s) => s.productId === prodId && s.status !== 'Inactive');
+                          const defSpec = pSpecs.find((s) => s.isDefault) || pSpecs[0];
+                          if (defSpec) {
+                            setSelectedSpecId(defSpec.id);
+                            setNewPo((prev) => ({
+                              ...prev,
+                              items: `${prod?.name || ''} — ${defSpec.specName} (${defSpec.materialName || ''})`,
+                              amount: (defSpec.costPrice || 10) * 10
+                            }));
+                          } else if (prod) {
+                            setNewPo((prev) => ({
+                              ...prev,
+                              items: `${prod.name} — ${prod.defaultMaterial || 'Standard'}`,
+                              amount: (prod.estimatedCost || 10) * 10
+                            }));
+                          }
+                        }}
+                      >
+                        <option value="">-- Choose Product --</option>
+                        {products.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="form-label" style={{ fontSize: '0.75rem' }}>Material Spec</label>
+                      <select
+                        className="form-select form-select-sm"
+                        value={selectedSpecId}
+                        onChange={(e) => {
+                          const specId = e.target.value;
+                          setSelectedSpecId(specId);
+                          const spec = availableSpecs.find((s) => s.id === specId);
+                          const prod = products.find((p) => p.id === selectedProductId);
+                          if (spec) {
+                            setNewPo((prev) => ({
+                              ...prev,
+                              items: `${prod?.name || ''} — ${spec.specName} (${spec.materialName || ''})`,
+                              amount: (spec.costPrice || 10) * 10
+                            }));
+                          }
+                        }}
+                        disabled={!selectedProductId || availableSpecs.length === 0}
+                      >
+                        <option value="">-- Choose Spec --</option>
+                        {availableSpecs.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.specName} (Cost: ₹{s.costPrice}){s.isDefault ? ' ★ Default' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="form-group">
@@ -109,7 +217,7 @@ export const PurchaseView = () => {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Total Amount (₹)</label>
+                  <label className="form-label">Total Estimated Amount (₹)</label>
                   <input
                     type="number"
                     className="form-control"
@@ -127,6 +235,19 @@ export const PurchaseView = () => {
           </div>
         </div>
       )}
+
+      {/* Quick Supplier Creation Modal */}
+      <CreateSupplierModal
+        isOpen={isCreateSupplierOpen}
+        onClose={() => setIsCreateSupplierOpen(false)}
+        onSupplierCreated={(supplier) => {
+          setNewPo((prev) => ({
+            ...prev,
+            vendorName: supplier.name
+          }));
+          setIsCreateSupplierOpen(false);
+        }}
+      />
     </div>
   );
 };

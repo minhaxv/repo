@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { useERP } from '../context/ERPContext';
 import { PRODUCTION_STATUS } from '../types';
+import { CreateVendorModal } from '../components/modals/CreateVendorModal';
 import { Building2, Plus, DollarSign, Calculator, Check, FileCheck, Calendar, Clock, Scissors, Tag } from 'lucide-react';
 
 export const OutsourceVendorsView = () => {
   const { vendors, salesOrders, updateVendorBill, updateItemProductionStatus } = useERP();
   const [selectedItemForBill, setSelectedItemForBill] = useState(null);
   const [vendorFilter, setVendorFilter] = useState('ALL');
+  const [isCreateVendorOpen, setIsCreateVendorOpen] = useState(false);
   const [billForm, setBillForm] = useState({
     actualBillAmount: 0,
     billDate: new Date().toISOString().split('T')[0],
@@ -24,11 +26,32 @@ export const OutsourceVendorsView = () => {
     PRODUCTION_STATUS.DELIVERED
   ];
 
-  // Extract all outsourced product line items (Product-Based Job Work)
+  // Extract all outsourced product line items (Product-Based Job Work - Handles 1 or More Vendors Per Item)
   const outsourcedProductJobs = [];
   salesOrders.forEach((o) => {
     (o.items || []).forEach((it, idx) => {
-      if (it.outsource || it.vendorId) {
+      if (Array.isArray(it.outsourceJobs) && it.outsourceJobs.length > 0) {
+        it.outsourceJobs.forEach((job, jIdx) => {
+          if (job.vendorId) {
+            const jcId = `${it.jobCardId || `JC-${o.id.split('-').pop()}-${idx + 1}`}-${jIdx + 1}`;
+            outsourcedProductJobs.push({
+              jobCardId: jcId,
+              orderId: o.id,
+              customerName: o.customerName,
+              orderDate: o.orderDate,
+              deliveryDate: it.deliveryDate || o.deliveryDate,
+              item: {
+                ...it,
+                vendorId: job.vendorId,
+                vendorName: job.vendorName,
+                processName: job.processName || 'Outsource Work',
+                estimatedVendorCost: parseFloat(job.estCost) || 0,
+                actualVendorBill: parseFloat(job.actualVendorBill) || 0
+              }
+            });
+          }
+        });
+      } else if (it.outsource || it.vendorId) {
         const jcId = it.jobCardId || `JC-${o.id.split('-').pop()}-${idx + 1}`;
         outsourcedProductJobs.push({
           jobCardId: jcId,
@@ -83,6 +106,10 @@ export const OutsourceVendorsView = () => {
             Manage vendor job cards per product line, track vendor turnaround, and reconcile actual bills
           </span>
         </div>
+
+        <button onClick={() => setIsCreateVendorOpen(true)} className="btn btn-primary" style={{ background: '#7c3aed', borderColor: '#7c3aed' }}>
+          <Plus size={16} /> + Create Outsource Vendor
+        </button>
       </div>
 
       {/* Vendor Summary Cards */}
@@ -280,6 +307,15 @@ export const OutsourceVendorsView = () => {
           </div>
         </div>
       )}
+
+      <CreateVendorModal
+        isOpen={isCreateVendorOpen}
+        onClose={() => setIsCreateVendorOpen(false)}
+        onVendorCreated={(v) => {
+          setVendorFilter(v.id);
+          setIsCreateVendorOpen(false);
+        }}
+      />
     </div>
   );
 };

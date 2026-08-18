@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useERP } from '../../context/ERPContext';
-import { DEFAULT_UNITS, MATERIAL_PRESETS, TAX_TYPES } from '../../types';
+import { DEFAULT_UNITS, TAX_TYPES } from '../../types';
 import { PackagePlus, X, Check, DollarSign, Tag, Percent } from 'lucide-react';
 
 export const CreateProductModal = ({ isOpen, onClose, onProductCreated }) => {
-  const { products, setProducts } = useERP();
+  const { addProduct, products } = useERP();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     unit: 'Sq.Ft',
@@ -13,37 +15,64 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated }) => {
     gstRate: 18,
     hsnCode: '9989',
     category: 'Digital Printing',
-    defaultMaterial: MATERIAL_PRESETS[0]
+    defaultMaterial: 'Standard Substrate'
   });
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setErrorMsg('');
+      setIsSubmitting(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name) {
-      alert('Please enter a product name.');
+    if (isSubmitting) return;
+
+    setErrorMsg('');
+    const cleanName = (formData.name || '').trim();
+    if (!cleanName) {
+      setErrorMsg('Please enter a product name.');
       return;
     }
 
-    const newProduct = {
-      id: `PROD-${String(products.length + 1).padStart(2, '0')}`,
-      name: formData.name,
-      unit: formData.unit,
-      defaultRate: parseFloat(formData.defaultRate) || 0,
-      estimatedCost: parseFloat(formData.estimatedCost) || 0,
-      gstRate: parseFloat(formData.gstRate) || 18,
-      hsnCode: formData.hsnCode || '9989',
-      category: formData.category || 'Custom Print',
-      defaultVendor: '',
-      defaultMaterial: formData.defaultMaterial
-    };
-
-    setProducts([newProduct, ...products]);
-
-    if (onProductCreated) {
-      onProductCreated(newProduct);
+    // Check duplicate product name
+    const existing = (products || []).find((p) => p.name && p.name.trim().toLowerCase() === cleanName.toLowerCase());
+    if (existing) {
+      if (!window.confirm(`Product "${existing.name}" already exists. Do you want to select the existing product?`)) {
+        setErrorMsg(`Product "${cleanName}" already exists.`);
+        return;
+      } else {
+        if (onProductCreated) {
+          onProductCreated(existing);
+        }
+        onClose();
+        return;
+      }
     }
-    onClose();
+
+    try {
+      setIsSubmitting(true);
+      const created = await addProduct({
+        ...formData,
+        name: cleanName
+      });
+
+      if (created) {
+        if (onProductCreated) {
+          onProductCreated(created);
+        }
+        onClose();
+      } else {
+        setErrorMsg('Failed to save product. Please try again.');
+      }
+    } catch (err) {
+      setErrorMsg(err.message || 'An error occurred while saving product.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -54,13 +83,19 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated }) => {
             <PackagePlus size={20} color="#2563eb" />
             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>Add New Master Product</h3>
           </div>
-          <button onClick={onClose} className="btn-secondary btn-icon" style={{ border: 'none' }}>
+          <button onClick={onClose} className="btn-secondary btn-icon" style={{ border: 'none' }} disabled={isSubmitting}>
             <X size={20} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            {errorMsg && (
+              <div style={{ gridColumn: 'span 2', background: '#fef2f2', border: '1px solid #fca5a5', color: '#991b1b', padding: '0.6rem 0.85rem', borderRadius: '6px', fontSize: '0.82rem', fontWeight: 600 }}>
+                {errorMsg}
+              </div>
+            )}
+
             <div className="form-group" style={{ gridColumn: 'span 2' }}>
               <label className="form-label">
                 <Tag size={14} /> Product Name *
@@ -73,6 +108,7 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated }) => {
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
                 autoFocus
+                disabled={isSubmitting}
               />
             </div>
 
@@ -82,6 +118,7 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated }) => {
                 className="form-select"
                 value={formData.unit}
                 onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                disabled={isSubmitting}
               >
                 {DEFAULT_UNITS.map((u) => (
                   <option key={u} value={u}>{u}</option>
@@ -94,9 +131,10 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated }) => {
               <input
                 type="text"
                 className="form-control"
-                placeholder="e.g. Signage / Flex / Offset"
+                placeholder="e.g. Signage / Flex / Offset / Service"
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                disabled={isSubmitting}
               />
             </div>
 
@@ -111,6 +149,7 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated }) => {
                 value={formData.defaultRate}
                 onChange={(e) => setFormData({ ...formData, defaultRate: e.target.value })}
                 required
+                disabled={isSubmitting}
               />
             </div>
 
@@ -121,20 +160,20 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated }) => {
                 className="form-control"
                 value={formData.estimatedCost}
                 onChange={(e) => setFormData({ ...formData, estimatedCost: e.target.value })}
+                disabled={isSubmitting}
               />
             </div>
 
             <div className="form-group">
-              <label className="form-label">Default Material Spec</label>
-              <select
-                className="form-select"
+              <label className="form-label">Initial Material Spec</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="e.g. 240gsm Star Frontlit Flex or PVC Glossy"
                 value={formData.defaultMaterial}
                 onChange={(e) => setFormData({ ...formData, defaultMaterial: e.target.value })}
-              >
-                {MATERIAL_PRESETS.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
+                disabled={isSubmitting}
+              />
             </div>
 
             <div className="form-group">
@@ -143,6 +182,7 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated }) => {
                 className="form-select"
                 value={formData.gstRate}
                 onChange={(e) => setFormData({ ...formData, gstRate: e.target.value })}
+                disabled={isSubmitting}
               >
                 <option value={18}>18% GST (Standard Printing)</option>
                 <option value={12}>12% GST</option>
@@ -159,16 +199,21 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated }) => {
                 placeholder="e.g. 9989"
                 value={formData.hsnCode}
                 onChange={(e) => setFormData({ ...formData, hsnCode: e.target.value })}
+                disabled={isSubmitting}
               />
             </div>
           </div>
 
           <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-secondary">
+            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={isSubmitting}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary">
-              <Check size={16} /> Save & Select Product
+            <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>⏳ Saving Product...</>
+              ) : (
+                <><Check size={16} /> Save & Select Product</>
+              )}
             </button>
           </div>
         </form>

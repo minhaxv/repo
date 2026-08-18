@@ -102,6 +102,12 @@ export const filterSalesOrders = (orders, filters) => {
     if (productionStatus && o.productionStatus !== productionStatus) return false;
     if (paymentStatus && o.paymentStatus !== paymentStatus) return false;
 
+    // Order Workflow Filter (Direct Sales Order vs Quotation vs Quotation Converted)
+    const { orderWorkflow = '' } = filters || {};
+    if (orderWorkflow === 'DIRECT' && (o.orderType === 'Quotation' || o.convertedFromQuotation)) return false;
+    if (orderWorkflow === 'QUOTATION' && o.orderType !== 'Quotation') return false;
+    if (orderWorkflow === 'CONVERTED' && !o.convertedFromQuotation && o.quotationStatus !== 'Converted') return false;
+
     // Item-level filters (Vendor, Product, GST Type)
     if (vendorId || productId || gstType) {
       const hasItemMatch = o.items?.some((item) => {

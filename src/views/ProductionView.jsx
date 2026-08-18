@@ -5,7 +5,7 @@ import { JobCardPrintModal } from '../components/modals/JobCardPrintModal';
 import { Factory, LayoutGrid, List, Printer, Clock, UserCheck, Building2, Palette, Scissors, Search, Filter, ShieldAlert } from 'lucide-react';
 
 export const ProductionView = () => {
-  const { salesOrders, updateItemProductionStatus } = useERP();
+  const { salesOrders, workers, employees, updateItemProductionStatus, assignItemWorkers, calculateJobProfitAndIncentive } = useERP();
   const [viewType, setViewType] = useState('kanban'); // 'kanban' or 'table'
   const [selectedJobCardData, setSelectedJobCardData] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -220,6 +220,57 @@ export const ProductionView = () => {
                         <strong>Material:</strong> {card.item.material}
                       </div>
 
+                      {/* 0.5% Profit Incentive & Worker Assignments */}
+                      {(() => {
+                        const order = salesOrders.find(o => o.id === card.orderId);
+                        const { itemProfit, incentiveAmount } = calculateJobProfitAndIncentive ? calculateJobProfitAndIncentive(card.item, order, 0.5) : { itemProfit: 0, incentiveAmount: 0 };
+                        const allStaff = [...(workers || []), ...(employees || [])];
+
+                        return (
+                          <div style={{ background: '#f8fafc', padding: '0.35rem 0.5rem', borderRadius: '6px', margin: '0.35rem 0', border: '1px solid #e2e8f0', fontSize: '0.72rem' }}>
+                            <div style={{ fontWeight: 700, color: '#059669', marginBottom: '0.25rem' }}>
+                              ⚡ 0.5% Profit Incentive: <strong>₹{incentiveAmount.toFixed(2)}</strong> (Profit: ₹{itemProfit.toLocaleString()})
+                            </div>
+
+                            {/* Printer Assignment */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.25rem' }}>
+                              <span style={{ fontWeight: 600, color: '#1e40af', width: '55px' }}>🖨️ Printer:</span>
+                              <select
+                                className="form-select form-select-sm"
+                                style={{ fontSize: '0.68rem', padding: '0.1rem 0.3rem', flex: 1 }}
+                                value={card.item.printerName || 'Vikas Patil'}
+                                onChange={(e) => {
+                                  const selWorker = allStaff.find(w => w.name === e.target.value);
+                                  assignItemWorkers(card.orderId, card.item.id, { printerId: selWorker?.id || 'WRK-01', printerName: e.target.value });
+                                }}
+                              >
+                                {allStaff.map(w => (
+                                  <option key={w.id || w.name} value={w.name}>{w.name} ({w.role || w.department || 'Printer'})</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Finisher Assignment */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                              <span style={{ fontWeight: 600, color: '#7c3aed', width: '55px' }}>✂️ Finisher:</span>
+                              <select
+                                className="form-select form-select-sm"
+                                style={{ fontSize: '0.68rem', padding: '0.1rem 0.3rem', flex: 1 }}
+                                value={card.item.finisherName || 'Prakash Shinde'}
+                                onChange={(e) => {
+                                  const selWorker = allStaff.find(w => w.name === e.target.value);
+                                  assignItemWorkers(card.orderId, card.item.id, { finisherId: selWorker?.id || 'WRK-03', finisherName: e.target.value });
+                                }}
+                              >
+                                {allStaff.map(w => (
+                                  <option key={w.id || w.name} value={w.name}>{w.name} ({w.role || w.department || 'Finisher'})</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {/* Badges for Outsource & Designer */}
                       <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
                         {card.item.outsource && (
@@ -242,8 +293,56 @@ export const ProductionView = () => {
                         </div>
                       </div>
 
+                      {/* Active Work Box Stage Indicator */}
+                      {card.productionStatus === 'Design' || card.item.designStatus === 'In Progress' ? (
+                        <div style={{ background: '#eff6ff', border: '1px solid #93c5fd', padding: '0.35rem 0.5rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#1e40af', margin: '0.3rem 0', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          🎨 WORK IN DESIGN BOX ({card.item.designerName || 'Assigned Designer'})
+                        </div>
+                      ) : card.productionStatus === 'Printing' ? (
+                        <div style={{ background: '#f5f3ff', border: '1px solid #c4b5fd', padding: '0.35rem 0.5rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#6d28d9', margin: '0.3rem 0', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          🖨️ WORK IN PRINTING (Printer: {card.item.printerName || 'Vikas Patil'})
+                        </div>
+                      ) : card.productionStatus === 'Finishing' ? (
+                        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', padding: '0.35rem 0.5rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#b45309', margin: '0.3rem 0', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          ✂️ WORK IN FINISHING (Finisher: {card.item.finisherName || 'Prakash Shinde'})
+                        </div>
+                      ) : null}
+
+                      {/* Quick Work Stage Action Buttons */}
+                      <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                        {(card.productionStatus === 'New' || card.productionStatus === 'Design') && (
+                          <button
+                            onClick={() => updateItemProductionStatus(card.orderId, card.item.id, 'Printing')}
+                            className="btn btn-sm"
+                            style={{ background: '#2563eb', color: '#ffffff', fontWeight: 800, fontSize: '0.72rem', width: '100%', border: 'none', padding: '0.25rem' }}
+                          >
+                            🖨️ Finish Design ➔ Send to Printing
+                          </button>
+                        )}
+
+                        {card.productionStatus === 'Printing' && (
+                          <button
+                            onClick={() => updateItemProductionStatus(card.orderId, card.item.id, 'Finishing')}
+                            className="btn btn-sm"
+                            style={{ background: '#7c3aed', color: '#ffffff', fontWeight: 800, fontSize: '0.72rem', width: '100%', border: 'none', padding: '0.25rem' }}
+                          >
+                            ✂️ Printer Finish ➔ Send to Finishing
+                          </button>
+                        )}
+
+                        {card.productionStatus === 'Finishing' && (
+                          <button
+                            onClick={() => updateItemProductionStatus(card.orderId, card.item.id, 'Ready for Delivery')}
+                            className="btn btn-sm"
+                            style={{ background: '#059669', color: '#ffffff', fontWeight: 800, fontSize: '0.72rem', width: '100%', border: 'none', padding: '0.25rem' }}
+                          >
+                            🚚 Finisher Finish ➔ Mark Ready for Delivery
+                          </button>
+                        )}
+                      </div>
+
                       {/* Product Item Status Selector */}
-                      <div style={{ marginTop: '0.5rem', paddingTop: '0.4rem', borderTop: '1px solid #cbd5e1' }}>
+                      <div style={{ marginTop: '0.4rem', paddingTop: '0.35rem', borderTop: '1px solid #cbd5e1' }}>
                         <select
                           className="form-select form-select-sm"
                           style={{ fontSize: '0.72rem', fontWeight: 800, background: '#eff6ff', color: '#1e40af' }}

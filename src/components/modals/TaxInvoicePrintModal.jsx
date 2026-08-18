@@ -175,12 +175,20 @@ export const TaxInvoicePrintModal = ({ order, isOpen, onClose }) => {
                   <tr key={idx} style={{ borderBottom: '1px solid #cbd5e1' }}>
                     <td style={{ fontWeight: 700 }}>{idx + 1}</td>
                     <td>
-                      <div style={{ fontWeight: 700 }}>{item.productName}</div>
+                      <div style={{ fontWeight: 700 }}>
+                        {item.productName}
+                        {(item.specName || item.material) && (
+                          <span style={{ color: '#1e40af', fontWeight: 600, marginLeft: '6px' }}>
+                            — {item.specName || item.material}
+                          </span>
+                        )}
+                      </div>
                       <div style={{ fontSize: '0.78rem', color: '#475569' }}>
                         {item.width && item.height ? `Size: ${item.width} × ${item.height} ${item.unit} (${item.totalSqFt} sqft)` : `Unit: ${item.unit}`}
+                        {item.description && <span style={{ marginLeft: '6px', fontStyle: 'italic' }}>({item.description})</span>}
                       </div>
                     </td>
-                    <td style={{ textAlign: 'center', fontFamily: 'var(--font-mono)' }}>9989</td>
+                    <td style={{ textAlign: 'center', fontFamily: 'var(--font-mono)' }}>{item.hsnCode || '9989'}</td>
                     <td style={{ textAlign: 'center', fontWeight: 700 }}>{item.qty}</td>
                     <td style={{ textAlign: 'right' }}>{Number(item?.sellingRate ?? 0).toLocaleString()}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700 }}>{Number(item?.amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
@@ -205,13 +213,13 @@ export const TaxInvoicePrintModal = ({ order, isOpen, onClose }) => {
               <div style={{ fontWeight: 800, color: '#1e3a8a', marginBottom: '0.4rem', textTransform: 'uppercase' }}>
                 Bank Account Details for Payment
               </div>
-              <div>Bank: <strong>{companyProfile.bankDetails.bankName}</strong></div>
-              <div>Account Name: <strong>{companyProfile.bankDetails.accountName}</strong></div>
-              <div>Account No: <strong style={{ fontFamily: 'var(--font-mono)' }}>{companyProfile.bankDetails.accountNo}</strong></div>
-              <div>IFSC Code: <strong style={{ fontFamily: 'var(--font-mono)' }}>{companyProfile.bankDetails.ifsc}</strong></div>
-              <div>Branch: <strong>{companyProfile.bankDetails.branch}</strong></div>
+              <div>Bank: <strong>{companyProfile?.bankDetails?.bankName || companyProfile?.bankName || companyProfile?.bank_name || 'HDFC Bank'}</strong></div>
+              <div>Account Name: <strong>{companyProfile?.bankDetails?.accountName || companyProfile?.name || 'Stitch & PrintFlow'}</strong></div>
+              <div>Account No: <strong style={{ fontFamily: 'var(--font-mono)' }}>{companyProfile?.bankDetails?.accountNo || companyProfile?.accountNo || companyProfile?.account_no || '50200012345678'}</strong></div>
+              <div>IFSC Code: <strong style={{ fontFamily: 'var(--font-mono)' }}>{companyProfile?.bankDetails?.ifsc || companyProfile?.ifsc || 'HDFC0001234'}</strong></div>
+              <div>Branch: <strong>{companyProfile?.bankDetails?.branch || companyProfile?.branch || 'Head Office'}</strong></div>
               <div style={{ marginTop: '0.4rem', color: '#059669', fontWeight: 700 }}>
-                UPI ID: {companyProfile.bankDetails.upiId}
+                UPI ID: {companyProfile?.bankDetails?.upiId || companyProfile?.upiId || companyProfile?.upi_id || 'stitchprint@upi'}
               </div>
             </div>
 

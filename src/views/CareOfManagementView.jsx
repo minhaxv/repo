@@ -4,26 +4,26 @@ import { useERP } from '../context/ERPContext';
 import CreateCareOfModal from '../components/modals/CreateCareOfModal';
 
 export const CareOfManagementView = () => {
-  const { careOfPersons, salesOrders } = useERP();
+  const { careOfPersons, salesOrders, deleteCareOfPerson } = useERP();
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Filter Care Of Persons
-  const filtered = careOfPersons.filter((co) => {
-    const q = searchTerm.toLowerCase();
+  const filtered = (careOfPersons || []).filter((co) => {
+    const q = (searchTerm || '').toLowerCase();
     return (
-      co.name.toLowerCase().includes(q) ||
+      (co.name || '').toLowerCase().includes(q) ||
       (co.mobile && co.mobile.includes(q)) ||
       (co.role && co.role.toLowerCase().includes(q))
     );
   });
 
   // Calculate statistics per Care Of Person from actual Sales Orders (Commission = % of Gross Profit)
-  const getStats = (careOfId, defaultCommissionPct = 5) => {
-    const referredOrders = salesOrders.filter((o) => o.careOfId === careOfId);
-    const totalVolume = referredOrders.reduce((sum, o) => sum + (o.subtotal || 0), 0);
-    const totalProfit = referredOrders.reduce((sum, o) => sum + (o.grossProfit !== undefined ? o.grossProfit : Math.round(o.subtotal * 0.45)), 0);
-    const commPct = defaultCommissionPct;
+  const getStats = (careOfId, defaultCommissionPct) => {
+    const referredOrders = (salesOrders || []).filter((o) => o.careOfId === careOfId);
+    const totalVolume = referredOrders.reduce((sum, o) => sum + (Number(o.subtotal) || 0), 0);
+    const totalProfit = referredOrders.reduce((sum, o) => sum + (o.grossProfit !== undefined ? Number(o.grossProfit) || 0 : Math.round((Number(o.subtotal) || 0) * 0.45)), 0);
+    const commPct = Number(defaultCommissionPct ?? 5);
     const earnedIncentive = (totalProfit * commPct) / 100;
     const activeCount = referredOrders.filter((o) => o.productionStatus !== 'Delivered').length;
 
@@ -36,10 +36,11 @@ export const CareOfManagementView = () => {
     };
   };
 
-  const totalVolumeAll = salesOrders.reduce((sum, o) => sum + (o.subtotal || 0), 0);
-  const totalProfitAll = salesOrders.reduce((sum, o) => sum + (o.grossProfit !== undefined ? o.grossProfit : Math.round(o.subtotal * 0.45)), 0);
-  const totalIncentiveAll = careOfPersons.reduce((sum, co) => {
-    const stats = getStats(co.id, co.referralCommissionPct);
+  const totalVolumeAll = (salesOrders || []).reduce((sum, o) => sum + (Number(o.subtotal) || 0), 0);
+  const totalProfitAll = (salesOrders || []).reduce((sum, o) => sum + (o.grossProfit !== undefined ? Number(o.grossProfit) || 0 : Math.round((Number(o.subtotal) || 0) * 0.45)), 0);
+  const totalIncentiveAll = (careOfPersons || []).reduce((sum, co) => {
+    const commPct = Number(co.referralCommissionPct ?? co.referral_commission_pct ?? 5);
+    const stats = getStats(co.id, commPct);
     return sum + stats.earnedIncentive;
   }, 0);
 
@@ -136,13 +137,14 @@ export const CareOfManagementView = () => {
                 </tr>
               ) : (
                 filtered.map((co) => {
-                  const stats = getStats(co.id, co.referralCommissionPct || 5);
+                  const commPct = Number(co.referralCommissionPct ?? co.referral_commission_pct ?? 5);
+                  const stats = getStats(co.id, commPct);
                   return (
                     <tr key={co.id}>
                       <td style={{ fontWeight: 700 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                           <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#eff6ff', color: '#1e40af', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', border: '1px solid #bfdbfe' }}>
-                            {co.name.substring(0, 2).toUpperCase()}
+                            {(co.name || 'CO').substring(0, 2).toUpperCase()}
                           </div>
                           <div>
                             <div style={{ color: '#0f172a', fontWeight: 800 }}>{co.name}</div>
@@ -158,7 +160,7 @@ export const CareOfManagementView = () => {
                       </td>
 
                       <td style={{ textAlign: 'center', fontWeight: 800, color: '#7c3aed' }}>
-                        {co.referralCommissionPct || 5.0}%
+                        {commPct}%
                         <span style={{ fontSize: '0.65rem', color: '#64748b', display: 'block' }}>of Profit</span>
                       </td>
 
@@ -172,15 +174,15 @@ export const CareOfManagementView = () => {
                       </td>
 
                       <td style={{ textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
-                        ₹{stats.totalVolume.toLocaleString('en-IN')}
+                        ₹{Number(stats.totalVolume ?? 0).toLocaleString('en-IN')}
                       </td>
 
                       <td style={{ textAlign: 'right', fontWeight: 800, color: '#059669' }}>
-                        ₹{Math.round(stats.totalProfit).toLocaleString('en-IN')}
+                        ₹{Math.round(Number(stats.totalProfit ?? 0)).toLocaleString('en-IN')}
                       </td>
 
                       <td style={{ textAlign: 'right', fontWeight: 800, color: '#7c3aed' }}>
-                        ₹{Math.round(stats.earnedIncentive).toLocaleString('en-IN')}
+                        ₹{Math.round(Number(stats.earnedIncentive ?? 0)).toLocaleString('en-IN')}
                       </td>
 
                       <td style={{ textAlign: 'center' }}>
@@ -205,6 +207,19 @@ export const CareOfManagementView = () => {
                               <Mail size={14} color="#7c3aed" />
                             </a>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Are you sure you want to delete Care Of Person "${co.name}"?`)) {
+                                deleteCareOfPerson(co.id);
+                              }
+                            }}
+                            className="btn btn-sm btn-secondary"
+                            style={{ padding: '0.2rem 0.4rem', border: 'none', color: '#f43f5e' }}
+                            title="Delete Care Of Person"
+                          >
+                            ✕
+                          </button>
                         </div>
                       </td>
                     </tr>

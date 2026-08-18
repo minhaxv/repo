@@ -66,24 +66,3 @@ export const DEFAULT_UNITS = [
   'Set',
   'Rft (Running Feet)'
 ];
-
-export const MATERIAL_PRESETS = [
-  'Star Flex 240gsm (Frontlit)',
-  'Star Flex 340gsm (Heavy Duty)',
-  'Backlit Flex Media',
-  'Self-Adhesive Frontlit Vinyl',
-  'Eco-Solvent Glossy Vinyl',
-  'Translucent Vinyl (Backlit)',
-  'One Way Vision Mesh',
-  '3mm Cast Acrylic Sheet',
-  '5mm Cast Acrylic Sheet',
-  '5mm PVC Sunboard Sheet',
-  'Cast Acrylic Cutout Letters',
-  'ACP Signboard Panel 3mm',
-  'LED Module 1.2W Samsung IP67',
-  'Standee Rollup Aluminum 2x5ft',
-  'Standee Rollup Heavy 3x6ft',
-  '350gsm Velvet Matte Visiting Card',
-  '300gsm Art Paper Brochure',
-  'Canopy Tent 6x6 ft Frame & Flex'
-];

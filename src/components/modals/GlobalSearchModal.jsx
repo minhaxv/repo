@@ -3,12 +3,13 @@ import { useERP } from '../../context/ERPContext';
 import { Search, ShoppingCart, Users, Package, Building2, User, X, ArrowRight } from 'lucide-react';
 
 export const GlobalSearchModal = () => {
-  const {
+const {
     isSearchOpen,
     setIsSearchOpen,
     salesOrders,
     customers,
     products,
+    productMaterialSpecs,
     vendors,
     salesPersons
   } = useERP();
@@ -56,7 +57,15 @@ export const GlobalSearchModal = () => {
     : (customers || []).slice(0, 3);
 
   const matchingProducts = q
-    ? (products || []).filter((p) => (p.name || '').toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q))
+    ? (products || []).filter((p) => {
+        const specs = (productMaterialSpecs || []).filter((s) => s.productId === p.id);
+        const matchesSpec = specs.some((s) =>
+          (s.specName || '').toLowerCase().includes(q) ||
+          (s.materialName || '').toLowerCase().includes(q) ||
+          (s.description || '').toLowerCase().includes(q)
+        );
+        return (p.name || '').toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q) || matchesSpec;
+      })
     : [];
 
   const matchingVendors = q

@@ -8,6 +8,7 @@ import { FollowUpsDrawer } from './components/modals/FollowUpsDrawer';
 import { DashboardView } from './views/DashboardView';
 import { SalesOrdersView } from './views/SalesOrdersView';
 import { CustomersView } from './views/CustomersView';
+import { EmployeesView } from './views/EmployeesView';
 import { SalesPersonsView } from './views/SalesPersonsView';
 import CareOfManagementView from './views/CareOfManagementView';
 import { HRManagementView } from './views/HRManagementView';
@@ -21,21 +22,48 @@ import { InventoryView } from './views/InventoryView';
 import { DeliveryView } from './views/DeliveryView';
 import { GSTInvoicingView } from './views/GSTInvoicingView';
 import { ReportsView } from './views/ReportsView';
+import { AccountsView } from './views/AccountsView';
 import { UserManagementView } from './views/UserManagementView';
 import { SettingsView } from './views/SettingsView';
 import { LoginView } from './views/LoginView';
 import { Loader } from 'lucide-react';
 
+import ErrorBoundary from './components/common/ErrorBoundary';
+
+const ACCOUNTS_SUB_ITEMS = [
+  'accounts', 'accounts-dashboard', 'accounts-daily', 'cash-book', 'bank-book', 'day-book',
+  'general-ledger', 'journal-entries', 'party-ledger', 'party-statement', 'party-pending',
+  'outstanding-receivables', 'outstanding-payables', 'future-transactions', 'cheque-clearance',
+  'bank-statement', 'bank-reconciliation', 'cash-flow', 'income-statement', 'trial-balance',
+  'balance-sheet', 'gst-e-filing', 'tax-summary', 'payment-receipt', 'payment-entry',
+  'expense-entry', 'income-entry', 'contra-entry', 'debit-note', 'credit-note'
+];
+
 const MainAppContent = () => {
   const { activeRole, session, loading } = useERP();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [salesOrderParams, setSalesOrderParams] = useState({ create: false, selectId: null });
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    return localStorage.getItem('erp_sidebar_collapsed_desktop') === 'true';
+  });
+
+  const handleToggleCollapsed = (val) => {
+    const nextVal = typeof val === 'boolean' ? val : !isCollapsed;
+    setIsCollapsed(nextVal);
+    localStorage.setItem('erp_sidebar_collapsed_desktop', String(nextVal));
+  };
 
   // Handle cross-module navigation helper
   const handleNavigate = (tab, params = {}) => {
-    setActiveTab(tab);
-    if (tab === 'sales-orders') {
-      setSalesOrderParams(params);
+    if (tab === 'quotations') {
+      setActiveTab('sales-orders');
+      setSalesOrderParams({ create: false, selectId: null, initialType: 'Quotation', ...params });
+    } else {
+      setActiveTab(tab);
+      if (tab === 'sales-orders') {
+        setSalesOrderParams(params);
+      }
     }
   };
 
@@ -64,13 +92,22 @@ const MainAppContent = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Event listener for global search navigation
+  // Event listener for global search & customer action navigation
   useEffect(() => {
     const handleOrderNav = (e) => {
       handleNavigate('sales-orders', { selectId: e.detail });
     };
+    const handleOrderCreateNav = (e) => {
+      const { type, customer } = e.detail || {};
+      handleNavigate('sales-orders', { create: true, initialType: type || 'Direct', initialCust: customer || null });
+    };
+
     window.addEventListener('ERP_NAVIGATE_ORDER', handleOrderNav);
-    return () => window.removeEventListener('ERP_NAVIGATE_ORDER', handleOrderNav);
+    window.addEventListener('ERP_NAVIGATE_ORDER_CREATE', handleOrderCreateNav);
+    return () => {
+      window.removeEventListener('ERP_NAVIGATE_ORDER', handleOrderNav);
+      window.removeEventListener('ERP_NAVIGATE_ORDER_CREATE', handleOrderCreateNav);
+    };
   }, []);
 
   if (loading) {
@@ -97,35 +134,52 @@ const MainAppContent = () => {
   }
 
   return (
-    <div className="app-shell">
-      <Sidebar activeTab={activeTab} setActiveTab={(tab) => handleNavigate(tab)} />
+    <div className={`app-shell ${isCollapsed ? 'sidebar-is-collapsed' : ''}`}>
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={(tab) => handleNavigate(tab)}
+        isMobileOpen={isMobileOpen}
+        setIsMobileOpen={setIsMobileOpen}
+        isCollapsed={isCollapsed}
+        setIsCollapsed={handleToggleCollapsed}
+      />
       <div className="main-content">
-        <Header onNewOrderClick={() => handleNavigate('sales-orders', { create: true })} />
+        <Header
+          onNewOrderClick={(type = 'Direct') => handleNavigate('sales-orders', { create: true, initialType: type })}
+          onNewQuotationClick={() => handleNavigate('sales-orders', { create: true, initialType: 'Quotation' })}
+          onToggleMobileSidebar={() => setIsMobileOpen(!isMobileOpen)}
+        />
         <main style={{ flex: 1, paddingBottom: '3rem' }}>
-          {activeTab === 'dashboard' && <DashboardView onNavigate={handleNavigate} />}
-          {activeTab === 'sales-orders' && (
-            <SalesOrdersView
-              key={`${salesOrderParams.create}-${salesOrderParams.selectId}-${Date.now()}`}
-              initialCreate={salesOrderParams.create}
-              initialSelectId={salesOrderParams.selectId}
-            />
-          )}
-          {activeTab === 'customers' && <CustomersView />}
-          {activeTab === 'sales-persons' && <SalesPersonsView />}
-          {activeTab === 'care-of-persons' && <CareOfManagementView />}
-          {activeTab === 'hr-payroll' && <HRManagementView />}
-          {activeTab === 'products' && <ProductsView />}
-          {activeTab === 'designers' && <DesignersView />}
-          {activeTab === 'production' && <ProductionView />}
-          {activeTab === 'vendors' && <OutsourceVendorsView />}
-          {activeTab === 'payments' && <PaymentsView />}
-          {activeTab === 'purchase' && <PurchaseView />}
-          {activeTab === 'inventory' && <InventoryView />}
-          {activeTab === 'delivery' && <DeliveryView />}
-          {activeTab === 'gst-invoicing' && <GSTInvoicingView />}
-          {activeTab === 'reports' && <ReportsView />}
-          {activeTab === 'user-management' && <UserManagementView />}
-          {activeTab === 'settings' && <SettingsView />}
+          <ErrorBoundary key={activeTab}>
+            {activeTab === 'dashboard' && <DashboardView onNavigate={handleNavigate} />}
+            {activeTab === 'sales-orders' && (
+              <SalesOrdersView
+                key={`${salesOrderParams.create}-${salesOrderParams.selectId}-${salesOrderParams.initialType}-${salesOrderParams.initialCust?.id}`}
+                initialCreate={salesOrderParams.create}
+                initialSelectId={salesOrderParams.selectId}
+                initialType={salesOrderParams.initialType || 'Direct'}
+                initialCust={salesOrderParams.initialCust || null}
+              />
+            )}
+            {activeTab === 'customers' && <CustomersView onNavigate={handleNavigate} />}
+            {activeTab === 'employees' && <EmployeesView />}
+            {activeTab === 'sales-persons' && <SalesPersonsView />}
+            {activeTab === 'care-of-persons' && <CareOfManagementView />}
+            {(activeTab === 'hr-payroll' || activeTab === 'attendance') && <HRManagementView />}
+            {activeTab === 'products' && <ProductsView />}
+            {activeTab === 'designers' && <DesignersView />}
+            {activeTab === 'production' && <ProductionView />}
+            {activeTab === 'vendors' && <OutsourceVendorsView />}
+            {activeTab === 'payments' && <PaymentsView />}
+            {activeTab === 'purchase' && <PurchaseView />}
+            {activeTab === 'inventory' && <InventoryView />}
+            {activeTab === 'delivery' && <DeliveryView />}
+            {activeTab === 'gst-invoicing' && <GSTInvoicingView />}
+            {(activeTab === 'reports' || activeTab.startsWith('report-')) && <ReportsView key={activeTab} initialReportKey={activeTab} />}
+            {ACCOUNTS_SUB_ITEMS.includes(activeTab) && <AccountsView key={activeTab} initialTab={activeTab} />}
+            {activeTab === 'user-management' && <UserManagementView />}
+            {activeTab === 'settings' && <SettingsView />}
+          </ErrorBoundary>
         </main>
       </div>
 
@@ -137,8 +191,10 @@ const MainAppContent = () => {
 
 export default function App() {
   return (
-    <ERPProvider>
-      <MainAppContent />
-    </ERPProvider>
+    <ErrorBoundary title="ScreenArts ERP System Recovered">
+      <ERPProvider>
+        <MainAppContent />
+      </ERPProvider>
+    </ErrorBoundary>
   );
 }

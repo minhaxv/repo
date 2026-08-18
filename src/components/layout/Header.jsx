@@ -1,10 +1,10 @@
 import React from 'react';
 import { useERP } from '../../context/ERPContext';
 import { USER_ROLES } from '../../types';
-import { Search, Bell, Plus, UserCheck, Shield, ChevronDown, Printer, RotateCcw, LogOut } from 'lucide-react';
+import { Search, Bell, Plus, UserCheck, Shield, ChevronDown, Printer, RotateCcw, LogOut, Menu } from 'lucide-react';
 import { supabase } from '../../utils/supabase';
 
-export const Header = ({ onNewOrderClick }) => {
+export const Header = ({ onNewOrderClick, onNewQuotationClick, onToggleMobileSidebar }) => {
   const {
     companyProfile,
     activeRole,
@@ -32,8 +32,26 @@ export const Header = ({ onNewOrderClick }) => {
       zIndex: 40,
       boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
     }}>
-      {/* Left: Global Search Launcher */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, maxWidth: '500px' }}>
+      {/* Left: Mobile Menu Trigger & Global Search Launcher */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, maxWidth: '500px' }}>
+        <button
+          onClick={onToggleMobileSidebar}
+          className="btn-secondary mobile-menu-trigger"
+          style={{
+            padding: '0.45rem',
+            display: 'none',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: 'var(--radius-md)',
+            backgroundColor: '#f8fafc',
+            borderColor: '#cbd5e1',
+            color: '#334155'
+          }}
+          title="Open Navigation Menu"
+        >
+          <Menu size={20} />
+        </button>
+
         <button
           onClick={() => setIsSearchOpen(true)}
           className="btn-secondary"
@@ -50,7 +68,7 @@ export const Header = ({ onNewOrderClick }) => {
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Search size={16} color="#3b82f6" />
-            <span>Search SO#, Mobile, Customer, Invoice, Product...</span>
+            <span>Search SO#, QT#, Mobile, Customer, Invoice, Product...</span>
           </div>
           <kbd style={{
             background: '#e2e8f0',
@@ -64,16 +82,27 @@ export const Header = ({ onNewOrderClick }) => {
       </div>
 
       {/* Right Actions: Quick Order, Follow-ups, User Role Switcher */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
         {/* Quick New Order Button */}
         <button
-          onClick={onNewOrderClick}
+          onClick={() => onNewOrderClick && onNewOrderClick('Direct')}
           className="btn btn-primary btn-sm"
-          style={{ height: '36px', px: '1rem' }}
+          style={{ height: '36px', px: '0.85rem' }}
+          title="Direct Sales Order (Workflow 1)"
         >
-          <Plus size={16} />
+          <Plus size={15} />
           <span>New Sales Order</span>
-          <span style={{ opacity: 0.7, fontSize: '0.7rem', marginLeft: '0.2rem' }}>(Alt+N)</span>
+        </button>
+
+        {/* Quick New Quotation Button */}
+        <button
+          onClick={() => onNewQuotationClick ? onNewQuotationClick() : onNewOrderClick && onNewOrderClick('Quotation')}
+          className="btn btn-sm"
+          style={{ height: '36px', px: '0.85rem', background: '#f59e0b', color: '#ffffff', fontWeight: 700, border: 'none', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+          title="Create Optional Quotation (Workflow 2)"
+        >
+          <Plus size={15} />
+          <span>New Quotation</span>
         </button>
 
         {/* Follow-ups Trigger */}
