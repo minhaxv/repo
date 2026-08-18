@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import { useERP } from '../context/ERPContext';
 import { CreateProductModal } from '../components/modals/CreateProductModal';
 import { MaterialSpecModal } from '../components/modals/MaterialSpecModal';
-import { Package, Plus, Search, Layers, Trash2 } from 'lucide-react';
+import { Package, Plus, Search, Layers, Trash2, Edit } from 'lucide-react';
 
 export const ProductsView = () => {
   const { products, productMaterialSpecs, deleteProduct } = useERP();
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
   const [selectedProductForSpecs, setSelectedProductForSpecs] = useState(null);
 
   const filteredProducts = (products || []).filter((p) => {
@@ -28,7 +29,7 @@ export const ProductsView = () => {
   return (
     <div className="view-container">
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Package size={24} color="#2563eb" /> Product & Dynamic Material Specification Master
@@ -38,7 +39,7 @@ export const ProductsView = () => {
           </span>
         </div>
 
-        <button onClick={() => setIsAddOpen(true)} className="btn btn-primary">
+        <button onClick={() => { setEditingProduct(null); setIsAddOpen(true); }} className="btn btn-primary">
           <Plus size={16} /> + Add Master Product
         </button>
       </div>
@@ -99,28 +100,33 @@ export const ProductsView = () => {
                     </td>
                     <td style={{ color: '#64748b' }}>₹{defaultSpec ? defaultSpec.costPrice : estimatedCost}</td>
                     <td>
+                      {/* SINGLE UNIFIED DYNAMIC SPEC BUTTON */}
                       <button
                         type="button"
                         onClick={() => setSelectedProductForSpecs(p)}
                         className="btn btn-sm btn-secondary"
-                        style={{ background: '#f1f5f9', color: '#1e40af', fontWeight: 700, borderColor: '#cbd5e1' }}
+                        style={{ background: '#f5f3ff', color: '#6d28d9', fontWeight: 700, borderColor: '#ddd6fe' }}
+                        title="Click to view and configure dynamic material specifications"
                       >
-                        <Layers size={14} color="#2563eb" /> {specs.length} Dynamic Spec(s)
+                        <Layers size={14} color="#7c3aed" /> {specs.length} Dynamic Spec{specs.length === 1 ? '' : 's'}
                       </button>
                     </td>
                     <td style={{ fontFamily: 'var(--font-mono)' }}>
                       {p.hsnCode || '9989'} <span className="badge badge-slate" style={{ marginLeft: '4px' }}>{p.gstRate ?? p.gst_rate ?? 18}% GST</span>
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'center' }}>
+                      <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center' }}>
+                        {/* EDIT PRODUCT BUTTON */}
                         <button
                           type="button"
-                          onClick={() => setSelectedProductForSpecs(p)}
-                          className="btn btn-sm btn-primary"
-                          style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
+                          onClick={() => setEditingProduct(p)}
+                          className="btn btn-sm btn-secondary"
+                          style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem', color: '#1e40af', fontWeight: 700, borderColor: '#bfdbfe' }}
+                          title="Edit Product Master details (rates, category, GST, unit)"
                         >
-                          <Layers size={12} /> Manage Specs
+                          <Edit size={13} /> Edit
                         </button>
+                        {/* DELETE PRODUCT BUTTON */}
                         <button
                           type="button"
                           onClick={() => {
@@ -129,9 +135,10 @@ export const ProductsView = () => {
                             }
                           }}
                           className="btn btn-sm btn-danger"
-                          style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
+                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem' }}
+                          title="Delete Product Master"
                         >
-                          <Trash2 size={12} /> Delete
+                          <Trash2 size={13} /> Delete
                         </button>
                       </div>
                     </td>
@@ -144,8 +151,12 @@ export const ProductsView = () => {
       </div>
 
       <CreateProductModal
-        isOpen={isAddOpen}
-        onClose={() => setIsAddOpen(false)}
+        isOpen={isAddOpen || !!editingProduct}
+        onClose={() => {
+          setIsAddOpen(false);
+          setEditingProduct(null);
+        }}
+        productToEdit={editingProduct}
       />
 
       <MaterialSpecModal

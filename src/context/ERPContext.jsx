@@ -502,14 +502,39 @@ export const ERPProvider = ({ children }) => {
   };
 
   const addProduct = async (productData, specsArr = []) => {
+    const pid = productData.id || `PROD-${Date.now()}`;
+    const newProduct = { ...productData, id: pid };
     try {
-      await api.createProduct(productData, specsArr);
+      await api.createProduct(newProduct, specsArr);
       await fetchAllERPData();
     } catch (err) {
       console.warn("api.createProduct exception, using local state fallback:", err);
-      const pid = productData.id || `PROD-${Date.now()}`;
-      setProducts((prev) => [{ ...productData, id: pid }, ...prev.filter(p => p.id !== pid)]);
+      setProducts((prev) => [newProduct, ...prev.filter(p => p.id !== pid)]);
     }
+    return newProduct;
+  };
+
+  const updateProduct = async (id, productData, specsArr = []) => {
+    try {
+      await api.updateProduct(id, productData, specsArr);
+      await fetchAllERPData();
+    } catch (err) {
+      console.warn("api.updateProduct exception, using local state fallback:", err);
+      setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...productData } : p)));
+    }
+    return { ...productData, id };
+  };
+
+  const deleteProduct = async (id) => {
+    try {
+      await api.deleteProduct(id);
+      await fetchAllERPData();
+    } catch (err) {
+      console.warn("api.deleteProduct exception, using local fallback:", err);
+      setProducts((prev) => prev.filter((p) => p.id !== id));
+      setProductMaterialSpecs((prev) => prev.filter((s) => s.productId !== id));
+    }
+    return true;
   };
 
   const addVendor = async (vendorData) => {
@@ -732,37 +757,7 @@ export const ERPProvider = ({ children }) => {
     return true;
   };
 
-  // Product Master Updates & Deletion
-  const updateProduct = async (id, updatedData) => {
-    const dbUpdate = { ...updatedData };
-    if (updatedData.defaultRate !== undefined) { dbUpdate.default_rate = updatedData.defaultRate; delete dbUpdate.defaultRate; }
-    if (updatedData.estimatedCost !== undefined) { dbUpdate.estimated_cost = updatedData.estimatedCost; delete dbUpdate.estimatedCost; }
-    if (updatedData.gstRate !== undefined) { dbUpdate.gst_rate = updatedData.gstRate; delete dbUpdate.gstRate; }
-    if (updatedData.hsnCode !== undefined) { dbUpdate.hsn_code = updatedData.hsnCode; delete dbUpdate.hsnCode; }
-    if (updatedData.defaultMaterial !== undefined) { dbUpdate.default_material = updatedData.defaultMaterial; delete dbUpdate.defaultMaterial; }
 
-    try {
-      if (isSupabaseConfigured) {
-        const { error } = await supabase.from('products').update(dbUpdate).eq('id', id);
-        if (error) console.warn("Supabase product update error:", error);
-      }
-    } catch (err) {
-      console.warn("Supabase product update exception:", err);
-    }
-    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...updatedData } : p)));
-    return true;
-  };
-
-  const deleteProduct = async (id) => {
-    try {
-      await api.deleteProduct(id);
-      await fetchAllERPData();
-    } catch (err) {
-      console.warn("api.deleteProduct exception, using local state fallback:", err);
-      setProducts((prev) => prev.filter((p) => p.id !== id));
-    }
-    return true;
-  };
 
   // Vendor / Supplier Updates & Deletion
   const updateVendor = async (id, updatedData) => {

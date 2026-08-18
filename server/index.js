@@ -437,10 +437,69 @@ app.post('/api/products', (req, res) => {
   }
 });
 
+// UPDATE PRODUCT
+app.put('/api/products/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { product, specs } = req.body;
+    if (!product || !product.name) {
+      return res.status(400).json({ success: false, error: "Product name is required" });
+    }
+
+    const updateTx = db.transaction(() => {
+      db.prepare(`
+        UPDATE products SET
+          name = ?,
+          category = ?,
+          description = ?,
+          unit = ?,
+          default_rate = ?,
+          estimated_cost = ?,
+          gst_rate = ?,
+          hsn_code = ?,
+          default_vendor = ?,
+          default_material = ?
+        WHERE id = ?
+      `).run(
+        product.name,
+        product.category || 'Printing',
+        product.description || '',
+        product.unit || 'Sq.Ft',
+        Number(product.defaultRate || product.default_rate || 0),
+        Number(product.estimatedCost || product.estimated_cost || 0),
+        Number(product.gstRate || product.gst_rate || 18),
+        product.hsnCode || product.hsn_code || '9989',
+        product.defaultVendor || product.default_vendor || '',
+        product.defaultMaterial || product.default_material || '',
+        id
+      );
+
+      if (specs && Array.isArray(specs)) {
+        db.prepare('DELETE FROM product_specifications WHERE product_id = ?').run(id);
+        const insertSpec = db.prepare(`
+          INSERT INTO product_specifications (id, product_id, spec_name, material_name, selling_price, cost_price, unit, description, is_default, gst_rate, hsn_code, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const s of specs) {
+          const specId = s.id || `SPEC-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+          insertSpec.run(specId, id, s.specName, s.materialName || s.specName, Number(s.sellingPrice || 0), Number(s.costPrice || 0), s.unit || product.unit || 'Sq.Ft', s.description || '', s.isDefault ? 1 : 0, Number(s.gstRate || 18), s.hsnCode || '9989', s.status || 'Active');
+        }
+      }
+    });
+
+    updateTx();
+    res.json({ success: true, message: `Product ${id} updated` });
+  } catch (err) {
+    console.error("PUT /api/products/:id Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // DELETE PRODUCT
 app.delete('/api/products/:id', (req, res) => {
   try {
     const { id } = req.params;
+    db.prepare('DELETE FROM product_specifications WHERE product_id = ?').run(id);
     db.prepare('DELETE FROM products WHERE id = ?').run(id);
     res.json({ success: true, message: `Product ${id} deleted` });
   } catch (err) {

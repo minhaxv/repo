@@ -20,6 +20,16 @@ export const api = {
     return await res.json();
   },
 
+  async updateProduct(id, product, specs) {
+    const res = await fetch(`${API_BASE}/products/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product, specs })
+    });
+    if (!res.ok) throw new Error(`API updateProduct failed`);
+    return await res.json();
+  },
+
   async deleteProduct(id) {
     const res = await fetch(`${API_BASE}/products/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error(`API deleteProduct failed`);
