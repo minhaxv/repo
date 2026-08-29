@@ -821,12 +821,64 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
 
           {/* DYNAMIC PRODUCT ITEMS TABLE */}
           <div className="card">
-            <div className="card-header">
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
               <div className="card-title">
                 <Scissors size={18} color="#2563eb" /> Product Line Items (Target Delivery & Costing)
               </div>
-              <button type="button" onClick={addProductRow} className="btn btn-primary btn-sm">
-                <Plus size={14} /> + Add Product Line
+              <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flex: 1, maxWidth: '420px', minWidth: '260px' }}>
+                <SearchableSelect
+                  type="product"
+                  size="sm"
+                  options={products || []}
+                  value=""
+                  placeholder="🔍 Quick Search & Add Product..."
+                  searchPlaceholder="Search product name..."
+                  allowClear={false}
+                  onChange={(p) => {
+                    if (p) {
+                      const pSpecs = (productMaterialSpecs || []).filter((s) => s.productId === p.id && s.status !== 'Inactive');
+                      const defSpec = pSpecs.find((s) => s.isDefault) || pSpecs[0];
+                      const defaultCost = defSpec ? defSpec.costPrice : (p?.estimatedCost ?? p?.estimated_cost ?? 10);
+                      const isCustom = p?.isCustom || (p.name || '').includes('Custom');
+
+                      setItems((prev) => [
+                        ...prev,
+                        {
+                          id: prev.length + 1,
+                          productName: p.name,
+                          productId: p.id || '',
+                          customTitle: '',
+                          description: defSpec ? (defSpec.description || defSpec.specName) : '',
+                          width: 4,
+                          height: 3,
+                          unit: defSpec ? defSpec.unit : (p?.unit || 'Sq.Ft'),
+                          qty: 1,
+                          deliveryDate: orderHeader.deliveryDate,
+                          material: defSpec ? (defSpec.materialName || defSpec.specName) : (p?.defaultMaterial || 'Standard Substrate'),
+                          designerRequired: 'NO',
+                          designerId: '',
+                          designerName: '',
+                          outsource: false,
+                          vendorId: '',
+                          vendorName: '',
+                          estimatedCost: defaultCost,
+                          internalEstOutsourceCost: 0,
+                          actualVendorBill: 0,
+                          sellingRate: defSpec ? defSpec.sellingPrice : (p?.defaultRate || 20),
+                          discount: 0,
+                          gstRate: defSpec ? defSpec.gstRate : (p?.gstRate || 18),
+                          hsnCode: defSpec ? defSpec.hsnCode : (p?.hsnCode || '9989'),
+                          specId: defSpec?.id || '',
+                          specName: defSpec?.specName || '',
+                          isCustom: isCustom
+                        }
+                      ]);
+                    }
+                  }}
+                />
+              </div>
+              <button type="button" onClick={addProductRow} className="btn btn-primary btn-sm" style={{ fontWeight: 700, flexShrink: 0 }}>
+                <Plus size={14} /> + Blank Line
               </button>
             </div>
 
