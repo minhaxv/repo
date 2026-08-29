@@ -13,3 +13,5 @@ dist/
 
 # Allow .env.example
 !.env.example
+
+.vercel

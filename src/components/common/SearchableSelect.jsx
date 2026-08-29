@@ -521,6 +521,7 @@ export const SearchableSelect = ({
         position: 'relative',
         width: '100%',
         userSelect: 'none',
+        zIndex: isOpen ? 1000 : 'auto',
         ...style
       }}
       onKeyDown={handleKeyDown}
@@ -607,17 +608,17 @@ export const SearchableSelect = ({
             position: 'absolute',
             top: 'calc(100% + 4px)',
             left: 0,
-            right: 0,
-            zIndex: 999,
+            zIndex: 9999,
             backgroundColor: '#ffffff',
             border: '1px solid #cbd5e1',
             borderRadius: '8px',
-            boxShadow: 'var(--shadow-xl)',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
             animation: 'fadeIn 0.12s ease-out',
-            minWidth: '280px',
+            minWidth: '320px',
+            maxWidth: '440px',
             ...menuStyle
           }}
         >
