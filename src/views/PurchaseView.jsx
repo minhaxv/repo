@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useERP } from '../context/ERPContext';
 import { CreateSupplierModal } from '../components/modals/CreateSupplierModal';
+import { SearchableSelect } from '../components/common/SearchableSelect';
 import { ShoppingBag, Plus, Search, Truck, CheckCircle2 } from 'lucide-react';
 
 export const PurchaseView = () => {
@@ -99,8 +100,8 @@ const { purchaseOrders, setPurchaseOrders, vendors, products, productMaterialSpe
             <form onSubmit={handleCreatePo}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                 <div className="form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <label className="form-label">Supplier Name *</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                    <label className="form-label" style={{ margin: 0, fontWeight: 700 }}>Supplier Name *</label>
                     <button
                       type="button"
                       onClick={() => setIsCreateSupplierOpen(true)}
@@ -109,28 +110,18 @@ const { purchaseOrders, setPurchaseOrders, vendors, products, productMaterialSpe
                       + New Supplier
                     </button>
                   </div>
-                  <select
-                    className="form-select"
+                  <SearchableSelect
+                    type="vendor"
+                    options={vendors || []}
                     value={newPo.vendorName}
-                    onChange={(e) => {
-                      if (e.target.value === '__ADD_NEW_SUPPLIER__') {
-                        setIsCreateSupplierOpen(true);
-                        return;
-                      }
-                      setNewPo({ ...newPo, vendorName: e.target.value });
-                    }}
-                    required
-                  >
-                    <option value="">Select Supplier</option>
-                    <option value="__ADD_NEW_SUPPLIER__" style={{ fontWeight: 800, color: '#2563eb' }}>
-                      + Create New Supplier...
-                    </option>
-                    <optgroup label="Registered Vendors & Suppliers">
-                      {vendors.map((v) => (
-                        <option key={v.id} value={v.name}>{v.name} ({v.category})</option>
-                      ))}
-                    </optgroup>
-                  </select>
+                    onChange={(v) => setNewPo({ ...newPo, vendorName: v?.name || '' })}
+                    getOptionValue={(v) => v?.name || ''}
+                    getOptionLabel={(v) => v?.name || ''}
+                    placeholder="Search & select Supplier..."
+                    searchPlaceholder="Search supplier by name, category, city..."
+                    onAddNew={() => setIsCreateSupplierOpen(true)}
+                    addNewLabel="+ Create New Supplier"
+                  />
                 </div>
 
                 {/* Product & Material Spec Quick Select */}
@@ -140,15 +131,16 @@ const { purchaseOrders, setPurchaseOrders, vendors, products, productMaterialSpe
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                     <div>
-                      <label className="form-label" style={{ fontSize: '0.75rem' }}>Select Product</label>
-                      <select
-                        className="form-select form-select-sm"
+                      <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>Select Product</label>
+                      <SearchableSelect
+                        type="product"
+                        size="sm"
+                        options={products || []}
                         value={selectedProductId}
-                        onChange={(e) => {
-                          const prodId = e.target.value;
+                        onChange={(prod) => {
+                          const prodId = prod?.id || '';
                           setSelectedProductId(prodId);
                           setSelectedSpecId('');
-                          const prod = products.find((p) => p.id === prodId);
                           const pSpecs = (productMaterialSpecs || []).filter((s) => s.productId === prodId && s.status !== 'Inactive');
                           const defSpec = pSpecs.find((s) => s.isDefault) || pSpecs[0];
                           if (defSpec) {
@@ -166,12 +158,9 @@ const { purchaseOrders, setPurchaseOrders, vendors, products, productMaterialSpe
                             }));
                           }
                         }}
-                      >
-                        <option value="">-- Choose Product --</option>
-                        {products.map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
+                        placeholder="Search product..."
+                        searchPlaceholder="Search product by name, code, SKU..."
+                      />
                     </div>
 
                     <div>

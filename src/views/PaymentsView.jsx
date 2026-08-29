@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useERP } from '../context/ERPContext';
 import { PAYMENT_METHODS } from '../types';
+import { SearchableSelect } from '../components/common/SearchableSelect';
 import { CreditCard, Plus, Search } from 'lucide-react';
 
 export const PaymentsView = () => {
@@ -156,18 +157,34 @@ export const PaymentsView = () => {
             <form onSubmit={handleRecordPayment}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                 <div className="form-group">
-                  <label className="form-label">Select Sales Order</label>
-                  <select
-                    className="form-select"
+                  <label className="form-label" style={{ fontWeight: 700 }}>Select Sales Order</label>
+                  <SearchableSelect
+                    options={salesOrders || []}
                     value={payForm.orderId}
-                    onChange={(e) => setPayForm({ ...payForm, orderId: e.target.value })}
-                  >
-                    {(salesOrders || []).map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.id} — {o.customerName} (Bal: ₹{o.balanceAmount})
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(o) => {
+                      setPayForm({
+                        ...payForm,
+                        orderId: o?.id || '',
+                        amount: o ? Number(o.balanceAmount || o.grandTotal || 0) : payForm.amount
+                      });
+                    }}
+                    getOptionValue={(o) => o?.id || ''}
+                    getOptionLabel={(o) => o ? `${o.id} — ${o.customerName} (Bal: ₹${o.balanceAmount})` : ''}
+                    searchFields={['id', 'customerName', 'customerMobile']}
+                    renderOption={(o, { isSelected }) => (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontWeight: 800, color: isSelected ? '#1e40af' : '#0f172a' }}>{o.id}</span>
+                          <span style={{ fontWeight: 800, color: '#e11d48', fontSize: '0.8rem' }}>Bal: ₹{Number(o.balanceAmount || 0).toLocaleString()}</span>
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                          {o.customerName} {o.customerMobile ? `• ${o.customerMobile}` : ''}
+                        </div>
+                      </div>
+                    )}
+                    placeholder="Search & select Sales Order..."
+                    searchPlaceholder="Search by Order ID (SO-...), customer name, mobile..."
+                  />
                 </div>
 
                 <div className="form-group">

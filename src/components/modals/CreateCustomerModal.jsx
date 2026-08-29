@@ -4,6 +4,7 @@ import { CUSTOMER_TYPES } from '../../types';
 import { X, UserPlus, Building, Phone, Mail, MapPin, Hash, Check } from 'lucide-react';
 
 import CreateCareOfModal from './CreateCareOfModal';
+import { SearchableSelect } from '../common/SearchableSelect';
 
 export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initialMobile = '' }) => {
   const { addCustomer, customers, careOfPersons } = useERP();
@@ -219,19 +220,18 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
                   + Add New Agent
                 </button>
               </div>
-              <select
-                className="form-select"
+              <SearchableSelect
+                type="careOf"
+                options={careOfPersons || []}
                 value={formData.careOfId}
-                onChange={(e) => setFormData({ ...formData, careOfId: e.target.value })}
+                onChange={(co) => setFormData({ ...formData, careOfId: co?.id || '' })}
+                placeholder="-- No Care Of Agent Assigned --"
+                searchPlaceholder="Search referral agent by name, mobile, role..."
+                onAddNew={() => setIsCreateCareOfOpen(true)}
+                addNewLabel="+ Create New Agent"
                 disabled={isSubmitting}
-              >
-                <option value="">-- No Care Of Agent Assigned --</option>
-                {(careOfPersons || []).map((co) => (
-                  <option key={co.id} value={co.id}>
-                    {co.name} ({co.role || 'Agent'}) — {co.referralCommissionPct || co.referral_commission_pct || 5}% {co.commissionType === 'sales' ? 'Sales Comm' : 'Profit Comm'}
-                  </option>
-                ))}
-              </select>
+                allowClear={true}
+              />
               <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.2rem', display: 'block' }}>
                 Select an existing referral agent or click <strong>+ Add New Agent</strong> to create one on the fly.
               </span>

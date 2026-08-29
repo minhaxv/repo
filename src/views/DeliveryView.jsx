@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useERP } from '../context/ERPContext';
 import { SignatureModal } from '../components/modals/SignatureModal';
+import { SearchableSelect } from '../components/common/SearchableSelect';
 import { Truck, CheckCircle2, PenTool, Clock, ShieldAlert, Package, Phone, Search, Lock, Unlock, DollarSign } from 'lucide-react';
 
 export const DeliveryView = () => {
@@ -407,19 +408,14 @@ export const DeliveryView = () => {
                   <label className="form-label" style={{ fontWeight: 700, color: '#1e40af' }}>
                     Deposit Company Bank Account
                   </label>
-                  <select
-                    className="form-select"
-                    style={{ fontWeight: 700, background: '#eff6ff', color: '#1e40af' }}
+                  <SearchableSelect
+                    type="bank"
+                    options={companyBankAccounts || []}
                     value={bankAccountId}
-                    onChange={(e) => setBankAccountId(e.target.value)}
-                  >
-                    <option value="">Select Deposit Bank Account</option>
-                    {(companyBankAccounts || []).map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.bankName} ({(b.accountNo || '').slice(-4)})
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(b) => setBankAccountId(b?.id || '')}
+                    placeholder="Select Deposit Bank Account..."
+                    searchPlaceholder="Search bank name, A/C number, IFSC..."
+                  />
                 </div>
               )}
 

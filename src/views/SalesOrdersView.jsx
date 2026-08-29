@@ -8,6 +8,7 @@ import CreateCareOfModal from '../components/modals/CreateCareOfModal';
 import { CreateVendorModal } from '../components/modals/CreateVendorModal';
 import { JobCardPrintModal } from '../components/modals/JobCardPrintModal';
 import { TaxInvoicePrintModal } from '../components/modals/TaxInvoicePrintModal';
+import { SearchableSelect } from '../components/common/SearchableSelect';
 import { handleSendWhatsApp } from '../utils/whatsapp';
 import {
   Plus,
@@ -701,64 +702,28 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: selectedCust ? '1.2fr 1fr' : '1fr', gap: '1.5rem', alignItems: 'flex-start' }}>
-              <div style={{ position: 'relative' }}>
-                <label className="form-label">
-                  <Search size={14} /> Search Customer by Mobile / Name / Code
+              <div>
+                <label className="form-label" style={{ fontWeight: 700 }}>
+                  <Search size={14} color="#2563eb" /> Customer Name / Mobile / GSTIN / Code
                 </label>
-                <input
-                  type="text"
-                  className="form-control"
-                  placeholder="Type mobile number or customer name..."
-                  value={custSearchTerm}
-                  onChange={(e) => {
-                    setCustSearchTerm(e.target.value);
-                    if (selectedCust) setSelectedCust(null);
+                <SearchableSelect
+                  type="customer"
+                  options={customers || []}
+                  value={selectedCust?.id || selectedCust?.name || ''}
+                  onChange={(c) => {
+                    if (c) {
+                      handleSelectCustomer(c);
+                    } else {
+                      setSelectedCust(null);
+                      setCustSearchTerm('');
+                    }
                   }}
-                  autoFocus
+                  placeholder="Click to search customer (Name, Mobile, GSTIN, Code)..."
+                  searchPlaceholder="Type customer name, 10-digit mobile, GSTIN or code..."
+                  onAddNew={() => setIsCreateCustModalOpen(true)}
+                  addNewLabel="+ Create New Customer"
+                  allowClear={true}
                 />
-
-                {/* Instant Search Results Dropdown */}
-                {custSearchTerm && !selectedCust && filteredCusts.length > 0 && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
-                    right: 0,
-                    background: '#ffffff',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '8px',
-                    boxShadow: 'var(--shadow-lg)',
-                    zIndex: 50,
-                    maxHeight: '220px',
-                    overflowY: 'auto',
-                    marginTop: '4px'
-                  }}>
-                    {filteredCusts.map((c) => (
-                      <div
-                        key={c.id}
-                        onClick={() => handleSelectCustomer(c)}
-                        style={{
-                          padding: '0.6rem 0.85rem',
-                          borderBottom: '1px solid #f1f5f9',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#eff6ff'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = '#ffffff'}
-                      >
-                        <div>
-                          <strong style={{ fontSize: '0.88rem', color: '#0f172a' }}>{c.name || 'Unnamed'}</strong>
-                          <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                            Mob: {c.mobile || 'N/A'} | Code: {c.code || 'N/A'} | Type: {c.type || 'Retail'}
-                          </div>
-                        </div>
-                        <span className="badge badge-slate">{c.state || 'N/A'}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
 
               {/* Selected Customer Details Card */}
@@ -779,10 +744,10 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                       Change
                     </button>
                   </div>
-                  <div>GSTIN: <strong>{selectedCust.gstin || 'Unregistered'}</strong></div>
+                  <div>GSTIN: <strong>{selectedCust.gstin || 'Unregistered (URP)'}</strong></div>
                   <div>Address: {selectedCust.address || 'N/A'} ({selectedCust.state || 'Maharashtra (27)'})</div>
                   <div style={{ display: 'flex', gap: '1rem', marginTop: '0.4rem', paddingTop: '0.4rem', borderTop: '1px dashed #bfdbfe' }}>
-                    <span style={{ color: '#e11d48', fontWeight: 700 }}>
+                    <span style={{ color: Number(selectedCust.outstanding ?? selectedCust.outstandingAmount ?? 0) > 0 ? '#e11d48' : '#059669', fontWeight: 700 }}>
                       Outstanding: ₹{Number(selectedCust.outstanding ?? selectedCust.outstandingAmount ?? 0).toLocaleString()}
                     </span>
                     <span>Credit Limit: ₹{Number(selectedCust.credit_limit ?? selectedCust.creditLimit ?? 0).toLocaleString()}</span>
@@ -809,61 +774,55 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
               </div>
 
               <div className="form-group">
-                <label className="form-label">Sales Person</label>
-                <select
-                  className="form-select"
-                  value={orderHeader.salesPersonId}
-                  onChange={(e) => {
-                    if (e.target.value === '__ADD_NEW_EMPLOYEE__') {
-                      setCreateEmpDept('Sales');
-                      setEmpTargetType('sales');
-                      setIsCreateEmpModalOpen(true);
-                      return;
-                    }
-                    const salesEmps = (employees || []).filter(e => e.department === 'Sales' || e.role === 'Sales');
-                    const sp = salesEmps.find((s) => s.id === e.target.value) || salesPersons.find((s) => s.id === e.target.value);
-                    setOrderHeader({ ...orderHeader, salesPersonId: e.target.value, salesPersonName: sp?.name || '' });
-                  }}
-                >
-                  <option value="__ADD_NEW_EMPLOYEE__" style={{ fontWeight: 800, color: '#2563eb' }}>
-                    + Create New Sales Employee...
-                  </option>
-                  <optgroup label="Sales Executives & Account Managers">
-                    {((employees || []).filter(e => e.department === 'Sales' || e.role === 'Sales').length > 0
+                <label className="form-label" style={{ fontWeight: 700 }}>
+                  <TrendingUp size={14} color="#2563eb" /> Sales Person
+                </label>
+                <SearchableSelect
+                  type="salesPerson"
+                  options={
+                    (employees || []).filter(e => e.department === 'Sales' || e.role === 'Sales').length > 0
                       ? (employees || []).filter(e => e.department === 'Sales' || e.role === 'Sales')
                       : salesPersons
-                    ).map((s) => (
-                      <option key={s.id} value={s.id}>{s.name} ({s.designation || 'Sales'})</option>
-                    ))}
-                  </optgroup>
-                </select>
+                  }
+                  value={orderHeader.salesPersonId}
+                  onChange={(sp) => {
+                    setOrderHeader({
+                      ...orderHeader,
+                      salesPersonId: sp?.id || '',
+                      salesPersonName: sp?.name || ''
+                    });
+                  }}
+                  placeholder="Select Sales Executive..."
+                  searchPlaceholder="Search sales person by name, code, mobile..."
+                  onAddNew={() => {
+                    setCreateEmpDept('Sales');
+                    setEmpTargetType('sales');
+                    setIsCreateEmpModalOpen(true);
+                  }}
+                  addNewLabel="+ Create New Sales Employee"
+                />
               </div>
 
               <div className="form-group">
-                <label className="form-label">Care Of Person (Referred Agent)</label>
-                <select
-                  className="form-select"
+                <label className="form-label" style={{ fontWeight: 700 }}>
+                  <UserCheck size={14} color="#7c3aed" /> Care Of Person (Referred Agent)
+                </label>
+                <SearchableSelect
+                  type="careOf"
+                  options={careOfPersons || []}
                   value={orderHeader.careOfId}
-                  onChange={(e) => {
-                    if (e.target.value === '__ADD_NEW_CAREOF__') {
-                      setIsCreateCareOfModalOpen(true);
-                      return;
-                    }
-                    const co = careOfPersons.find((c) => c.id === e.target.value);
-                    setOrderHeader({ ...orderHeader, careOfId: e.target.value, careOfName: co?.name || '' });
+                  onChange={(co) => {
+                    setOrderHeader({
+                      ...orderHeader,
+                      careOfId: co?.id || '',
+                      careOfName: co?.name || ''
+                    });
                   }}
-                >
-                  <option value="__ADD_NEW_CAREOF__" style={{ fontWeight: 800, color: '#2563eb' }}>
-                    + Create New Care Of Person...
-                  </option>
-                  <optgroup label="Referred Agents Directory">
-                    {careOfPersons.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} ({c.role || 'Agent'})
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
+                  placeholder="Select Care Of Agent (Optional)..."
+                  searchPlaceholder="Search referral partner by name, mobile, role..."
+                  onAddNew={() => setIsCreateCareOfModalOpen(true)}
+                  addNewLabel="+ Create New Care Of Person"
+                />
               </div>
 
               <div className="form-group">
@@ -900,7 +859,64 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
               <div className="card-title">
                 <Scissors size={18} color="#2563eb" /> Product Line Items (Target Delivery & Costing)
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ minWidth: '240px' }}>
+                  <SearchableSelect
+                    type="product"
+                    size="sm"
+                    options={products || []}
+                    value=""
+                    onChange={(p) => {
+                      if (p) {
+                        const pSpecs = (productMaterialSpecs || []).filter((s) => s.productId === p.id && s.status !== 'Inactive');
+                        const defSpec = pSpecs.find((s) => s.isDefault) || pSpecs[0];
+                        const defaultCost = defSpec ? defSpec.costPrice : (p?.estimatedCost ?? p?.estimated_cost ?? 10);
+                        const isCustom = p?.isCustom || (p.name || '').includes('Custom');
+
+                        setItems((prev) => [
+                          ...prev,
+                          {
+                            id: prev.length + 1,
+                            productName: p.name,
+                            productId: p.id || '',
+                            customTitle: '',
+                            description: defSpec ? (defSpec.description || defSpec.specName) : '',
+                            width: 4,
+                            height: 3,
+                            unit: defSpec ? defSpec.unit : (p?.unit || 'Sq.Ft'),
+                            qty: 1,
+                            deliveryDate: orderHeader.deliveryDate,
+                            material: defSpec ? (defSpec.materialName || defSpec.specName) : (p?.defaultMaterial || 'Standard Substrate'),
+                            designerRequired: 'NO',
+                            designerId: '',
+                            designerName: '',
+                            outsource: false,
+                            vendorId: '',
+                            vendorName: '',
+                            estimatedCost: defaultCost,
+                            internalEstOutsourceCost: 0,
+                            actualVendorBill: 0,
+                            sellingRate: defSpec ? defSpec.sellingPrice : (p?.defaultRate || 20),
+                            discount: 0,
+                            gstRate: defSpec ? defSpec.gstRate : (p?.gstRate || 18),
+                            hsnCode: defSpec ? defSpec.hsnCode : (p?.hsnCode || '9989'),
+                            specId: defSpec?.id || '',
+                            specName: defSpec?.specName || '',
+                            isCustom: isCustom
+                          }
+                        ]);
+                      }
+                    }}
+                    placeholder="🔍 Search & Add Product..."
+                    searchPlaceholder="Search product by name, SKU, category..."
+                    onAddNew={() => {
+                      setActiveProdTargetIndex(items.length);
+                      setIsCreateProdModalOpen(true);
+                    }}
+                    addNewLabel="+ Create New Master Product"
+                    allowClear={false}
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => {
@@ -910,10 +926,10 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                   className="btn btn-secondary btn-sm"
                   style={{ color: '#2563eb', fontWeight: 700 }}
                 >
-                  <Plus size={14} /> + New Master Product
+                  <Plus size={14} /> + New Product
                 </button>
                 <button type="button" onClick={addProductRow} className="btn btn-primary btn-sm">
-                  <Plus size={14} /> Add Product Line
+                  <Plus size={14} /> + Add Row
                 </button>
               </div>
             </div>
@@ -948,28 +964,30 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                       <tr key={idx}>
                         <td style={{ fontWeight: 700 }}>{idx + 1}</td>
 
-                        {/* Product Selector with inline + Add New Product */}
-                        <td>
-                          <select
-                            className="form-select form-select-sm"
-                            value={item.productName}
-                            onChange={(e) => {
-                              if (e.target.value === '__ADD_NEW__') {
-                                setActiveProdTargetIndex(idx);
-                                setIsCreateProdModalOpen(true);
+                        {/* Product Selector with SearchableSelect */}
+                        <td style={{ minWidth: '240px' }}>
+                          <SearchableSelect
+                            type="product"
+                            size="sm"
+                            options={products || []}
+                            value={item.productId || item.productName}
+                            onChange={(p) => {
+                              if (!p) {
+                                const newItems = [...items];
+                                newItems[idx] = { ...newItems[idx], productName: '', productId: '' };
+                                setItems(newItems);
                                 return;
                               }
-                              const p = products.find((pr) => pr.name === e.target.value);
-                              const pSpecs = p ? (productMaterialSpecs || []).filter((s) => s.productId === p.id && s.status !== 'Inactive') : [];
+                              const pSpecs = (productMaterialSpecs || []).filter((s) => s.productId === p.id && s.status !== 'Inactive');
                               const defSpec = pSpecs.find((s) => s.isDefault) || pSpecs[0];
                               const defaultCost = defSpec ? defSpec.costPrice : (p?.estimatedCost ?? p?.estimated_cost ?? items[idx]?.estimatedCost ?? 0);
 
                               const newItems = [...items];
-                              const isCustom = p?.isCustom || e.target.value.includes('Custom');
+                              const isCustom = p?.isCustom || (p.name || '').includes('Custom');
                               newItems[idx] = {
                                 ...newItems[idx],
-                                productName: e.target.value,
-                                productId: p?.id || '',
+                                productName: p.name,
+                                productId: p.id || '',
                                 isCustom: isCustom,
                                 specId: defSpec?.id || '',
                                 specName: defSpec?.specName || '',
@@ -984,22 +1002,14 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                               };
                               setItems(newItems);
                             }}
-                          >
-                            <option value="__ADD_NEW__" style={{ fontWeight: 800, color: '#2563eb' }}>
-                              + Create New Master Product...
-                            </option>
-                            <optgroup label="Product Catalog (Selling Rate | Est Cost Price)">
-                              {products.map((pr) => {
-                                const rateVal = pr.defaultRate ?? pr.default_rate ?? 0;
-                                const costVal = pr.estimatedCost ?? pr.estimated_cost ?? 0;
-                                return (
-                                  <option key={pr.id} value={pr.name}>
-                                    {pr.name} (Selling: ₹{rateVal} | Est Cost: ₹{costVal}/{pr.unit || 'Sq.Ft'})
-                                  </option>
-                                );
-                              })}
-                            </optgroup>
-                          </select>
+                            placeholder="Search & select product..."
+                            searchPlaceholder="Search product by name, SKU, category..."
+                            onAddNew={() => {
+                              setActiveProdTargetIndex(idx);
+                              setIsCreateProdModalOpen(true);
+                            }}
+                            addNewLabel="+ Create New Master Product"
+                          />
 
                           {/* Dynamic Material Specification Dropdown */}
                           {productSpecs.length > 0 && (
@@ -1112,38 +1122,31 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                           </select>
                           {(item.designerRequired === 'YES' || item.designRequired === 'YES') && (
                             <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                              <select
-                                className="form-select form-select-sm"
-                                style={{ borderColor: !item.designerId ? '#f59e0b' : '#cbd5e1', fontWeight: !item.designerId ? 700 : 400 }}
-                                value={item.designerId || ''}
-                                onChange={(e) => {
-                                  if (e.target.value === '__ADD_NEW_DESIGNER__') {
-                                    setCreateEmpDept('Design');
-                                    setEmpTargetType('designer');
-                                    setEmpTargetIndex(idx);
-                                    setIsCreateEmpModalOpen(true);
-                                    return;
-                                  }
-                                  const newItems = [...items];
-                                  newItems[idx].designerId = e.target.value;
-                                  const dObj = (designers || []).find((d) => d.id === e.target.value) || (employees || []).find((em) => em.id === e.target.value);
-                                  newItems[idx].designerName = dObj?.name || '';
-                                  setItems(newItems);
-                                }}
-                              >
-                                <option value="">⚡ Unassigned (Auto-push to Design Queue)</option>
-                                <option value="__ADD_NEW_DESIGNER__" style={{ fontWeight: 800, color: '#2563eb' }}>
-                                  + Create New Designer...
-                                </option>
-                                <optgroup label="Assign Specific Designer (Optional)">
-                                  {((employees || []).filter(e => e.department === 'Design' || e.role === 'Designer').length > 0
+                              <SearchableSelect
+                                type="designer"
+                                size="sm"
+                                options={
+                                  (employees || []).filter(e => e.department === 'Design' || e.role === 'Designer').length > 0
                                     ? (employees || []).filter(e => e.department === 'Design' || e.role === 'Designer')
                                     : designers
-                                  ).map((d) => (
-                                    <option key={d.id} value={d.id}>{d.name}</option>
-                                  ))}
-                                </optgroup>
-                              </select>
+                                }
+                                value={item.designerId || ''}
+                                onChange={(d) => {
+                                  const newItems = [...items];
+                                  newItems[idx].designerId = d?.id || '';
+                                  newItems[idx].designerName = d?.name || '';
+                                  setItems(newItems);
+                                }}
+                                placeholder="⚡ Unassigned (Design Queue)"
+                                searchPlaceholder="Search designer by name..."
+                                onAddNew={() => {
+                                  setCreateEmpDept('Design');
+                                  setEmpTargetType('designer');
+                                  setEmpTargetIndex(idx);
+                                  setIsCreateEmpModalOpen(true);
+                                }}
+                                addNewLabel="+ Create New Designer"
+                              />
 
                               {/* Priority Dropdown */}
                               <select
@@ -1193,36 +1196,29 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                           </div>
                           {item.outsource && (
                             <div style={{ marginTop: '3px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                              <select
-                                className="form-select form-select-sm"
+                              <SearchableSelect
+                                type="vendor"
+                                size="sm"
+                                options={vendors || []}
                                 value={item.vendorId || ''}
-                                onChange={(e) => {
-                                  if (e.target.value === '__ADD_NEW_VENDOR__') {
-                                    setActiveVendorTargetIndex(idx);
-                                    setIsCreateVendorModalOpen(true);
-                                    return;
-                                  }
+                                onChange={(v) => {
                                   const newItems = [...items];
-                                  const vObj = vendors.find((v) => v.id === e.target.value);
-                                  newItems[idx].vendorId = e.target.value;
-                                  newItems[idx].vendorName = vObj?.name || '';
+                                  newItems[idx].vendorId = v?.id || '';
+                                  newItems[idx].vendorName = v?.name || '';
                                   if (newItems[idx].outsourceJobs && newItems[idx].outsourceJobs.length > 0) {
-                                    newItems[idx].outsourceJobs[0].vendorId = e.target.value;
-                                    newItems[idx].outsourceJobs[0].vendorName = vObj?.name || '';
+                                    newItems[idx].outsourceJobs[0].vendorId = v?.id || '';
+                                    newItems[idx].outsourceJobs[0].vendorName = v?.name || '';
                                   }
                                   setItems(newItems);
                                 }}
-                              >
-                                <option value="">Select Vendor</option>
-                                <option value="__ADD_NEW_VENDOR__" style={{ fontWeight: 800, color: '#7c3aed' }}>
-                                  + Create New Outsource Vendor...
-                                </option>
-                                <optgroup label="Registered Vendors">
-                                  {vendors.map((v) => (
-                                    <option key={v.id} value={v.id}>{v.name}</option>
-                                  ))}
-                                </optgroup>
-                              </select>
+                                placeholder="Select Vendor..."
+                                searchPlaceholder="Search vendor by name, city, services..."
+                                onAddNew={() => {
+                                  setActiveVendorTargetIndex(idx);
+                                  setIsCreateVendorModalOpen(true);
+                                }}
+                                addNewLabel="+ Create New Outsource Vendor"
+                              />
 
                               <button
                                 type="button"
@@ -1458,25 +1454,20 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                       <label className="form-label" style={{ fontWeight: 700, color: '#1e40af', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                         <Building2 size={14} /> Deposit Bank Account
                       </label>
-                      <select
-                        className="form-select"
-                        style={{ fontWeight: 700, background: '#eff6ff', color: '#1e40af' }}
+                      <SearchableSelect
+                        type="bank"
+                        options={companyBankAccounts || []}
                         value={paymentInfo.bankAccountId || companyBankAccounts[0]?.id || ''}
-                        onChange={(e) => {
-                          const bank = companyBankAccounts.find((b) => b.id === e.target.value);
+                        onChange={(bank) => {
                           setPaymentInfo({
                             ...paymentInfo,
-                            bankAccountId: e.target.value,
+                            bankAccountId: bank?.id || '',
                             bankAccountName: bank?.bankName || ''
                           });
                         }}
-                      >
-                        {companyBankAccounts.map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.bankName} ({b.accountNo.slice(-4)})
-                          </option>
-                        ))}
-                      </select>
+                        placeholder="Select Company Bank Account..."
+                        searchPlaceholder="Search bank name, A/C number, IFSC..."
+                      />
                     </div>
                   )}
                 </div>
@@ -2269,29 +2260,22 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                         <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '2px' }}>
                           Outsource Vendor *
                         </label>
-                        <select
-                          className="form-select form-select-sm"
+                        <SearchableSelect
+                          type="vendor"
+                          size="sm"
+                          options={vendors || []}
                           value={job.vendorId || ''}
-                          onChange={(e) => {
-                            if (e.target.value === '__ADD_NEW_VENDOR__') {
-                              setIsCreateVendorModalOpen(true);
-                              return;
-                            }
-                            const vObj = vendors.find(v => v.id === e.target.value);
+                          onChange={(v) => {
                             const updated = [...tempOutsourceJobs];
-                            updated[jIdx].vendorId = e.target.value;
-                            updated[jIdx].vendorName = vObj?.name || '';
+                            updated[jIdx].vendorId = v?.id || '';
+                            updated[jIdx].vendorName = v?.name || '';
                             setTempOutsourceJobs(updated);
                           }}
-                        >
-                          <option value="">-- Select Outsource Vendor --</option>
-                          <option value="__ADD_NEW_VENDOR__" style={{ fontWeight: 800, color: '#7c3aed' }}>
-                            + Create New Outsource Vendor...
-                          </option>
-                          {vendors.map((v) => (
-                            <option key={v.id} value={v.id}>{v.name} ({v.category})</option>
-                          ))}
-                        </select>
+                          placeholder="Select Outsource Vendor..."
+                          searchPlaceholder="Search vendor by name, city, category..."
+                          onAddNew={() => setIsCreateVendorModalOpen(true)}
+                          addNewLabel="+ Create New Outsource Vendor"
+                        />
                       </div>
 
                       <div>
