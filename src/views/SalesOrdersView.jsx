@@ -898,13 +898,8 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                               };
                               setItems(newItems);
                             }}
-                            placeholder="🔍 Click or Type to Search Product..."
-                            searchPlaceholder="Type product name, category, SKU, material..."
-                            onAddNew={() => {
-                              setActiveProdTargetIndex(idx);
-                              setIsCreateProdModalOpen(true);
-                            }}
-                            addNewLabel="+ Create New Master Product"
+                            placeholder="Select Product..."
+                            searchPlaceholder="Search product name..."
                           />
 
                           {/* Dynamic Material Specification Dropdown */}
