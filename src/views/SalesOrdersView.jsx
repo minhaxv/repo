@@ -835,7 +835,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                 <thead>
                   <tr>
                     <th style={{ width: '30px' }}>#</th>
-                    <th style={{ width: '270px' }}>Product</th>
+                    <th style={{ minWidth: '320px', width: '340px' }}>Product & Specification</th>
                     <th style={{ width: '65px' }}>Qty</th>
                     <th style={{ width: '120px' }}>Delivery Date</th>
                     <th style={{ width: '80px' }}>Design?</th>
@@ -861,7 +861,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                         <td style={{ fontWeight: 700 }}>{idx + 1}</td>
 
                         {/* Product Selector with SearchableSelect */}
-                        <td style={{ minWidth: '240px' }}>
+                        <td style={{ minWidth: '320px' }}>
                           <SearchableSelect
                             type="product"
                             size="sm"
@@ -898,8 +898,8 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                               };
                               setItems(newItems);
                             }}
-                            placeholder="Search & select product..."
-                            searchPlaceholder="Search product by name, SKU, category..."
+                            placeholder="🔍 Click or Type to Search Product..."
+                            searchPlaceholder="Type product name, category, SKU, material..."
                             onAddNew={() => {
                               setActiveProdTargetIndex(idx);
                               setIsCreateProdModalOpen(true);

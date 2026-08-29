@@ -14,14 +14,17 @@ import {
   CreditCard,
   Phone,
   Hash,
-  AlertCircle
+  AlertCircle,
+  Layers,
+  Sparkles
 } from 'lucide-react';
 
 /**
  * Universal Reusable Searchable Dropdown / Combobox for ScreenArts ERP
  *
- * Supports instant search by multiple fields, keyboard navigation (Up/Down/Enter/Escape),
- * clear button, empty/loading states, custom renderers, and master-data presets.
+ * Supports instant search by multiple fields, quick category filter tabs,
+ * keyboard navigation (Up/Down/Enter/Escape), clear button, empty/loading states,
+ * custom renderers, and master-data presets.
  */
 export const SearchableSelect = ({
   options = [],
@@ -44,13 +47,15 @@ export const SearchableSelect = ({
   className = '',
   style = {},
   menuStyle = {},
-  maxMenuHeight = 280,
+  maxMenuHeight = 320,
   autoFocusSearch = true,
   noResultsText = 'No matching records found.',
-  badge
+  badge,
+  showCategoryFilters = true
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
 
   const containerRef = useRef(null);
@@ -84,10 +89,9 @@ export const SearchableSelect = ({
   // Find currently selected option object
   const selectedOption = useMemo(() => {
     if (value === null || value === undefined || value === '') return null;
-    return options.find((opt) => {
+    return (options || []).find((opt) => {
       const optVal = getValue(opt);
       const optLabel = getLabel(opt);
-      // match either by value, by id, by name, or if object matches directly
       return (
         optVal === value ||
         optLabel === value ||
@@ -98,6 +102,19 @@ export const SearchableSelect = ({
     }) || null;
   }, [options, value, getValue, getLabel]);
 
+  // Extract unique categories if available (e.g. for products/vendors)
+  const availableCategories = useMemo(() => {
+    if (!showCategoryFilters || !options || options.length === 0) return [];
+    const cats = new Set();
+    options.forEach((opt) => {
+      if (opt && typeof opt === 'object') {
+        const c = opt.category || opt.productCategory || opt.type || opt.role || opt.department;
+        if (c && typeof c === 'string') cats.add(c);
+      }
+    });
+    return Array.from(cats);
+  }, [options, showCategoryFilters]);
+
   // Determine search placeholder based on preset
   const computedSearchPlaceholder = useMemo(() => {
     if (searchPlaceholder) return searchPlaceholder;
@@ -105,7 +122,7 @@ export const SearchableSelect = ({
       case 'customer':
         return 'Search customer by name, mobile, GSTIN, code...';
       case 'product':
-        return 'Search product by name, code, category, SKU...';
+        return 'Search product by name, SKU, category, material...';
       case 'salesPerson':
         return 'Search sales person by name, code, mobile...';
       case 'careOf':
@@ -128,7 +145,7 @@ export const SearchableSelect = ({
       case 'customer':
         return ['name', 'mobile', 'gstin', 'code', 'email', 'address', 'type', 'city'];
       case 'product':
-        return ['name', 'code', 'sku', 'category', 'material', 'unit', 'description', 'productName'];
+        return ['name', 'code', 'sku', 'category', 'productCategory', 'material', 'defaultMaterial', 'unit', 'description', 'productName'];
       case 'salesPerson':
         return ['name', 'code', 'mobile', 'designation', 'department', 'role', 'email'];
       case 'careOf':
@@ -144,12 +161,23 @@ export const SearchableSelect = ({
     }
   }, [searchFields, type]);
 
-  // Filtered options based on search query
+  // Filtered options based on search query AND category tab
   const filteredOptions = useMemo(() => {
-    const q = (searchQuery || '').trim().toLowerCase();
-    if (!q) return options;
+    let list = options || [];
 
-    return options.filter((opt) => {
+    // Filter by Category tab if selected
+    if (selectedCategory !== 'ALL') {
+      list = list.filter((opt) => {
+        if (!opt || typeof opt !== 'object') return true;
+        const c = opt.category || opt.productCategory || opt.type || opt.role || opt.department;
+        return c === selectedCategory;
+      });
+    }
+
+    const q = (searchQuery || '').trim().toLowerCase();
+    if (!q) return list;
+
+    return list.filter((opt) => {
       if (opt === null || opt === undefined) return false;
       if (typeof opt === 'string' || typeof opt === 'number') {
         return String(opt).toLowerCase().includes(q);
@@ -168,7 +196,7 @@ export const SearchableSelect = ({
       const val = String(getValue(opt)).toLowerCase();
       return label.includes(q) || val.includes(q);
     });
-  }, [options, searchQuery, effectiveSearchFields, getLabel, getValue]);
+  }, [options, searchQuery, selectedCategory, effectiveSearchFields, getLabel, getValue]);
 
   // Outside click to close
   useEffect(() => {
@@ -176,6 +204,7 @@ export const SearchableSelect = ({
       if (containerRef.current && !containerRef.current.contains(e.target)) {
         setIsOpen(false);
         setSearchQuery('');
+        setSelectedCategory('ALL');
       }
     };
 
@@ -192,12 +221,13 @@ export const SearchableSelect = ({
   // Auto focus search input when opening
   useEffect(() => {
     if (isOpen && autoFocusSearch) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         if (searchInputRef.current) {
           searchInputRef.current.focus();
         }
-      }, 30);
+      }, 40);
       setHighlightedIndex(0);
+      return () => clearTimeout(timer);
     }
   }, [isOpen, autoFocusSearch]);
 
@@ -226,6 +256,7 @@ export const SearchableSelect = ({
     }
     setIsOpen(false);
     setSearchQuery('');
+    setSelectedCategory('ALL');
   };
 
   const handleClear = (e) => {
@@ -271,10 +302,12 @@ export const SearchableSelect = ({
         e.preventDefault();
         setIsOpen(false);
         setSearchQuery('');
+        setSelectedCategory('ALL');
         break;
       case 'Tab':
         setIsOpen(false);
         setSearchQuery('');
+        setSelectedCategory('ALL');
         break;
       default:
         break;
@@ -359,26 +392,30 @@ export const SearchableSelect = ({
 
     // PRODUCT PRESET
     if (type === 'product') {
-      const rate = opt.defaultRate ?? opt.default_rate ?? opt.sellingPrice ?? 0;
-      const cost = opt.estimatedCost ?? opt.estimated_cost ?? opt.costPrice ?? 0;
+      const rate = Number(opt.defaultRate ?? opt.default_rate ?? opt.sellingPrice ?? opt.rate ?? 0);
+      const cost = Number(opt.estimatedCost ?? opt.estimated_cost ?? opt.costPrice ?? opt.cost ?? 0);
       const unit = opt.unit || 'Sq.Ft';
       const category = opt.category || opt.productCategory || 'Printing';
+      const prodName = opt.name || opt.productName || 'Unnamed Product';
 
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', width: '100%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontWeight: 800, color: isSelected ? '#1e40af' : '#0f172a', fontSize: '0.88rem' }}>
-              {opt.name || opt.productName}
-            </span>
-            <span className="badge badge-emerald" style={{ fontSize: '0.72rem', fontWeight: 800, padding: '0.15rem 0.45rem' }}>
-              ₹{Number(rate).toLocaleString()} / {unit}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1, minWidth: 0 }}>
+              <Package size={14} color="#2563eb" style={{ flexShrink: 0 }} />
+              <span style={{ fontWeight: 800, color: isSelected ? '#1e40af' : '#0f172a', fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {prodName}
+              </span>
+            </div>
+            <span className="badge badge-emerald" style={{ fontSize: '0.74rem', fontWeight: 800, padding: '0.15rem 0.45rem', flexShrink: 0 }}>
+              ₹{rate.toLocaleString()} / {unit}
             </span>
           </div>
-          <div style={{ fontSize: '0.74rem', color: '#64748b', display: 'flex', flexWrap: 'wrap', gap: '0.6rem', alignItems: 'center' }}>
+          <div style={{ fontSize: '0.73rem', color: '#64748b', display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center', paddingLeft: '1.25rem' }}>
             {category && <span className="badge badge-slate" style={{ fontSize: '0.65rem' }}>{category}</span>}
-            {opt.code && <span>SKU: {opt.code}</span>}
+            {opt.code && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}>SKU: {opt.code}</span>}
             {cost > 0 && <span>Est Cost: ₹{cost}/{unit}</span>}
-            {opt.defaultMaterial && <span>Mat: {opt.defaultMaterial}</span>}
+            {opt.defaultMaterial && <span style={{ color: '#475569' }}>• {opt.defaultMaterial}</span>}
           </div>
         </div>
       );
@@ -489,6 +526,22 @@ export const SearchableSelect = ({
     }
 
     if (selectedOption) {
+      if (type === 'product') {
+        const rate = selectedOption.defaultRate ?? selectedOption.default_rate ?? selectedOption.sellingPrice ?? '';
+        const unit = selectedOption.unit || 'Sq.Ft';
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+            <strong style={{ color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {getLabel(selectedOption)}
+            </strong>
+            {rate !== '' && (
+              <span className="badge badge-emerald" style={{ fontSize: '0.7rem', padding: '0.1rem 0.35rem', flexShrink: 0 }}>
+                ₹{Number(rate).toLocaleString()}/{unit}
+              </span>
+            )}
+          </div>
+        );
+      }
       return (
         <span style={{ fontWeight: 700, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {getLabel(selectedOption)}
@@ -543,8 +596,8 @@ export const SearchableSelect = ({
           backgroundColor: disabled ? '#f8fafc' : '#ffffff',
           borderColor: isOpen ? '#2563eb' : '#cbd5e1',
           boxShadow: isOpen ? '0 0 0 3px rgba(37, 99, 235, 0.15)' : 'none',
-          padding: isSmall ? '0.3rem 0.5rem' : '0.5rem 0.75rem',
-          minHeight: isSmall ? '31px' : '38px',
+          padding: isSmall ? '0.35rem 0.55rem' : '0.5rem 0.75rem',
+          minHeight: isSmall ? '34px' : '38px',
           gap: '0.4rem',
           borderRadius: 'var(--radius-md)',
           transition: 'all 0.15s ease'
@@ -553,7 +606,7 @@ export const SearchableSelect = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flex: 1, minWidth: 0, overflow: 'hidden' }}>
           {ComputedIcon && (
             <ComputedIcon
-              size={isSmall ? 13 : 15}
+              size={isSmall ? 14 : 16}
               color={selectedOption ? '#2563eb' : '#64748b'}
               style={{ flexShrink: 0 }}
             />
@@ -610,79 +663,147 @@ export const SearchableSelect = ({
             left: 0,
             zIndex: 9999,
             backgroundColor: '#ffffff',
-            border: '1px solid #cbd5e1',
+            border: '1px solid #94a3b8',
             borderRadius: '8px',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
             animation: 'fadeIn 0.12s ease-out',
-            minWidth: '320px',
-            maxWidth: '440px',
+            minWidth: '340px',
+            maxWidth: '520px',
+            width: 'max-content',
             ...menuStyle
           }}
         >
           {/* Search Header */}
           <div
             style={{
-              padding: '0.5rem',
+              padding: '0.6rem 0.65rem 0.45rem',
               borderBottom: '1px solid #e2e8f0',
               backgroundColor: '#f8fafc',
               position: 'relative',
               display: 'flex',
-              alignItems: 'center'
+              flexDirection: 'column',
+              gap: '0.4rem'
             }}
           >
-            <Search
-              size={15}
-              color="#3b82f6"
-              style={{
-                position: 'absolute',
-                left: '14px',
-                pointerEvents: 'none'
-              }}
-            />
-            <input
-              ref={searchInputRef}
-              type="text"
-              className="form-control"
-              placeholder={computedSearchPlaceholder}
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setHighlightedIndex(0);
-              }}
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                paddingLeft: '32px',
-                paddingRight: searchQuery ? '28px' : '10px',
-                fontSize: '0.82rem',
-                height: '32px',
-                borderColor: '#bfdbfe',
-                backgroundColor: '#ffffff'
-              }}
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchQuery('');
-                  if (searchInputRef.current) searchInputRef.current.focus();
-                }}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Search
+                size={16}
+                color="#2563eb"
                 style={{
                   position: 'absolute',
-                  right: '14px',
-                  background: 'none',
-                  border: 'none',
-                  color: '#94a3b8',
-                  cursor: 'pointer',
-                  padding: '2px',
+                  left: '12px',
+                  pointerEvents: 'none'
+                }}
+              />
+              <input
+                ref={searchInputRef}
+                type="text"
+                className="form-control"
+                placeholder={computedSearchPlaceholder}
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setHighlightedIndex(0);
+                }}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  paddingLeft: '34px',
+                  paddingRight: searchQuery ? '30px' : '10px',
+                  fontSize: '0.85rem',
+                  height: '34px',
+                  borderColor: '#93c5fd',
+                  backgroundColor: '#ffffff',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                }}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    if (searchInputRef.current) searchInputRef.current.focus();
+                  }}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    background: 'none',
+                    border: 'none',
+                    color: '#94a3b8',
+                    cursor: 'pointer',
+                    padding: '2px',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            {/* Quick Category Filter Pills (if categories exist) */}
+            {availableCategories.length > 0 && (
+              <div
+                style={{
                   display: 'flex',
-                  alignItems: 'center'
+                  gap: '0.3rem',
+                  overflowX: 'auto',
+                  paddingBottom: '2px',
+                  whiteSpace: 'nowrap'
                 }}
               >
-                <X size={13} />
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory('ALL');
+                    setHighlightedIndex(0);
+                  }}
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    padding: '0.2rem 0.55rem',
+                    borderRadius: '12px',
+                    border: '1px solid',
+                    borderColor: selectedCategory === 'ALL' ? '#2563eb' : '#cbd5e1',
+                    background: selectedCategory === 'ALL' ? '#2563eb' : '#ffffff',
+                    color: selectedCategory === 'ALL' ? '#ffffff' : '#475569',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  All ({options.length})
+                </button>
+                {availableCategories.map((cat) => {
+                  const isCatSelected = selectedCategory === cat;
+                  const catCount = options.filter(o => (o.category || o.productCategory || o.type || o.role || o.department) === cat).length;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategory(cat);
+                        setHighlightedIndex(0);
+                      }}
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: '12px',
+                        border: '1px solid',
+                        borderColor: isCatSelected ? '#2563eb' : '#cbd5e1',
+                        background: isCatSelected ? '#2563eb' : '#ffffff',
+                        color: isCatSelected ? '#ffffff' : '#475569',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {cat} ({catCount})
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
 
@@ -698,7 +819,7 @@ export const SearchableSelect = ({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.4rem',
-                padding: '0.45rem 0.85rem',
+                padding: '0.5rem 0.85rem',
                 background: '#eff6ff',
                 color: '#2563eb',
                 border: 'none',
@@ -730,17 +851,17 @@ export const SearchableSelect = ({
             {filteredOptions.length === 0 ? (
               <div
                 style={{
-                  padding: '1.25rem',
+                  padding: '1.5rem',
                   textAlign: 'center',
                   color: '#64748b',
-                  fontSize: '0.82rem',
+                  fontSize: '0.84rem',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: '0.35rem'
+                  gap: '0.4rem'
                 }}
               >
-                <AlertCircle size={18} color="#94a3b8" />
+                <AlertCircle size={20} color="#94a3b8" />
                 <span>{searchQuery ? `No results for "${searchQuery}"` : noResultsText}</span>
                 {onAddNew && (
                   <button
@@ -750,7 +871,7 @@ export const SearchableSelect = ({
                       setIsOpen(false);
                     }}
                     className="btn btn-sm btn-primary"
-                    style={{ marginTop: '0.35rem', fontSize: '0.75rem' }}
+                    style={{ marginTop: '0.35rem', fontSize: '0.78rem' }}
                   >
                     <Plus size={13} /> {addNewLabel}
                   </button>
@@ -769,13 +890,13 @@ export const SearchableSelect = ({
                     onClick={() => handleSelect(opt)}
                     onMouseEnter={() => setHighlightedIndex(index)}
                     style={{
-                      padding: '0.55rem 0.85rem',
+                      padding: '0.6rem 0.85rem',
                       cursor: 'pointer',
-                      borderBottom: '1px solid #f8fafc',
+                      borderBottom: '1px solid #f1f5f9',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      gap: '0.65rem',
+                      gap: '0.75rem',
                       backgroundColor: isHighlighted ? '#eff6ff' : isSelected ? '#f8fafc' : '#ffffff',
                       transition: 'background 0.1s ease'
                     }}
@@ -795,17 +916,17 @@ export const SearchableSelect = ({
           {/* Footer count indicator */}
           <div
             style={{
-              padding: '0.35rem 0.75rem',
+              padding: '0.4rem 0.85rem',
               borderTop: '1px solid #f1f5f9',
               backgroundColor: '#fafafa',
-              fontSize: '0.7rem',
+              fontSize: '0.72rem',
               color: '#94a3b8',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center'
             }}
           >
-            <span>{filteredOptions.length} of {options.length} records</span>
+            <span>{filteredOptions.length} of {options.length} items</span>
             <span style={{ fontSize: '0.68rem' }}>↑↓ Navigate • Enter to select • Esc close</span>
           </div>
         </div>
