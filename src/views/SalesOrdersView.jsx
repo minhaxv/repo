@@ -32,6 +32,7 @@ import {
   Scissors,
   Edit,
   UserCheck,
+  TrendingUp,
   MessageSquare,
   X,
   History,
