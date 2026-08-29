@@ -75,51 +75,56 @@ export const DashboardView = ({ onNavigate }) => {
   const topProducts = [...(products || [])].slice(0, 5);
   const topVendors = [...(vendors || [])].sort((a, b) => (Number(b.pendingPayment) || 0) - (Number(a.pendingPayment) || 0)).slice(0, 5);
 
+  const hour = new Date().getHours();
+  const timeGreeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+
   return (
     <div className="view-container">
-      {/* Hero Command Center Header */}
+      {/* Hero Command Center Header (Mobile First Responsive) */}
       <div
         style={{
           background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #1d4ed8 100%)',
           color: '#ffffff',
           borderRadius: '16px',
-          padding: '1.5rem 1.75rem',
-          marginBottom: '1.5rem',
+          padding: '1.25rem 1.5rem',
+          marginBottom: '1.25rem',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem',
           boxShadow: '0 10px 25px -5px rgba(30, 58, 138, 0.3)'
         }}
       >
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
-            <Sparkles size={20} color="#fde047" />
-            <span style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#93c5fd', fontWeight: 800 }}>
-              ERPNext Command & Analytics Center
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+            <Sparkles size={18} color="#fde047" />
+            <span style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#93c5fd', fontWeight: 800 }}>
+              {timeGreeting}, ScreenArts
             </span>
           </div>
-          <h2 style={{ fontSize: '1.65rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>
-            Printflow Cloud ERP Executive Dashboard
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>
+            ScreenArts Executive Dashboard
           </h2>
-          <p style={{ fontSize: '0.88rem', color: '#cbd5e1', marginTop: '0.25rem' }}>
-            Live Sales • Collections • Production Queues • Designer Productivity • GST Intelligence
+          <p style={{ fontSize: '0.82rem', color: '#cbd5e1', marginTop: '0.2rem', marginBottom: 0 }}>
+            Live Sales • Orders • Production • Delivery • Collections
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button
             onClick={() => onNavigate('reports')}
-            className="btn btn-lg"
+            className="btn btn-sm"
             style={{ background: 'rgba(255,255,255,0.15)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.3)', fontWeight: 700 }}
           >
-            <BarChart2 size={18} /> View All 80+ Reports
+            <BarChart2 size={16} /> Reports
           </button>
           <button
             onClick={() => onNavigate('sales-orders', { create: true })}
-            className="btn btn-lg"
+            className="btn btn-sm"
             style={{ background: '#ffffff', color: '#1e40af', fontWeight: 800, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}
           >
-            <Plus size={18} /> + New Sales Order
+            <Plus size={16} /> + New Order
           </button>
         </div>
       </div>

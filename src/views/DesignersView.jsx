@@ -442,22 +442,105 @@ export const DesignersView = () => {
           </span>
         </div>
 
-        <div className="table-responsive" style={{ maxHeight: '650px', overflowY: 'auto' }}>
-          <table className="erp-table">
-            <thead>
-              <tr>
-                <th style={{ minWidth: '100px' }}>Order #</th>
-                <th style={{ minWidth: '150px' }}>Customer & Mobile</th>
-                <th style={{ minWidth: '200px' }}>Product & Spec</th>
-                <th style={{ minWidth: '90px' }}>Priority</th>
-                <th style={{ minWidth: '110px' }}>Delivery Date</th>
-                <th style={{ minWidth: '100px' }}>Est. Hours</th>
-                <th style={{ minWidth: '140px' }}>Assigned Designer</th>
-                <th style={{ minWidth: '140px' }}>Design Status</th>
-                <th style={{ minWidth: '130px' }}>Artwork Proof</th>
-                <th style={{ minWidth: '220px', textAlign: 'center' }}>Actions</th>
-              </tr>
-            </thead>
+        {/* MOBILE CARDS VIEW */}
+        <div className="mobile-only" style={{ padding: '0.75rem' }}>
+          {filteredJobs.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+              No design jobs found matching current filters.
+            </div>
+          ) : (
+            filteredJobs.map((job, idx) => {
+              const isUnassigned = !job.designerId || job.designStatus === 'Pending';
+              const isMyJob = job.designerId && (job.designerId === currentDesignerObj.id || job.designerName === currentDesignerName);
+
+              return (
+                <div key={`${job.orderId}-${job.item.id}-${idx}`} className="mobile-order-card" style={{ borderLeft: `4px solid ${job.jobPriority === 'Urgent' ? '#e11d48' : '#7c3aed'}` }}>
+                  <div className="mobile-order-card-header">
+                    <div>
+                      <span className="mobile-order-card-id">{job.orderId}</span>
+                      <span className="badge badge-secondary" style={{ marginLeft: '0.35rem' }}>{job.orderType}</span>
+                    </div>
+                    <span className={`badge ${
+                      job.designStatus === 'Completed' || job.artworkStatus === 'Approved' ? 'badge-emerald' :
+                      job.designStatus === 'In Progress' ? 'badge-blue' :
+                      job.designStatus === 'Waiting for Customer' ? 'badge-amber' :
+                      job.designStatus === 'Revision Required' ? 'badge-rose' : 'badge-purple'
+                    }`}>
+                      {job.designStatus || job.artworkStatus || 'Pending'}
+                    </span>
+                  </div>
+
+                  <div className="mobile-order-card-body">
+                    <div className="mobile-order-customer">{job.customerName}</div>
+                    <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#0f172a' }}>{job.item.productName}</div>
+                    <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                      {job.item.material || 'Standard Substrate'} | {job.item.width && job.item.height ? `${job.item.width}×${job.item.height} ${job.item.unit}` : 'Custom Size'}
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.4rem' }}>
+                      <span className={`badge ${job.jobPriority === 'Urgent' ? 'badge-rose' : job.jobPriority === 'High' ? 'badge-amber' : 'badge-blue'}`}>
+                        {job.jobPriority} Priority
+                      </span>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#7c3aed' }}>
+                        {job.designerName ? `Designer: ${job.designerName}` : '⚡ Unassigned'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mobile-order-actions">
+                    {isUnassigned ? (
+                      <button
+                        onClick={() => handleTakeJob(job)}
+                        className="btn btn-sm btn-warning"
+                        style={{ flex: 1, background: '#f59e0b', color: '#fff', fontWeight: 800 }}
+                      >
+                        ⚡ Take Job
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => setActiveJobAction({ job, mode: 'UPLOAD' })}
+                          className="btn btn-sm btn-secondary"
+                          style={{ flex: 1, fontSize: '0.75rem', fontWeight: 700 }}
+                        >
+                          Upload Proof
+                        </button>
+                        {job.designStatus !== 'Completed' && (
+                          <button
+                            onClick={() => handleMarkCompleted(job)}
+                            className="btn btn-sm btn-success"
+                            style={{ flex: 1, background: '#059669', color: '#fff', fontWeight: 800, fontSize: '0.75rem' }}
+                          >
+                            Finish Design
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* DESKTOP TABLE VIEW */}
+        <div className="desktop-only">
+          <div className="table-responsive" style={{ maxHeight: '650px', overflowY: 'auto' }}>
+            <table className="erp-table">
+              <thead>
+                <tr>
+                  <th style={{ minWidth: '100px' }}>Order #</th>
+                  <th style={{ minWidth: '150px' }}>Customer & Mobile</th>
+                  <th style={{ minWidth: '200px' }}>Product & Spec</th>
+                  <th style={{ minWidth: '90px' }}>Priority</th>
+                  <th style={{ minWidth: '110px' }}>Delivery Date</th>
+                  <th style={{ minWidth: '100px' }}>Est. Hours</th>
+                  <th style={{ minWidth: '140px' }}>Assigned Designer</th>
+                  <th style={{ minWidth: '140px' }}>Design Status</th>
+                  <th style={{ minWidth: '130px' }}>Artwork Proof</th>
+                  <th style={{ minWidth: '220px', textAlign: 'center' }}>Actions</th>
+                </tr>
+              </thead>
             <tbody>
               {filteredJobs.length === 0 ? (
                 <tr>
@@ -671,6 +754,7 @@ export const DesignersView = () => {
           </table>
         </div>
       </div>
+    </div>
 
       {/* Action Modal (Upload / Note / Pause) */}
       {activeJobAction && (

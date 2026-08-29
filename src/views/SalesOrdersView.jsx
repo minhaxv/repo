@@ -38,7 +38,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 
-export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null, initialType = 'Direct', initialCust = null, onNavigate = null }) => {
+export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null, initialType = 'Direct', initialCust = null, onNavigate = null, isQuotationsOnly = false }) => {
   const {
     salesOrders,
     customers,
@@ -64,6 +64,8 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
     updateVendorBill
   } = useERP();
 
+  const isQuotationsMode = isQuotationsOnly || initialType === 'Quotation';
+
   const [isCreateEmpModalOpen, setIsCreateEmpModalOpen] = useState(false);
   const [createEmpDept, setCreateEmpDept] = useState('Sales');
   const [empTargetType, setEmpTargetType] = useState('sales'); // 'sales' or 'designer'
@@ -72,7 +74,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
   const [viewMode, setViewMode] = useState(initialCreate ? 'create' : 'list');
   const [selectedOrderId, setSelectedOrderId] = useState(initialSelectId);
   const [editingOrderId, setEditingOrderId] = useState(null);
-  const [activeTabFilter, setActiveTabFilter] = useState('ALL');
+  const [activeTabFilter, setActiveTabFilter] = useState(isQuotationsMode ? 'ALL_QUOTES' : 'ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSavingOrder, setIsSavingOrder] = useState(false);
 
@@ -233,6 +235,18 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
     };
     setSelectedCust(mappedCust);
     setCustSearchTerm(`${mappedCust.name}${mappedCust.mobile ? ` (${mappedCust.mobile})` : ''}`);
+
+    const targetCareOfId = cust.careOfId || cust.care_of_id;
+    if (targetCareOfId) {
+      const foundCO = (careOfPersons || []).find((co) => co.id === targetCareOfId);
+      if (foundCO) {
+        setOrderHeader((prev) => ({
+          ...prev,
+          careOfId: foundCO.id,
+          careOfName: foundCO.name
+        }));
+      }
+    }
   };
 
   // Handle Edit Order action
@@ -461,8 +475,8 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
       }),
       advanceAmount: parseFloat(paymentInfo.advanceAmount) || 0,
       paymentMethod: paymentInfo.paymentMethod,
-      bankAccountId: paymentInfo.bankAccountId || '',
-      bankAccountName: paymentInfo.bankAccountName || (companyBankAccounts || []).find((b) => b.id === paymentInfo.bankAccountId)?.bankName || '',
+      bankAccountId: (paymentInfo.paymentMethod === 'Cash' || paymentInfo.paymentMethod === PAYMENT_METHODS.CASH) ? '' : (paymentInfo.bankAccountId || ''),
+      bankAccountName: (paymentInfo.paymentMethod === 'Cash' || paymentInfo.paymentMethod === PAYMENT_METHODS.CASH) ? '' : (paymentInfo.bankAccountName || (companyBankAccounts || []).find((b) => b.id === paymentInfo.bankAccountId)?.bankName || ''),
       deliveryMode: 'Local Express Delivery'
     };
 
@@ -545,21 +559,35 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
     }
   };
 
-  // Filtered Orders List
+  // Filtered Orders List (Strict separation: Quotations vs Sales Orders)
   const filteredOrders = (salesOrders || []).filter((o) => {
     const matchesSearch =
       (o.id || '').toLowerCase().includes((searchQuery || '').toLowerCase()) ||
       (o.customerName || '').toLowerCase().includes((searchQuery || '').toLowerCase()) ||
       (o.customerMobile || '').includes(searchQuery || '');
 
-    if (activeTabFilter === 'ALL') return matchesSearch;
-    if (activeTabFilter === 'DIRECT') return matchesSearch && (o.orderType === 'Direct' || !o.orderType) && !o.convertedFromQuotation && o.productionStatus !== 'Cancelled';
-    if (activeTabFilter === 'QUOTATIONS') return matchesSearch && o.orderType === 'Quotation' && o.productionStatus !== 'Cancelled';
-    if (activeTabFilter === 'CONVERTED') return matchesSearch && (o.convertedFromQuotation || o.quotationStatus === 'Converted');
-    if (activeTabFilter === 'PRODUCTION') return matchesSearch && o.orderType !== 'Quotation' && ['New', 'Design', 'Printing', 'Outsource', 'Finishing', 'Quality Check'].includes(o.productionStatus);
-    if (activeTabFilter === 'DELIVERED') return matchesSearch && o.productionStatus === 'Delivered';
-    if (activeTabFilter === 'CANCELLED') return matchesSearch && (o.productionStatus === 'Cancelled' || o.isCancelled);
-    return matchesSearch;
+    if (!matchesSearch) return false;
+
+    if (isQuotationsMode) {
+      // STRICT: ONLY QUOTATIONS
+      if (o.orderType !== 'Quotation') return false;
+      if (activeTabFilter === 'ALL_QUOTES' || activeTabFilter === 'ALL') return true;
+      if (activeTabFilter === 'DRAFT_SENT') return o.quotationStatus === 'Draft' || o.quotationStatus === 'Sent to Customer' || !o.quotationStatus;
+      if (activeTabFilter === 'APPROVED') return o.quotationStatus === 'Customer Approved';
+      if (activeTabFilter === 'CONVERTED') return o.quotationStatus === 'Converted' || o.convertedFromQuotation;
+      if (activeTabFilter === 'REJECTED') return o.quotationStatus === 'Rejected';
+      return true;
+    } else {
+      // STRICT: ONLY SALES ORDERS (NO QUOTATIONS)
+      if (o.orderType === 'Quotation') return false;
+      if (activeTabFilter === 'ALL') return true;
+      if (activeTabFilter === 'DIRECT') return (o.orderType === 'Direct' || !o.orderType) && !o.convertedFromQuotation && o.productionStatus !== 'Cancelled';
+      if (activeTabFilter === 'FROM_QUOTATION' || activeTabFilter === 'CONVERTED') return (o.convertedFromQuotation || o.quotationStatus === 'Converted');
+      if (activeTabFilter === 'PRODUCTION') return ['New', 'Design', 'Printing', 'Outsource', 'Finishing', 'Quality Check'].includes(o.productionStatus);
+      if (activeTabFilter === 'DELIVERED') return o.productionStatus === 'Delivered';
+      if (activeTabFilter === 'CANCELLED') return (o.productionStatus === 'Cancelled' || o.isCancelled);
+      return true;
+    }
   });
 
   const selectedOrder = (salesOrders || []).find((o) => o.id === selectedOrderId) || (salesOrders || [])[0] || null;
@@ -570,33 +598,50 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <ShoppingCart size={24} color="#2563eb" />
-            {viewMode === 'create' ? 'Create New Sales Order' : viewMode === 'detail' ? `Sales Order ${selectedOrder?.id}` : 'Sales Orders Hub'}
+            {isQuotationsMode ? (
+              <FileText size={24} color="#d97706" />
+            ) : (
+              <ShoppingCart size={24} color="#2563eb" />
+            )}
+            {viewMode === 'create'
+              ? (isQuotationsMode ? 'Create New Quotation' : 'Create New Sales Order')
+              : viewMode === 'detail'
+                ? `${isQuotationsMode ? 'Quotation' : 'Sales Order'} ${selectedOrder?.id}`
+                : (isQuotationsMode ? 'Quotations Hub' : 'Sales Orders Hub')}
           </h2>
           <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
             {viewMode === 'create'
-              ? 'Job Card auto-generated upon order confirmation • Multi-item dynamic calculation'
-              : 'Sales Order is the central engine of PrintFlow ERP'}
+              ? (isQuotationsMode ? 'Estimate, send to customer for proof/approval, and 1-click convert to Sales Order' : 'Job Card auto-generated upon order confirmation • Multi-item dynamic calculation')
+              : (isQuotationsMode ? 'Estimate, send to customer for proof/approval, and 1-click convert to Sales Order' : 'Sales Order is the central engine of PrintFlow ERP • Track Job Cards & Production')}
           </span>
         </div>
 
         <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => onNavigate ? onNavigate('sales-order-audit') : window.dispatchEvent(new CustomEvent('ERP_NAVIGATE_AUDIT'))}
-            className="btn btn-secondary"
-            style={{ color: '#7c3aed', borderColor: '#ddd6fe', background: '#f5f3ff', fontWeight: 700 }}
-            title="Open central audit trail of all order edits, cancellations, and deletions"
-          >
-            <History size={16} color="#7c3aed" /> Order Revision & Audit Logs ({orderAuditLogs?.length || 0})
-          </button>
+          {!isQuotationsMode && (
+            <button
+              onClick={() => onNavigate ? onNavigate('sales-order-audit') : window.dispatchEvent(new CustomEvent('ERP_NAVIGATE_AUDIT'))}
+              className="btn btn-secondary"
+              style={{ color: '#7c3aed', borderColor: '#ddd6fe', background: '#f5f3ff', fontWeight: 700 }}
+              title="Open central audit trail of all order edits, cancellations, and deletions"
+            >
+              <History size={16} color="#7c3aed" /> Order Revision & Audit Logs ({orderAuditLogs?.length || 0})
+            </button>
+          )}
           {viewMode !== 'list' && (
             <button onClick={() => setViewMode('list')} className="btn btn-secondary">
-              <ArrowLeft size={16} /> Back to Order List
+              <ArrowLeft size={16} /> Back to {isQuotationsMode ? 'Quotations' : 'Orders'} List
             </button>
           )}
           {viewMode !== 'create' && (
-            <button onClick={() => setViewMode('create')} className="btn btn-primary">
-              <Plus size={16} /> + New Sales Order (Alt+N)
+            <button
+              onClick={() => {
+                setOrderHeader((prev) => ({ ...prev, orderType: isQuotationsMode ? 'Quotation' : 'Direct' }));
+                setViewMode('create');
+              }}
+              className="btn btn-primary"
+              style={isQuotationsMode ? { background: '#d97706', borderColor: '#d97706' } : {}}
+            >
+              <Plus size={16} /> + New {isQuotationsMode ? 'Quotation' : 'Sales Order (Alt+N)'}
             </button>
           )}
         </div>
@@ -1374,7 +1419,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.85rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: (paymentInfo.paymentMethod === 'Cash' || paymentInfo.paymentMethod === PAYMENT_METHODS.CASH) ? '1fr 1fr' : '1fr 1fr 1fr', gap: '0.85rem' }}>
                   <div className="form-group">
                     <label className="form-label" style={{ fontWeight: 700 }}>Advance Amount (₹)</label>
                     <input
@@ -1391,7 +1436,16 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                     <select
                       className="form-select"
                       value={paymentInfo.paymentMethod}
-                      onChange={(e) => setPaymentInfo({ ...paymentInfo, paymentMethod: e.target.value })}
+                      onChange={(e) => {
+                        const newMethod = e.target.value;
+                        const isCash = newMethod === 'Cash' || newMethod === PAYMENT_METHODS.CASH;
+                        setPaymentInfo({
+                          ...paymentInfo,
+                          paymentMethod: newMethod,
+                          bankAccountId: isCash ? '' : (paymentInfo.bankAccountId || companyBankAccounts[0]?.id || ''),
+                          bankAccountName: isCash ? '' : (paymentInfo.bankAccountName || companyBankAccounts[0]?.bankName || '')
+                        });
+                      }}
                     >
                       {Object.values(PAYMENT_METHODS).map((m) => (
                         <option key={m} value={m}>{m}</option>
@@ -1399,30 +1453,32 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                     </select>
                   </div>
 
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 700, color: '#1e40af', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <Building2 size={14} /> Deposit Bank Account
-                    </label>
-                    <select
-                      className="form-select"
-                      style={{ fontWeight: 700, background: '#eff6ff', color: '#1e40af' }}
-                      value={paymentInfo.bankAccountId || companyBankAccounts[0]?.id || ''}
-                      onChange={(e) => {
-                        const bank = companyBankAccounts.find((b) => b.id === e.target.value);
-                        setPaymentInfo({
-                          ...paymentInfo,
-                          bankAccountId: e.target.value,
-                          bankAccountName: bank?.bankName || ''
-                        });
-                      }}
-                    >
-                      {companyBankAccounts.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.bankName} ({b.accountNo.slice(-4)})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {paymentInfo.paymentMethod !== 'Cash' && paymentInfo.paymentMethod !== PAYMENT_METHODS.CASH && (
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 700, color: '#1e40af', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <Building2 size={14} /> Deposit Bank Account
+                      </label>
+                      <select
+                        className="form-select"
+                        style={{ fontWeight: 700, background: '#eff6ff', color: '#1e40af' }}
+                        value={paymentInfo.bankAccountId || companyBankAccounts[0]?.id || ''}
+                        onChange={(e) => {
+                          const bank = companyBankAccounts.find((b) => b.id === e.target.value);
+                          setPaymentInfo({
+                            ...paymentInfo,
+                            bankAccountId: e.target.value,
+                            bankAccountName: bank?.bankName || ''
+                          });
+                        }}
+                      >
+                        {companyBankAccounts.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.bankName} ({b.accountNo.slice(-4)})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group">
@@ -1531,19 +1587,25 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
           <div className="card" style={{ padding: '0.85rem 1.25rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                {[
-                  { id: 'ALL', label: 'ALL' },
+                {(isQuotationsMode ? [
+                  { id: 'ALL_QUOTES', label: 'ALL QUOTATIONS' },
+                  { id: 'DRAFT_SENT', label: 'DRAFT / SENT' },
+                  { id: 'APPROVED', label: 'APPROVED' },
+                  { id: 'CONVERTED', label: 'CONVERTED TO ORDER' },
+                  { id: 'REJECTED', label: 'REJECTED' }
+                ] : [
+                  { id: 'ALL', label: 'ALL SALES ORDERS' },
                   { id: 'DIRECT', label: 'DIRECT ORDERS' },
-                  { id: 'QUOTATIONS', label: 'QUOTATIONS' },
-                  { id: 'CONVERTED', label: 'CONVERTED' },
+                  { id: 'FROM_QUOTATION', label: 'FROM QUOTATION' },
                   { id: 'PRODUCTION', label: 'PRODUCTION QUEUE' },
                   { id: 'DELIVERED', label: 'DELIVERED' },
                   { id: 'CANCELLED', label: 'CANCELLED' }
-                ].map((tab) => (
+                ]).map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTabFilter(tab.id)}
                     className={`btn btn-sm ${activeTabFilter === tab.id ? 'btn-primary' : 'btn-secondary'}`}
+                    style={activeTabFilter === tab.id && isQuotationsMode ? { background: '#d97706', borderColor: '#d97706', color: '#fff' } : {}}
                   >
                     {tab.label}
                   </button>
@@ -1564,10 +1626,109 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
             </div>
           </div>
 
-          {/* Orders Master Table */}
-          <div className="card">
-            <div className="table-responsive">
-              <table className="erp-table">
+          {/* Orders Master List Container */}
+          <div className="card" style={{ background: 'transparent', border: 'none', boxShadow: 'none', padding: 0 }}>
+            {/* MOBILE ORDER CARDS (Visible on Mobile Screens < 768px) */}
+            <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {filteredOrders.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8', background: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
+                  No orders found matching your search.
+                </div>
+              ) : (
+                filteredOrders.map((order) => {
+                  const isQuote = order.orderType === 'Quotation';
+                  const prodStatus = order.productionStatus || 'Pending';
+                  return (
+                    <div key={order.id} className="mobile-order-card">
+                      <div className="mobile-order-header">
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: '0.95rem', color: isQuote ? '#d97706' : '#1e40af', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            {order.id}
+                            {isQuote ? (
+                              <span className="badge badge-amber" style={{ fontSize: '0.65rem' }}>Quote</span>
+                            ) : (
+                              <span className="badge badge-blue" style={{ fontSize: '0.65rem' }}>SO</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                            {order.orderDate} • Delivery: <strong style={{ color: '#d97706' }}>{order.deliveryDate || 'TBD'}</strong>
+                          </div>
+                        </div>
+                        <span className={`badge ${
+                          order.productionStatus === 'Cancelled' ? 'badge-rose' :
+                          order.productionStatus === 'Ready for Delivery' ? 'badge-emerald' :
+                          order.productionStatus === 'Delivered' ? 'badge-slate' :
+                          order.productionStatus === 'Printing' ? 'badge-blue' : 'badge-amber'
+                        }`}>
+                          {prodStatus}
+                        </span>
+                      </div>
+
+                      <div className="mobile-order-body">
+                        <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.9rem' }}>
+                          {order.customerName || 'Walk-in Customer'}
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                          {order.items && order.items.length > 0 ? (
+                            <span>{order.items[0].productName} ({order.items[0].qty} {order.items[0].unit || 'pcs'}) {order.items.length > 1 ? `+${order.items.length - 1} more` : ''}</span>
+                          ) : 'Custom Printing Item'}
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.35rem', paddingTop: '0.35rem', borderTop: '1px dashed #e2e8f0' }}>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Grand Total:</span>
+                            <div style={{ fontWeight: 800, fontSize: '1rem', color: '#0f172a' }}>₹{Number(order?.grandTotal ?? 0).toLocaleString()}</div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Balance:</span>
+                            <div style={{ fontWeight: 800, fontSize: '0.9rem', color: (order?.balanceAmount || 0) > 0 ? '#e11d48' : '#059669' }}>
+                              ₹{Number(order?.balanceAmount ?? 0).toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mobile-order-actions">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedOrderId(order.id);
+                            setViewMode('detail');
+                          }}
+                          className="btn btn-sm btn-primary"
+                          style={{ flex: 1, fontSize: '0.78rem', fontWeight: 700 }}
+                        >
+                          View Details
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSendWhatsApp(order, companyProfile, trackWhatsAppSent)}
+                          className="btn btn-sm"
+                          style={{ background: '#25d366', color: '#fff', border: 'none', padding: '0.2rem 0.55rem', fontWeight: 700 }}
+                          title="Send WhatsApp"
+                        >
+                          WhatsApp
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleEditOrder(order)}
+                          className="btn btn-sm btn-secondary"
+                          style={{ padding: '0.2rem 0.55rem', color: '#2563eb', fontWeight: 700 }}
+                          title="Edit Order"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* DESKTOP TABLE (Visible on Tablets & Desktop >= 768px) */}
+            <div className="desktop-only card" style={{ padding: 0 }}>
+              <div className="table-responsive">
+                <table className="erp-table">
                 <thead>
                   <tr>
                     <th>Doc ID / Type</th>
@@ -1707,7 +1868,8 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                     );
                   })}
                 </tbody>
-              </table>
+                </table>
+              </div>
             </div>
           </div>
         </div>

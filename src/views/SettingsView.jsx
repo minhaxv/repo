@@ -259,6 +259,66 @@ export const SettingsView = () => {
           </div>
         </div>
 
+        {/* Global Commission & Incentive Rules Card */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title" style={{ color: '#7c3aed' }}>
+              <Settings size={18} color="#7c3aed" /> Admin Commission & Incentive Master Policy
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 700 }}>Default Care Of Commission (%)</label>
+              <input
+                type="number"
+                step="0.1"
+                className="form-control"
+                defaultValue={localStorage.getItem('erp_default_careof_pct') || '5.0'}
+                onChange={(e) => localStorage.setItem('erp_default_careof_pct', e.target.value)}
+              />
+              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Default referral rate for new Care Of agents</span>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 700 }}>Default Care Of Calculation Basis</label>
+              <select
+                className="form-select"
+                defaultValue={localStorage.getItem('erp_default_careof_basis') || 'profit'}
+                onChange={(e) => localStorage.setItem('erp_default_careof_basis', e.target.value)}
+              >
+                <option value="profit">Net Profit Based (% of Gross Profit)</option>
+                <option value="sales">Sales Total Based (% of Subtotal)</option>
+              </select>
+              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Default calculation formula</span>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 700 }}>Default Sales Executive Rate (%)</label>
+              <input
+                type="number"
+                step="0.1"
+                className="form-control"
+                defaultValue={localStorage.getItem('erp_default_sales_pct') || '3.5'}
+                onChange={(e) => localStorage.setItem('erp_default_sales_pct', e.target.value)}
+              />
+              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Default commission rate for sales staff</span>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 700 }}>Worker Incentive Per Sq.Ft (₹)</label>
+              <input
+                type="number"
+                step="0.05"
+                className="form-control"
+                defaultValue={localStorage.getItem('erp_default_worker_sqft') || '0.50'}
+                onChange={(e) => localStorage.setItem('erp_default_worker_sqft', e.target.value)}
+              />
+              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Per square foot production rate</span>
+            </div>
+          </div>
+        </div>
+
         <div>
           <button type="submit" className="btn btn-primary btn-lg">
             <Check size={18} /> Save Settings & Update Profile

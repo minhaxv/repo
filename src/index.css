@@ -985,17 +985,312 @@ body {
   .form-control,
   .form-select,
   .form-input {
-    min-height: 42px !important;
-    font-size: 0.9rem !important;
+    min-height: 44px !important;
+    font-size: 0.92rem !important;
   }
 
   .btn {
-    min-height: 38px !important;
+    min-height: 44px !important;
+    font-size: 0.9rem !important;
   }
 
   .btn-sm {
-    min-height: 32px !important;
+    min-height: 36px !important;
   }
+}
+
+/* ==========================================================================
+   Mobile-First Navigation & Component Design System
+   ========================================================================== */
+
+/* Fixed Mobile Bottom Navigation Bar */
+.mobile-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: #0f172a;
+    border-top: 1px solid #1e293b;
+    z-index: 1000;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0 0.25rem;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .mobile-bottom-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: #94a3b8;
+    flex: 1;
+    height: 100%;
+    cursor: pointer;
+    gap: 2px;
+    transition: color 0.15s ease;
+  }
+
+  .mobile-bottom-nav-item.active {
+    color: #3b82f6;
+    font-weight: 700;
+  }
+
+  .mobile-nav-icon-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 24px;
+  }
+
+  .mobile-nav-label {
+    font-size: 0.68rem;
+    line-height: 1;
+    font-weight: 600;
+  }
+
+  /* Prominent Floating Center Action Button (+ New Order) */
+  .mobile-bottom-nav-prominent-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    cursor: pointer;
+    flex: 1;
+    position: relative;
+    top: -12px;
+    z-index: 1001;
+  }
+
+  .prominent-plus-circle {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.5), 0 0 0 4px #0f172a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .mobile-bottom-nav-prominent-btn:active .prominent-plus-circle {
+    transform: scale(0.92);
+  }
+
+  .prominent-label {
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: #ffffff;
+    margin-top: 2px;
+    letter-spacing: 0.2px;
+  }
+
+  .main-content main {
+    padding-bottom: 76px !important;
+  }
+}
+
+/* Mobile More Drawer Sheet */
+.mobile-drawer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.mobile-drawer-sheet {
+  background: #ffffff;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  padding: 1.25rem 1rem 2rem 1rem;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mobile-drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.mobile-drawer-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.mobile-drawer-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0.9rem 0.5rem;
+  cursor: pointer;
+  gap: 0.4rem;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.mobile-drawer-item:active {
+  transform: scale(0.96);
+  background: #eff6ff;
+}
+
+.mobile-drawer-item.active {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.mobile-drawer-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-drawer-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #1e293b;
+  text-align: center;
+}
+
+/* Mobile Card & Step Wizard Components */
+.mobile-card {
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  padding: 1rem;
+  margin-bottom: 0.85rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+}
+
+.mobile-order-card {
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  padding: 1rem;
+  margin-bottom: 0.85rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.mobile-order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 0.5rem;
+}
+
+.mobile-order-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.mobile-order-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+/* Step Wizard for Mobile Forms */
+.step-wizard-header {
+  display: flex;
+  overflow-x: auto;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.step-pill {
+  padding: 0.4rem 0.85rem;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+}
+
+.step-pill.active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
+.step-pill.completed {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
+}
+
+/* Touch Friendly Large Inputs */
+@media (max-width: 767px) {
+  input, select, textarea, button {
+    touch-action: manipulation;
+  }
+
+  .form-control, .form-select {
+    font-size: 16px !important; /* Prevents auto-zoom on iOS */
+  }
+
+  .desktop-only {
+    display: none !important;
+  }
+}
+
+@media (min-width: 768px) {
+  .mobile-only {
+    display: none !important;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
 }
 
 /* Print Utilities */
@@ -1019,3 +1314,4 @@ body {
     display: none !important;
   }
 }
+

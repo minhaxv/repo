@@ -59,12 +59,12 @@ const MainAppContent = () => {
   // Handle cross-module navigation helper
   const handleNavigate = (tab, params = {}) => {
     if (tab === 'quotations') {
-      setActiveTab('sales-orders');
+      setActiveTab('quotations');
       setSalesOrderParams({ create: false, selectId: null, initialType: 'Quotation', ...params });
     } else {
       setActiveTab(tab);
       if (tab === 'sales-orders') {
-        setSalesOrderParams(params);
+        setSalesOrderParams({ create: false, selectId: null, initialType: 'Direct', ...params });
       }
     }
   };
@@ -160,12 +160,13 @@ const MainAppContent = () => {
         <main style={{ flex: 1, paddingBottom: '3rem' }}>
           <ErrorBoundary key={activeTab}>
             {activeTab === 'dashboard' && <DashboardView onNavigate={handleNavigate} />}
-            {activeTab === 'sales-orders' && (
+            {(activeTab === 'sales-orders' || activeTab === 'quotations') && (
               <SalesOrdersView
-                key={`${salesOrderParams.create}-${salesOrderParams.selectId}-${salesOrderParams.initialType}-${salesOrderParams.initialCust?.id}`}
+                key={`${activeTab}-${salesOrderParams.create}-${salesOrderParams.selectId}-${salesOrderParams.initialType}-${salesOrderParams.initialCust?.id}`}
+                isQuotationsOnly={activeTab === 'quotations' || salesOrderParams.initialType === 'Quotation'}
                 initialCreate={salesOrderParams.create}
                 initialSelectId={salesOrderParams.selectId}
-                initialType={salesOrderParams.initialType || 'Direct'}
+                initialType={activeTab === 'quotations' ? 'Quotation' : (salesOrderParams.initialType || 'Direct')}
                 initialCust={salesOrderParams.initialCust || null}
                 onNavigate={handleNavigate}
               />

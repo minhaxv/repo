@@ -1,18 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useERP } from '../../context/ERPContext';
 import { CUSTOMER_TYPES } from '../../types';
-import { X, UserPlus, Building, Phone, Mail, MapPin, Hash, Check } from 'lucide-react';
-
+import { X, UserCheck, Phone, Mail, MapPin, Hash, Check, Building } from 'lucide-react';
 import CreateCareOfModal from './CreateCareOfModal';
 
-export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initialMobile = '' }) => {
-  const { addCustomer, customers, careOfPersons } = useERP();
+export const EditCustomerModal = ({ isOpen, onClose, customer }) => {
+  const { updateCustomer, careOfPersons } = useERP();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreateCareOfOpen, setIsCreateCareOfOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [formData, setFormData] = useState({
     name: '',
-    mobile: initialMobile,
+    mobile: '',
     email: '',
     gstin: '',
     type: CUSTOMER_TYPES.WALKIN,
@@ -22,19 +21,25 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
     careOfId: ''
   });
 
-  // Sync initialMobile when modal opens
-  React.useEffect(() => {
-    if (isOpen) {
-      setFormData((prev) => ({
-        ...prev,
-        mobile: initialMobile || prev.mobile
-      }));
+  useEffect(() => {
+    if (isOpen && customer) {
+      setFormData({
+        name: customer.name || '',
+        mobile: customer.mobile || '',
+        email: customer.email || '',
+        gstin: customer.gstin || '',
+        type: customer.type || CUSTOMER_TYPES.WALKIN,
+        address: customer.address || '',
+        state: customer.state || 'Maharashtra (27)',
+        creditLimit: customer.creditLimit ?? customer.credit_limit ?? 50000,
+        careOfId: customer.careOfId ?? customer.care_of_id ?? ''
+      });
       setErrorMsg('');
       setIsSubmitting(false);
     }
-  }, [isOpen, initialMobile]);
+  }, [isOpen, customer]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !customer) return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -45,46 +50,23 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
     const cleanMobile = (formData.mobile || '').trim();
 
     if (!cleanName || !cleanMobile) {
-      setErrorMsg('Please fill in Customer Name and Mobile Number.');
+      setErrorMsg('Customer Name and Mobile Number are required.');
       return;
-    }
-
-    // Check for duplicate customer mobile number
-    const existing = (customers || []).find((c) => c.mobile && c.mobile.trim() === cleanMobile);
-    if (existing) {
-      if (!window.confirm(`A customer named "${existing.name}" already exists with mobile ${cleanMobile}. Do you want to select the existing customer?`)) {
-        setErrorMsg(`Customer with mobile ${cleanMobile} already exists.`);
-        return;
-      } else {
-        if (onCustomerCreated) {
-          onCustomerCreated(existing);
-        }
-        onClose();
-        return;
-      }
     }
 
     try {
       setIsSubmitting(true);
       const selectedCareOf = (careOfPersons || []).find(co => co.id === formData.careOfId);
-      const created = await addCustomer({
+      await updateCustomer(customer.id, {
         ...formData,
         name: cleanName,
         mobile: cleanMobile,
         careOfId: formData.careOfId,
         careOfName: selectedCareOf?.name || ''
       });
-
-      if (created) {
-        if (onCustomerCreated) {
-          onCustomerCreated(created);
-        }
-        onClose();
-      } else {
-        setErrorMsg('Failed to save customer. Please try again.');
-      }
+      onClose();
     } catch (err) {
-      setErrorMsg(err.message || 'An error occurred while saving customer.');
+      setErrorMsg(err.message || 'An error occurred while updating customer.');
     } finally {
       setIsSubmitting(false);
     }
@@ -92,19 +74,19 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
-        <div className="modal-header">
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '620px' }}>
+        <div className="modal-header" style={{ background: '#0f172a', color: '#ffffff' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <UserPlus size={20} color="#2563eb" />
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>Create New Customer</h3>
+            <Building size={20} color="#60a5fa" />
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0, color: '#fff' }}>
+              Edit Customer Account — {customer.code || customer.id}
+            </h3>
           </div>
-          <button onClick={onClose} className="btn-secondary btn-icon" style={{ border: 'none' }} disabled={isSubmitting}>
-            <X size={20} />
-          </button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1.2rem' }} disabled={isSubmitting}>✕</button>
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="modal-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div className="modal-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', padding: '1.25rem' }}>
             {errorMsg && (
               <div style={{ gridColumn: 'span 2', background: '#fef2f2', border: '1px solid #fca5a5', color: '#991b1b', padding: '0.6rem 0.85rem', borderRadius: '6px', fontSize: '0.82rem', fontWeight: 600 }}>
                 {errorMsg}
@@ -112,29 +94,22 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
             )}
 
             <div className="form-group" style={{ gridColumn: 'span 2' }}>
-              <label className="form-label">
-                <UserPlus size={14} /> Customer Name *
-              </label>
+              <label className="form-label">Customer Name *</label>
               <input
                 type="text"
                 className="form-control"
-                placeholder="e.g. Acme Advertising Pvt Ltd or Rajesh Sharma"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
-                autoFocus
                 disabled={isSubmitting}
               />
             </div>
 
             <div className="form-group">
-              <label className="form-label">
-                <Phone size={14} /> Mobile Number *
-              </label>
+              <label className="form-label">Mobile Number *</label>
               <input
                 type="tel"
                 className="form-control"
-                placeholder="10-digit Mobile"
                 value={formData.mobile}
                 onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
                 required
@@ -157,13 +132,10 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
             </div>
 
             <div className="form-group">
-              <label className="form-label">
-                <Hash size={14} /> GSTIN (Optional)
-              </label>
+              <label className="form-label">GSTIN (Optional)</label>
               <input
                 type="text"
                 className="form-control"
-                placeholder="e.g. 27AAACP9988K1Z2"
                 value={formData.gstin}
                 onChange={(e) => setFormData({ ...formData, gstin: e.target.value.toUpperCase() })}
                 disabled={isSubmitting}
@@ -175,7 +147,6 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
               <input
                 type="number"
                 className="form-control"
-                placeholder="e.g. 50000"
                 value={formData.creditLimit}
                 onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
                 disabled={isSubmitting}
@@ -187,17 +158,32 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
               <input
                 type="email"
                 className="form-control"
-                placeholder="billing@customer.com"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 disabled={isSubmitting}
               />
             </div>
 
+            <div className="form-group">
+              <label className="form-label">State Code</label>
+              <select
+                className="form-select"
+                value={formData.state}
+                onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                disabled={isSubmitting}
+              >
+                <option value="Maharashtra (27)">Maharashtra (27) - Intra-state</option>
+                <option value="Gujarat (24)">Gujarat (24) - Interstate</option>
+                <option value="Delhi (07)">Delhi (07) - Interstate</option>
+                <option value="Karnataka (29)">Karnataka (29) - Interstate</option>
+                <option value="Tamil Nadu (33)">Tamil Nadu (33) - Interstate</option>
+              </select>
+            </div>
+
             <div className="form-group" style={{ gridColumn: 'span 2' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-                <label className="form-label" style={{ margin: 0, fontWeight: 700 }}>
-                  Care Of / Referred Agent (Optional)
+                <label className="form-label" style={{ margin: 0, fontWeight: 700, color: '#1e40af' }}>
+                  Assigned Care Of / Referred Agent
                 </label>
                 <button
                   type="button"
@@ -233,18 +219,15 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
                 ))}
               </select>
               <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.2rem', display: 'block' }}>
-                Select an existing referral agent or click <strong>+ Add New Agent</strong> to create one on the fly.
+                When creating sales orders for this customer, this Care Of agent will automatically default on the order.
               </span>
             </div>
 
             <div className="form-group" style={{ gridColumn: 'span 2' }}>
-              <label className="form-label">
-                <MapPin size={14} /> Address
-              </label>
+              <label className="form-label">Address</label>
               <textarea
                 className="form-control"
                 rows="2"
-                placeholder="Complete street address, city, pin code..."
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 disabled={isSubmitting}
@@ -257,11 +240,7 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-              {isSubmitting ? (
-                <>⏳ Saving Customer...</>
-              ) : (
-                <><Check size={16} /> Save & Select Customer</>
-              )}
+              {isSubmitting ? 'Saving Changes...' : <><Check size={16} /> Save Changes</>}
             </button>
           </div>
         </form>
@@ -279,3 +258,5 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
     </div>
   );
 };
+
+export default EditCustomerModal;

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useERP } from '../context/ERPContext';
 import { PAYMENT_METHODS } from '../types';
-import { CreditCard, Plus, Search, DollarSign, CheckCircle2, ArrowDownLeft } from 'lucide-react';
+import { CreditCard, Plus, Search } from 'lucide-react';
 
 export const PaymentsView = () => {
   const { payments, recordPayment, salesOrders } = useERP();
@@ -9,7 +9,7 @@ export const PaymentsView = () => {
   const [isLogPayOpen, setIsLogPayOpen] = useState(false);
 
   const [payForm, setPayForm] = useState({
-    orderId: salesOrders[0]?.id || '',
+    orderId: (salesOrders || [])[0]?.id || '',
     amount: 5000,
     method: PAYMENT_METHODS.UPI,
     refNo: 'UPI/REF-9921'
@@ -24,18 +24,18 @@ export const PaymentsView = () => {
     setIsLogPayOpen(false);
   };
 
-  const filteredPayments = payments.filter((p) =>
-    p.orderId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.method.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredPayments = (payments || []).filter((p) =>
+    (p.orderId || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.customerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.method || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const totalCollected = payments.reduce((acc, p) => acc + p.amount, 0);
+  const totalCollected = (payments || []).reduce((acc, p) => acc + (p.amount || 0), 0);
 
   return (
     <div className="view-container">
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
         <div>
           <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <CreditCard size={24} color="#059669" /> Payments & Collection Ledger
@@ -60,8 +60,8 @@ export const PaymentsView = () => {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="card">
+      {/* Main Content Container */}
+      <div className="card" style={{ padding: 0 }}>
         <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end' }}>
           <div style={{ width: '280px', position: 'relative' }}>
             <Search size={16} color="#64748b" style={{ position: 'absolute', left: '10px', top: '10px' }} />
@@ -76,35 +76,73 @@ export const PaymentsView = () => {
           </div>
         </div>
 
-        <div className="table-responsive">
-          <table className="erp-table">
-            <thead>
-              <tr>
-                <th>Voucher ID</th>
-                <th>Receipt Date</th>
-                <th>Order #</th>
-                <th>Customer Name</th>
-                <th>Payment Mode</th>
-                <th>Ref / UTR Number</th>
-                <th>Amount (₹)</th>
-                <th>Verification Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredPayments.map((p) => (
-                <tr key={p.id}>
-                  <td style={{ fontWeight: 700, color: '#64748b' }}>{p.id}</td>
-                  <td>{p.date}</td>
-                  <td style={{ fontWeight: 800, color: '#1e40af' }}>{p.orderId}</td>
-                  <td style={{ fontWeight: 700 }}>{p.customerName}</td>
-                  <td><span className="badge badge-blue">{p.method}</span></td>
-                  <td style={{ fontFamily: 'var(--font-mono)' }}>{p.refNo}</td>
-                  <td style={{ fontWeight: 800, color: '#059669' }}>₹{p.amount.toLocaleString()}</td>
-                  <td><span className="badge badge-emerald">Verified</span></td>
+        {/* MOBILE CARDS VIEW */}
+        <div className="mobile-only" style={{ padding: '0.75rem' }}>
+          {filteredPayments.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+              No payment vouchers found.
+            </div>
+          ) : (
+            filteredPayments.map((p) => (
+              <div key={p.id} className="mobile-order-card" style={{ borderLeft: '4px solid #059669' }}>
+                <div className="mobile-order-card-header">
+                  <div>
+                    <span className="mobile-order-card-id" style={{ color: '#059669' }}>{p.id}</span>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', marginLeft: '0.4rem' }}>({p.date})</span>
+                  </div>
+                  <span className="badge badge-emerald">Verified</span>
+                </div>
+
+                <div className="mobile-order-card-body">
+                  <div className="mobile-order-customer">{p.customerName}</div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e40af' }}>Order: {p.orderId}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.4rem' }}>
+                    <span className="badge badge-blue">{p.method}</span>
+                    <div style={{ fontWeight: 800, fontSize: '1rem', color: '#059669' }}>₹{(p.amount || 0).toLocaleString()}</div>
+                  </div>
+                  {p.refNo && (
+                    <div style={{ fontSize: '0.72rem', color: '#64748b', fontFamily: 'var(--font-mono)', marginTop: '0.2rem' }}>
+                      Ref: {p.refNo}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* DESKTOP TABLE VIEW */}
+        <div className="desktop-only">
+          <div className="table-responsive">
+            <table className="erp-table">
+              <thead>
+                <tr>
+                  <th>Voucher ID</th>
+                  <th>Receipt Date</th>
+                  <th>Order #</th>
+                  <th>Customer Name</th>
+                  <th>Payment Mode</th>
+                  <th>Ref / UTR Number</th>
+                  <th>Amount (₹)</th>
+                  <th>Verification Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredPayments.map((p) => (
+                  <tr key={p.id}>
+                    <td style={{ fontWeight: 700, color: '#64748b' }}>{p.id}</td>
+                    <td>{p.date}</td>
+                    <td style={{ fontWeight: 800, color: '#1e40af' }}>{p.orderId}</td>
+                    <td style={{ fontWeight: 700 }}>{p.customerName}</td>
+                    <td><span className="badge badge-blue">{p.method}</span></td>
+                    <td style={{ fontFamily: 'var(--font-mono)' }}>{p.refNo}</td>
+                    <td style={{ fontWeight: 800, color: '#059669' }}>₹{(p.amount || 0).toLocaleString()}</td>
+                    <td><span className="badge badge-emerald">Verified</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -124,7 +162,7 @@ export const PaymentsView = () => {
                     value={payForm.orderId}
                     onChange={(e) => setPayForm({ ...payForm, orderId: e.target.value })}
                   >
-                    {salesOrders.map((o) => (
+                    {(salesOrders || []).map((o) => (
                       <option key={o.id} value={o.id}>
                         {o.id} — {o.customerName} (Bal: ₹{o.balanceAmount})
                       </option>

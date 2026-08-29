@@ -2,13 +2,15 @@ import React, { useState } from 'react';
 import { useERP } from '../context/ERPContext';
 import { CUSTOMER_TYPES } from '../types';
 import { CreateCustomerModal } from '../components/modals/CreateCustomerModal';
-import { Users, UserPlus, Search, Phone, Mail, Building, AlertTriangle, ShieldCheck, FileText, ShoppingCart, CreditCard, Clock, CheckCircle2, X } from 'lucide-react';
+import EditCustomerModal from '../components/modals/EditCustomerModal';
+import { Users, UserPlus, Search, Phone, Mail, Building, AlertTriangle, ShieldCheck, FileText, ShoppingCart, CreditCard, Clock, CheckCircle2, X, Edit, UserCheck } from 'lucide-react';
 
 export const CustomersView = ({ onNavigate }) => {
-  const { customers, deleteCustomer, salesOrders, payments } = useERP();
+  const { customers, deleteCustomer, salesOrders, payments, careOfPersons } = useERP();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCust, setEditingCust] = useState(null);
   const [historyCust, setHistoryCust] = useState(null);
 
   const handleCreateForCust = (cust, type = 'Direct') => {
@@ -130,6 +132,7 @@ export const CustomersView = ({ onNavigate }) => {
                 <th>Customer Name</th>
                 <th>Mobile Number</th>
                 <th>Customer Type</th>
+                <th>Care Of Agent</th>
                 <th>GSTIN</th>
                 <th>State</th>
                 <th>Outstanding Balance</th>
@@ -139,76 +142,98 @@ export const CustomersView = ({ onNavigate }) => {
               </tr>
             </thead>
             <tbody>
-              {filteredCustomers.map((c) => (
-                <tr key={c.id}>
-                  <td style={{ fontWeight: 700, color: '#64748b' }}>{c.code || 'N/A'}</td>
-                  <td>
-                    <button
-                      type="button"
-                      onClick={() => setHistoryCust(c)}
-                      style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 800, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
-                      title="View Customer Profile & History"
-                    >
-                      {c.name}
-                    </button>
-                  </td>
-                  <td style={{ fontWeight: 600 }}>{c.mobile || 'N/A'}</td>
-                  <td>
-                    <span className="badge badge-blue">{c.type || 'Customer'}</span>
-                  </td>
-                  <td style={{ fontFamily: 'var(--font-mono)' }}>{c.gstin || 'Unregistered'}</td>
-                  <td>{c.state || 'Maharashtra (27)'}</td>
-                  <td style={{ fontWeight: 800, color: (c.outstanding ?? c.outstandingAmount ?? 0) > 0 ? '#e11d48' : '#059669' }}>
-                    ₹{Number(c.outstanding ?? c.outstandingAmount ?? 0).toLocaleString()}
-                  </td>
-                  <td>₹{Number(c.creditLimit ?? c.credit_limit ?? 0).toLocaleString()}</td>
-                  <td style={{ fontWeight: 700 }}>{Number(c.totalOrders ?? c.total_orders ?? 0)}</td>
-                  <td style={{ textAlign: 'center' }}>
-                    <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        onClick={() => handleCreateForCust(c, 'Direct')}
-                        className="btn btn-sm btn-primary"
-                        style={{ padding: '0.15rem 0.4rem', fontSize: '0.72rem', fontWeight: 700 }}
-                        title="Create Direct Sales Order"
-                      >
-                        + Order
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleCreateForCust(c, 'Quotation')}
-                        className="btn btn-sm"
-                        style={{ padding: '0.15rem 0.4rem', fontSize: '0.72rem', background: '#f59e0b', color: '#fff', fontWeight: 700, border: 'none' }}
-                        title="Create Optional Quotation"
-                      >
-                        + Quote
-                      </button>
+              {filteredCustomers.map((c) => {
+                const linkedCareOf = (careOfPersons || []).find((co) => co.id === (c.careOfId || c.care_of_id));
+                const careOfDisplayName = c.careOfName || c.care_of_name || linkedCareOf?.name || '';
+                return (
+                  <tr key={c.id}>
+                    <td style={{ fontWeight: 700, color: '#64748b' }}>{c.code || 'N/A'}</td>
+                    <td>
                       <button
                         type="button"
                         onClick={() => setHistoryCust(c)}
-                        className="btn btn-sm btn-secondary"
-                        style={{ padding: '0.15rem 0.4rem', fontSize: '0.72rem' }}
-                        title="View Full Ledger History"
+                        style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 800, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                        title="View Customer Profile & History"
                       >
-                        History
+                        {c.name}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm(`Are you sure you want to delete Customer "${c.name}"?`)) {
-                            deleteCustomer(c.id);
-                          }
-                        }}
-                        className="btn btn-sm btn-secondary"
-                        style={{ padding: '0.15rem 0.35rem', border: 'none', color: '#f43f5e' }}
-                        title="Delete Customer"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td style={{ fontWeight: 600 }}>{c.mobile || 'N/A'}</td>
+                    <td>
+                      <span className="badge badge-blue">{c.type || 'Customer'}</span>
+                    </td>
+                    <td>
+                      {careOfDisplayName ? (
+                        <span className="badge badge-purple" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <UserCheck size={11} /> {careOfDisplayName}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>— Direct</span>
+                      )}
+                    </td>
+                    <td style={{ fontFamily: 'var(--font-mono)' }}>{c.gstin || 'Unregistered'}</td>
+                    <td>{c.state || 'Maharashtra (27)'}</td>
+                    <td style={{ fontWeight: 800, color: (c.outstanding ?? c.outstandingAmount ?? 0) > 0 ? '#e11d48' : '#059669' }}>
+                      ₹{Number(c.outstanding ?? c.outstandingAmount ?? 0).toLocaleString()}
+                    </td>
+                    <td>₹{Number(c.creditLimit ?? c.credit_limit ?? 0).toLocaleString()}</td>
+                    <td style={{ fontWeight: 700 }}>{Number(c.totalOrders ?? c.total_orders ?? 0)}</td>
+                    <td style={{ textAlign: 'center' }}>
+                      <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleCreateForCust(c, 'Direct')}
+                          className="btn btn-sm btn-primary"
+                          style={{ padding: '0.15rem 0.4rem', fontSize: '0.72rem', fontWeight: 700 }}
+                          title="Create Direct Sales Order"
+                        >
+                          + Order
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCreateForCust(c, 'Quotation')}
+                          className="btn btn-sm"
+                          style={{ padding: '0.15rem 0.4rem', fontSize: '0.72rem', background: '#f59e0b', color: '#fff', fontWeight: 700, border: 'none' }}
+                          title="Create Optional Quotation"
+                        >
+                          + Quote
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingCust(c)}
+                          className="btn btn-sm btn-secondary"
+                          style={{ padding: '0.15rem 0.4rem', fontSize: '0.72rem', color: '#2563eb' }}
+                          title="Edit Customer Profile & Care Of Agent"
+                        >
+                          <Edit size={12} /> Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryCust(c)}
+                          className="btn btn-sm btn-secondary"
+                          style={{ padding: '0.15rem 0.4rem', fontSize: '0.72rem' }}
+                          title="View Full Ledger History"
+                        >
+                          History
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Are you sure you want to delete Customer "${c.name}"?`)) {
+                              deleteCustomer(c.id);
+                            }
+                          }}
+                          className="btn btn-sm btn-secondary"
+                          style={{ padding: '0.15rem 0.35rem', border: 'none', color: '#f43f5e' }}
+                          title="Delete Customer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -356,6 +381,12 @@ export const CustomersView = ({ onNavigate }) => {
       <CreateCustomerModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
+      />
+
+      <EditCustomerModal
+        isOpen={!!editingCust}
+        customer={editingCust}
+        onClose={() => setEditingCust(null)}
       />
     </div>
   );

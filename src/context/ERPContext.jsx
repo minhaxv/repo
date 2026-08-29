@@ -85,8 +85,23 @@ export const ERPProvider = ({ children }) => {
     }
   });
 
-  const [salesPersons, setSalesPersons] = useState(initialSalesPersons);
-  const [careOfPersons, setCareOfPersons] = useState(initialCareOfPersons);
+  const [salesPersons, setSalesPersons] = useState(() => {
+    try {
+      const saved = localStorage.getItem('stitch_erp_sales_persons');
+      return saved ? JSON.parse(saved) : initialSalesPersons;
+    } catch (e) {
+      return initialSalesPersons;
+    }
+  });
+
+  const [careOfPersons, setCareOfPersons] = useState(() => {
+    try {
+      const saved = localStorage.getItem('stitch_erp_care_of_persons');
+      return saved ? JSON.parse(saved) : initialCareOfPersons;
+    } catch (e) {
+      return initialCareOfPersons;
+    }
+  });
 
   const [workers, setWorkers] = useState(() => {
     try {
@@ -187,6 +202,24 @@ export const ERPProvider = ({ children }) => {
     }
   }, [payments]);
 
+  useEffect(() => {
+    if (careOfPersons && careOfPersons.length > 0) {
+      try { localStorage.setItem('stitch_erp_care_of_persons', JSON.stringify(careOfPersons)); } catch (e) {}
+    }
+  }, [careOfPersons]);
+
+  useEffect(() => {
+    if (salesPersons && salesPersons.length > 0) {
+      try { localStorage.setItem('stitch_erp_sales_persons', JSON.stringify(salesPersons)); } catch (e) {}
+    }
+  }, [salesPersons]);
+
+  useEffect(() => {
+    if (vendors && vendors.length > 0) {
+      try { localStorage.setItem('stitch_erp_vendors', JSON.stringify(vendors)); } catch (e) {}
+    }
+  }, [vendors]);
+
   // UI state variables
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -266,15 +299,18 @@ export const ERPProvider = ({ children }) => {
       const savedDesigners = localStorage.getItem('stitch_erp_designers');
       const savedEmployees = localStorage.getItem('stitch_erp_employees');
       const savedPayments = localStorage.getItem('stitch_erp_payments');
+      const savedCareOf = localStorage.getItem('stitch_erp_care_of_persons');
+      const savedSalesPersons = localStorage.getItem('stitch_erp_sales_persons');
+      const savedVendors = localStorage.getItem('stitch_erp_vendors');
 
       setCompanyProfile(initialCompanyProfile);
       setCompanyBankAccounts(initialCompanyBankAccounts);
       setCustomers(savedCustomers ? JSON.parse(savedCustomers) : initialCustomers);
-      setSalesPersons(initialSalesPersons);
-      setCareOfPersons(initialCareOfPersons);
+      setSalesPersons(savedSalesPersons ? JSON.parse(savedSalesPersons) : initialSalesPersons);
+      setCareOfPersons(savedCareOf ? JSON.parse(savedCareOf) : initialCareOfPersons);
       setWorkers(savedWorkers ? JSON.parse(savedWorkers) : initialWorkers);
       setDesigners(savedDesigners ? JSON.parse(savedDesigners) : initialDesigners);
-      setVendors(initialVendors);
+      setVendors(savedVendors ? JSON.parse(savedVendors) : initialVendors);
       setProducts(savedProducts ? JSON.parse(savedProducts) : initialProducts);
       setProductMaterialSpecs(initialProductMaterialSpecs);
       setEmployees(savedEmployees ? JSON.parse(savedEmployees) : initialEmployees);
@@ -351,7 +387,7 @@ export const ERPProvider = ({ children }) => {
     }
   };
 
-  // Add Customer with persistent SQLite integration
+  // Add Customer with persistent SQLite & Supabase integration
   const addCustomer = async (customerData) => {
     const newId = `CUST-${100 + customers.length + Math.floor(Math.random() * 100) + 1}`;
     const newCode = customerData.code || `${(customerData.name || 'CUST').substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
@@ -368,15 +404,48 @@ export const ERPProvider = ({ children }) => {
       creditLimit: parseFloat(customerData.creditLimit) || 0,
       outstanding: 0,
       totalOrders: 0,
+      careOfId: customerData.careOfId || '',
+      careOfName: customerData.careOfName || '',
       createdAt: new Date().toISOString().split('T')[0]
     };
 
+    // Update state immediately & store in localStorage so UI is instant and never loses state
+    setCustomers((prev) => {
+      const updated = [uiCustomer, ...prev.filter(c => c.id !== uiCustomer.id)];
+      try { localStorage.setItem('stitch_erp_customers', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+
+    try {
+      if (isSupabaseConfigured) {
+        const dbCustomer = {
+          id: uiCustomer.id,
+          code: uiCustomer.code,
+          name: uiCustomer.name,
+          mobile: uiCustomer.mobile,
+          email: uiCustomer.email,
+          gstin: uiCustomer.gstin,
+          type: uiCustomer.type,
+          address: uiCustomer.address,
+          state: uiCustomer.state,
+          credit_limit: uiCustomer.creditLimit,
+          outstanding: uiCustomer.outstanding,
+          total_orders: uiCustomer.totalOrders,
+          care_of_id: uiCustomer.careOfId,
+          care_of_name: uiCustomer.careOfName,
+          created_at: uiCustomer.createdAt
+        };
+        const { error } = await supabase.from('customers').upsert(dbCustomer);
+        if (error) console.warn("Supabase customers upsert error:", error);
+      }
+    } catch (err) {
+      console.warn("Supabase customer insert exception:", err);
+    }
+
     try {
       await api.createCustomer(uiCustomer);
-      await fetchAllERPData();
     } catch (err) {
-      console.warn("api.createCustomer exception, using local state:", err);
-      setCustomers((prev) => [uiCustomer, ...prev.filter(c => c.id !== uiCustomer.id)]);
+      console.warn("api.createCustomer exception, using persistent local state:", err);
     }
 
     return uiCustomer;
@@ -392,6 +461,7 @@ export const ERPProvider = ({ children }) => {
       email: careOfData.email || '',
       role: careOfData.role || 'Referred Agent / Consultant',
       referral_commission_pct: parseFloat(careOfData.referralCommissionPct) || 5.0,
+      commission_type: careOfData.commissionType || 'profit',
       total_referred_sales: 0,
       active_orders: 0,
       notes: careOfData.notes || ''
@@ -400,6 +470,7 @@ export const ERPProvider = ({ children }) => {
     const uiCareOf = {
       ...newCareOf,
       referralCommissionPct: newCareOf.referral_commission_pct,
+      commissionType: newCareOf.commission_type,
       totalReferredSales: newCareOf.total_referred_sales,
       activeOrders: newCareOf.active_orders
     };
@@ -413,7 +484,12 @@ export const ERPProvider = ({ children }) => {
       console.warn("Supabase care_of_persons insert exception:", err);
     }
 
-    setCareOfPersons((prev) => [uiCareOf, ...prev.filter(c => c.id !== uiCareOf.id)]);
+    setCareOfPersons((prev) => {
+      const updated = [uiCareOf, ...prev.filter(c => c.id !== uiCareOf.id)];
+      try { localStorage.setItem('stitch_erp_care_of_persons', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+
     return uiCareOf;
   };
 
@@ -422,6 +498,10 @@ export const ERPProvider = ({ children }) => {
     if (updatedData.referralCommissionPct !== undefined) {
       dbUpdate.referral_commission_pct = parseFloat(updatedData.referralCommissionPct) || 0;
       delete dbUpdate.referralCommissionPct;
+    }
+    if (updatedData.commissionType !== undefined) {
+      dbUpdate.commission_type = updatedData.commissionType;
+      delete dbUpdate.commissionType;
     }
     if (updatedData.totalReferredSales !== undefined) {
       dbUpdate.total_referred_sales = parseFloat(updatedData.totalReferredSales) || 0;
@@ -441,9 +521,18 @@ export const ERPProvider = ({ children }) => {
       console.warn("Supabase care_of_persons update exception:", err);
     }
 
-    setCareOfPersons((prev) =>
-      prev.map((co) => (co.id === id ? { ...co, ...updatedData, referralCommissionPct: dbUpdate.referral_commission_pct ?? co.referralCommissionPct } : co))
-    );
+    setCareOfPersons((prev) => {
+      const updated = prev.map((co) =>
+        co.id === id ? {
+          ...co,
+          ...updatedData,
+          referralCommissionPct: dbUpdate.referral_commission_pct ?? co.referralCommissionPct,
+          commissionType: dbUpdate.commission_type ?? co.commissionType ?? 'profit'
+        } : co
+      );
+      try { localStorage.setItem('stitch_erp_care_of_persons', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
     return true;
   };
 
@@ -456,7 +545,82 @@ export const ERPProvider = ({ children }) => {
     } catch (err) {
       console.warn("Supabase care_of_persons delete exception:", err);
     }
-    setCareOfPersons((prev) => prev.filter((co) => co.id !== id));
+    setCareOfPersons((prev) => {
+      const updated = prev.filter((co) => co.id !== id);
+      try { localStorage.setItem('stitch_erp_care_of_persons', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+    return true;
+  };
+
+  // Sales Person Management
+  const addSalesPerson = async (spData) => {
+    const newId = `SP-${String(salesPersons.length + 1).padStart(2, '0')}`;
+    const newSP = {
+      id: newId,
+      name: spData.name,
+      mobile: spData.mobile || '',
+      target: parseFloat(spData.target) || 500000,
+      achieved: 0,
+      commissionRate: parseFloat(spData.commissionRate) || 3.5
+    };
+
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.from('sales_persons').insert(newSP);
+        if (error) console.warn("Supabase sales_persons insert error:", error);
+      }
+    } catch (err) {
+      console.warn("Supabase sales_persons insert exception:", err);
+    }
+
+    setSalesPersons((prev) => {
+      const updated = [newSP, ...prev.filter(s => s.id !== newSP.id)];
+      try { localStorage.setItem('stitch_erp_sales_persons', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+
+    return newSP;
+  };
+
+  const updateSalesPerson = async (id, updatedData) => {
+    const dbUpdate = { ...updatedData };
+    if (updatedData.commissionRate !== undefined) {
+      dbUpdate.commission_rate = parseFloat(updatedData.commissionRate) || 0;
+    }
+
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.from('sales_persons').update(dbUpdate).eq('id', id);
+        if (error) console.warn("Supabase sales_persons update error:", error);
+      }
+    } catch (err) {
+      console.warn("Supabase sales_persons update exception:", err);
+    }
+
+    setSalesPersons((prev) => {
+      const updated = prev.map((sp) => (sp.id === id ? { ...sp, ...updatedData } : sp));
+      try { localStorage.setItem('stitch_erp_sales_persons', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+
+    return true;
+  };
+
+  const deleteSalesPerson = async (id) => {
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.from('sales_persons').delete().eq('id', id);
+        if (error) console.warn("Supabase sales_persons delete error:", error);
+      }
+    } catch (err) {
+      console.warn("Supabase sales_persons delete exception:", err);
+    }
+    setSalesPersons((prev) => {
+      const updated = prev.filter((sp) => sp.id !== id);
+      try { localStorage.setItem('stitch_erp_sales_persons', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
     return true;
   };
 
@@ -474,6 +638,15 @@ export const ERPProvider = ({ children }) => {
       dbUpdate.total_orders = parseInt(updatedData.totalOrders, 10) || 0;
       delete dbUpdate.totalOrders;
     }
+    if (updatedData.careOfId !== undefined) {
+      dbUpdate.care_of_id = updatedData.careOfId;
+      delete dbUpdate.careOfId;
+    }
+    if (updatedData.careOfName !== undefined) {
+      dbUpdate.care_of_name = updatedData.careOfName;
+      delete dbUpdate.careOfName;
+    }
+
     try {
       if (isSupabaseConfigured) {
         const { error } = await supabase.from('customers').update(dbUpdate).eq('id', id);
@@ -482,9 +655,23 @@ export const ERPProvider = ({ children }) => {
     } catch (err) {
       console.warn("Supabase customer update exception:", err);
     }
-    setCustomers((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updatedData, credit_limit: dbUpdate.credit_limit ?? c.credit_limit, outstanding: dbUpdate.outstanding ?? c.outstanding } : c))
-    );
+
+    setCustomers((prev) => {
+      const updated = prev.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              ...updatedData,
+              creditLimit: dbUpdate.credit_limit ?? c.creditLimit ?? c.credit_limit,
+              outstanding: dbUpdate.outstanding ?? c.outstanding,
+              careOfId: dbUpdate.care_of_id ?? c.careOfId,
+              careOfName: dbUpdate.care_of_name ?? c.careOfName
+            }
+          : c
+      );
+      try { localStorage.setItem('stitch_erp_customers', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
     return true;
   };
 
@@ -497,42 +684,106 @@ export const ERPProvider = ({ children }) => {
     } catch (err) {
       console.warn("Supabase customer delete exception:", err);
     }
-    setCustomers((prev) => prev.filter((c) => c.id !== id));
+    setCustomers((prev) => {
+      const updated = prev.filter((c) => c.id !== id);
+      try { localStorage.setItem('stitch_erp_customers', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
     return true;
   };
 
   const addProduct = async (productData, specsArr = []) => {
     const pid = productData.id || `PROD-${Date.now()}`;
     const newProduct = { ...productData, id: pid };
+
+    // Update state immediately & store in localStorage so UI is instant and never loses state
+    setProducts((prev) => {
+      const updated = [newProduct, ...prev.filter(p => p.id !== pid)];
+      try { localStorage.setItem('stitch_erp_products', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+
+    try {
+      if (isSupabaseConfigured) {
+        const dbProd = {
+          id: newProduct.id,
+          code: newProduct.code || newProduct.id,
+          name: newProduct.name,
+          category: newProduct.category || 'General',
+          unit: newProduct.unit || 'Sq.Ft',
+          default_rate: newProduct.defaultRate || newProduct.sellingRate || 0,
+          estimated_cost: newProduct.estimatedCost || 0,
+          description: newProduct.description || ''
+        };
+        const { error } = await supabase.from('products').upsert(dbProd);
+        if (error) console.warn("Supabase products upsert error:", error);
+      }
+    } catch (err) {
+      console.warn("Supabase product insert exception:", err);
+    }
+
     try {
       await api.createProduct(newProduct, specsArr);
-      await fetchAllERPData();
     } catch (err) {
-      console.warn("api.createProduct exception, using local state fallback:", err);
-      setProducts((prev) => [newProduct, ...prev.filter(p => p.id !== pid)]);
+      console.warn("api.createProduct exception, using persistent local state:", err);
     }
     return newProduct;
   };
 
   const updateProduct = async (id, productData, specsArr = []) => {
+    setProducts((prev) => {
+      const updated = prev.map((p) => (p.id === id ? { ...p, ...productData } : p));
+      try { localStorage.setItem('stitch_erp_products', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+
+    try {
+      if (isSupabaseConfigured) {
+        const dbProd = {
+          id,
+          name: productData.name,
+          category: productData.category,
+          unit: productData.unit,
+          default_rate: productData.defaultRate || productData.sellingRate || 0,
+          estimated_cost: productData.estimatedCost || 0,
+          description: productData.description || ''
+        };
+        const { error } = await supabase.from('products').update(dbProd).eq('id', id);
+        if (error) console.warn("Supabase products update error:", error);
+      }
+    } catch (err) {
+      console.warn("Supabase product update exception:", err);
+    }
+
     try {
       await api.updateProduct(id, productData, specsArr);
-      await fetchAllERPData();
     } catch (err) {
-      console.warn("api.updateProduct exception, using local state fallback:", err);
-      setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...productData } : p)));
+      console.warn("api.updateProduct exception:", err);
     }
     return { ...productData, id };
   };
 
   const deleteProduct = async (id) => {
+    setProducts((prev) => {
+      const updated = prev.filter((p) => p.id !== id);
+      try { localStorage.setItem('stitch_erp_products', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+    setProductMaterialSpecs((prev) => prev.filter((s) => s.productId !== id));
+
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.from('products').delete().eq('id', id);
+        if (error) console.warn("Supabase product delete error:", error);
+      }
+    } catch (err) {
+      console.warn("Supabase product delete exception:", err);
+    }
+
     try {
       await api.deleteProduct(id);
-      await fetchAllERPData();
     } catch (err) {
-      console.warn("api.deleteProduct exception, using local fallback:", err);
-      setProducts((prev) => prev.filter((p) => p.id !== id));
-      setProductMaterialSpecs((prev) => prev.filter((s) => s.productId !== id));
+      console.warn("api.deleteProduct exception:", err);
     }
     return true;
   };
@@ -848,36 +1099,6 @@ export const ERPProvider = ({ children }) => {
     return true;
   };
 
-  // Sales Person Updates & Deletion
-  const updateSalesPerson = async (id, updatedData) => {
-    const dbUpdate = { ...updatedData };
-    if (updatedData.commissionRate !== undefined) { dbUpdate.commission_rate = updatedData.commissionRate; delete dbUpdate.commissionRate; }
-
-    try {
-      if (isSupabaseConfigured) {
-        const { error } = await supabase.from('sales_persons').update(dbUpdate).eq('id', id);
-        if (error) console.warn("Supabase sales_person update error:", error);
-      }
-    } catch (err) {
-      console.warn("Supabase sales_person update exception:", err);
-    }
-    setSalesPersons((prev) => prev.map((s) => (s.id === id ? { ...s, ...updatedData } : s)));
-    return true;
-  };
-
-  const deleteSalesPerson = async (id) => {
-    try {
-      if (isSupabaseConfigured) {
-        const { error } = await supabase.from('sales_persons').delete().eq('id', id);
-        if (error) console.warn("Supabase sales_person delete error:", error);
-      }
-    } catch (err) {
-      console.warn("Supabase sales_person delete exception:", err);
-    }
-    setSalesPersons((prev) => prev.filter((s) => s.id !== id));
-    return true;
-  };
-
   const toggleEmployeeStatus = async (id) => {
     const target = (employees || []).find((e) => e.id === id);
     if (!target) return;
@@ -1011,32 +1232,6 @@ export const ERPProvider = ({ children }) => {
   };
 
 
-
-  // Add Sales Person
-  const addSalesPerson = async (spData) => {
-    const newSp = {
-      id: `SP-${Math.floor(10 + Math.random() * 90)}`,
-      name: spData.name,
-      mobile: spData.mobile,
-      target: parseFloat(spData.target) || 500000,
-      achieved: 0,
-      commission_rate: parseFloat(spData.commissionRate) || 3.5
-    };
-
-    try {
-      const { error } = await supabase.from('sales_persons').insert(newSp);
-      if (error) throw error;
-
-      const uiSp = {
-        ...newSp,
-        commissionRate: newSp.commission_rate
-      };
-      setSalesPersons((prev) => [...prev, uiSp]);
-      return uiSp;
-    } catch (err) {
-      console.error("Error adding sales person to database:", err);
-    }
-  };
 
   // Mark Staff Attendance
   const markAttendance = async (attData) => {

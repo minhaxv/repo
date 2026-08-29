@@ -21,6 +21,8 @@ ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS state TEXT DEFAULT 'Mahara
 ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS credit_limit NUMERIC DEFAULT 50000;
 ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS outstanding NUMERIC DEFAULT 0;
 ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS total_orders INTEGER DEFAULT 0;
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS care_of_id TEXT;
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS care_of_name TEXT;
 ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS created_at DATE DEFAULT CURRENT_DATE;
 
 -- 2. Ensure all columns exist on care_of_persons table
@@ -29,9 +31,17 @@ ALTER TABLE public.care_of_persons ADD COLUMN IF NOT EXISTS mobile TEXT;
 ALTER TABLE public.care_of_persons ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE public.care_of_persons ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'Referred Agent / Consultant';
 ALTER TABLE public.care_of_persons ADD COLUMN IF NOT EXISTS referral_commission_pct NUMERIC DEFAULT 5.0;
+ALTER TABLE public.care_of_persons ADD COLUMN IF NOT EXISTS commission_type TEXT DEFAULT 'profit';
 ALTER TABLE public.care_of_persons ADD COLUMN IF NOT EXISTS total_referred_sales NUMERIC DEFAULT 0;
 ALTER TABLE public.care_of_persons ADD COLUMN IF NOT EXISTS active_orders INTEGER DEFAULT 0;
 ALTER TABLE public.care_of_persons ADD COLUMN IF NOT EXISTS notes TEXT;
+
+-- 2b. Ensure all columns exist on sales_persons table
+ALTER TABLE public.sales_persons ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.sales_persons ADD COLUMN IF NOT EXISTS mobile TEXT;
+ALTER TABLE public.sales_persons ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.sales_persons ADD COLUMN IF NOT EXISTS target_amount NUMERIC DEFAULT 100000;
+ALTER TABLE public.sales_persons ADD COLUMN IF NOT EXISTS commission_rate NUMERIC DEFAULT 3.5;
 
 -- 3. Ensure all columns exist on sales_orders table
 ALTER TABLE public.sales_orders ADD COLUMN IF NOT EXISTS order_date DATE;

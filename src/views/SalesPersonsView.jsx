@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { UserCheck, Plus, Search, Phone, TrendingUp, Award, DollarSign, Target, Check, Calendar } from 'lucide-react';
+import { UserCheck, Plus, Search, Phone, TrendingUp, Award, DollarSign, Target, Check, Calendar, Edit } from 'lucide-react';
 import { useERP } from '../context/ERPContext';
+import EditSalesPersonModal from '../components/modals/EditSalesPersonModal';
 
 export const SalesPersonsView = () => {
   const { salesPersons, addSalesPerson, salesOrders } = useERP();
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingSP, setEditingSP] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     mobile: '',
@@ -15,7 +17,7 @@ export const SalesPersonsView = () => {
 
   // Calculate live sales statistics per Sales Person from actual Sales Orders
   const getStats = (spId, spName, defaultRate = 3.5) => {
-    const spOrders = salesOrders.filter((o) => o.salesPersonId === spId || o.salesPersonName === spName);
+    const spOrders = (salesOrders || []).filter((o) => o.salesPersonId === spId || o.salesPersonName === spName);
     const totalVolume = spOrders.reduce((sum, o) => sum + (o.subtotal || 0), 0);
     const totalProfit = spOrders.reduce((sum, o) => sum + (o.grossProfit !== undefined ? o.grossProfit : Math.round(o.subtotal * 0.45)), 0);
     const earnedCommission = (totalProfit * defaultRate) / 100;
@@ -30,15 +32,16 @@ export const SalesPersonsView = () => {
     };
   };
 
-  const filtered = salesPersons.filter((sp) => {
+  const filtered = (salesPersons || []).filter((sp) => {
     const q = searchTerm.toLowerCase();
     return sp.name.toLowerCase().includes(q) || (sp.mobile && sp.mobile.includes(q));
   });
 
-  const totalSalesAll = salesOrders.reduce((sum, o) => sum + (o.subtotal || 0), 0);
-  const totalProfitAll = salesOrders.reduce((sum, o) => sum + (o.grossProfit !== undefined ? o.grossProfit : Math.round(o.subtotal * 0.45)), 0);
-  const totalCommissionAll = salesPersons.reduce((sum, sp) => {
-    const stats = getStats(sp.id, sp.name, sp.commissionRate);
+  const totalSalesAll = (salesOrders || []).reduce((sum, o) => sum + (o.subtotal || 0), 0);
+  const totalProfitAll = (salesOrders || []).reduce((sum, o) => sum + (o.grossProfit !== undefined ? o.grossProfit : Math.round(o.subtotal * 0.45)), 0);
+  const totalCommissionAll = (salesPersons || []).reduce((sum, sp) => {
+    const rate = Number(sp.commissionRate ?? sp.commission_rate ?? 3.5);
+    const stats = getStats(sp.id, sp.name, rate);
     return sum + stats.earnedCommission;
   }, 0);
 
@@ -171,11 +174,22 @@ export const SalesPersonsView = () => {
                     </td>
 
                     <td style={{ textAlign: 'center' }}>
-                      {sp.mobile && (
-                        <a href={`tel:${sp.mobile}`} className="btn btn-sm btn-secondary" style={{ padding: '0.2rem 0.4rem', border: 'none' }}>
-                          <Phone size={14} color="#2563eb" /> {sp.mobile}
-                        </a>
-                      )}
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '0.3rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => setEditingSP(sp)}
+                          className="btn btn-sm btn-secondary"
+                          style={{ padding: '0.2rem 0.4rem', border: 'none', color: '#2563eb' }}
+                          title="Edit Target & Commission Rate"
+                        >
+                          <Edit size={14} />
+                        </button>
+                        {sp.mobile && (
+                          <a href={`tel:${sp.mobile}`} className="btn btn-sm btn-secondary" style={{ padding: '0.2rem 0.4rem', border: 'none' }} title={sp.mobile}>
+                            <Phone size={14} color="#2563eb" />
+                          </a>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -247,6 +261,13 @@ export const SalesPersonsView = () => {
           </div>
         </div>
       )}
+
+      {/* Edit Modal */}
+      <EditSalesPersonModal
+        isOpen={!!editingSP}
+        salesPerson={editingSP}
+        onClose={() => setEditingSP(null)}
+      />
     </div>
   );
 };

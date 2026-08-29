@@ -2,13 +2,15 @@ import React, { useState } from 'react';
 import { useERP } from '../context/ERPContext';
 import { PRODUCTION_STATUS } from '../types';
 import { CreateVendorModal } from '../components/modals/CreateVendorModal';
-import { Building2, Plus, DollarSign, Calculator, Check, FileCheck, Calendar, Clock, Scissors, Tag } from 'lucide-react';
+import EditVendorModal from '../components/modals/EditVendorModal';
+import { Building2, Plus, Calculator, Check, Calendar, Scissors, Edit, Phone } from 'lucide-react';
 
 export const OutsourceVendorsView = () => {
   const { vendors, salesOrders, updateVendorBill, updateItemProductionStatus } = useERP();
   const [selectedItemForBill, setSelectedItemForBill] = useState(null);
   const [vendorFilter, setVendorFilter] = useState('ALL');
   const [isCreateVendorOpen, setIsCreateVendorOpen] = useState(false);
+  const [editingVendor, setEditingVendor] = useState(null);
   const [billForm, setBillForm] = useState({
     actualBillAmount: 0,
     billDate: new Date().toISOString().split('T')[0],
@@ -28,7 +30,7 @@ export const OutsourceVendorsView = () => {
 
   // Extract all outsourced product line items (Product-Based Job Work - Handles 1 or More Vendors Per Item)
   const outsourcedProductJobs = [];
-  salesOrders.forEach((o) => {
+  (salesOrders || []).forEach((o) => {
     (o.items || []).forEach((it, idx) => {
       if (Array.isArray(it.outsourceJobs) && it.outsourceJobs.length > 0) {
         it.outsourceJobs.forEach((job, jIdx) => {
@@ -97,13 +99,13 @@ export const OutsourceVendorsView = () => {
   return (
     <div className="view-container">
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
         <div>
           <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Building2 size={24} color="#7c3aed" /> Product-Based Outsource & Job Work Operations
+            <Building2 size={24} color="#7c3aed" /> Outsource Vendors & Job Work
           </h2>
           <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-            Manage vendor job cards per product line, track vendor turnaround, and reconcile actual bills
+            Manage vendors, track job cards per product, edit supplier profiles, and reconcile bills
           </span>
         </div>
 
@@ -112,7 +114,7 @@ export const OutsourceVendorsView = () => {
         </button>
       </div>
 
-      {/* Vendor Summary Cards */}
+      {/* Vendor Summary Cards Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         <div
           onClick={() => setVendorFilter('ALL')}
@@ -130,117 +132,188 @@ export const OutsourceVendorsView = () => {
           </div>
         </div>
 
-        {vendors.map((v) => {
+        {(vendors || []).map((v) => {
           const vJobs = outsourcedProductJobs.filter((j) => j.item.vendorId === v.id);
           const totalBill = vJobs.reduce((sum, j) => sum + (j.item.actualVendorBill || 0), 0);
           return (
             <div
               key={v.id}
-              onClick={() => setVendorFilter(v.id)}
               className="card"
               style={{
                 borderTop: '4px solid #7c3aed',
                 cursor: 'pointer',
-                background: vendorFilter === v.id ? '#f5f3ff' : '#ffffff'
+                background: vendorFilter === v.id ? '#f5f3ff' : '#ffffff',
+                position: 'relative'
               }}
+              onClick={() => setVendorFilter(v.id)}
             >
-              <div style={{ fontWeight: 800, fontSize: '1rem', color: '#0f172a' }}>{v.name}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ fontWeight: 800, fontSize: '1rem', color: '#0f172a' }}>{v.name}</div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingVendor(v);
+                  }}
+                  className="btn btn-sm btn-secondary"
+                  style={{ border: 'none', color: '#7c3aed', padding: '0.2rem 0.4rem' }}
+                  title="Edit Supplier / Vendor"
+                >
+                  <Edit size={14} />
+                </button>
+              </div>
               <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{v.category} | Active Jobs: {vJobs.length}</div>
-              <div style={{ marginTop: '0.4rem', fontSize: '0.82rem', fontWeight: 700, color: v.pendingPayment > 0 ? '#e11d48' : '#059669' }}>
-                Total Bill: ₹{totalBill.toLocaleString()} | Unpaid: ₹{v.pendingPayment.toLocaleString()}
+              {v.mobile && (
+                <div style={{ fontSize: '0.75rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.2rem' }}>
+                  <Phone size={12} color="#2563eb" /> {v.mobile}
+                </div>
+              )}
+              <div style={{ marginTop: '0.4rem', fontSize: '0.82rem', fontWeight: 700, color: (v.pendingPayment || 0) > 0 ? '#e11d48' : '#059669' }}>
+                Total Bill: ₹{totalBill.toLocaleString()} | Unpaid: ₹{Number(v.pendingPayment || 0).toLocaleString()}
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Outsourced Product Job Cards Table */}
-      <div className="card">
-        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* Main Outsourced Job Cards Container */}
+      <div className="card" style={{ padding: 0 }}>
+        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem' }}>
           <div className="card-title">
             <Scissors size={18} color="#7c3aed" /> Outsourced Product Line Items & Vendor Cost Reconciliation
           </div>
           <span className="badge badge-violet">{filteredJobs.length} Outsourced Products</span>
         </div>
 
-        <div className="table-responsive">
-          <table className="erp-table">
-            <thead>
-              <tr>
-                <th>Job Card #</th>
-                <th>SO #</th>
-                <th>Customer</th>
-                <th>Outsourced Product & Specifications</th>
-                <th>Assigned Vendor</th>
-                <th>Promised Delivery</th>
-                <th>Est. Vendor Cost</th>
-                <th>Actual Vendor Bill</th>
-                <th>Bill Status</th>
-                <th>Item Stage Status</th>
-                <th style={{ textAlign: 'center' }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredJobs.length === 0 ? (
+        {/* MOBILE CARDS VIEW */}
+        <div className="mobile-only" style={{ padding: '0.75rem' }}>
+          {filteredJobs.length === 0 ? (
+            <div style={{ textCenter: 'center', padding: '2rem', color: '#94a3b8' }}>
+              No outsourced product jobs found for this selection.
+            </div>
+          ) : (
+            filteredJobs.map((job, idx) => (
+              <div key={idx} className="mobile-order-card" style={{ borderLeft: '4px solid #7c3aed' }}>
+                <div className="mobile-order-card-header">
+                  <div>
+                    <span className="mobile-order-card-id" style={{ color: '#7c3aed' }}>{job.jobCardId}</span>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', marginLeft: '0.4rem' }}>({job.orderId})</span>
+                  </div>
+                  <span className={`badge ${job.item.vendorPaymentStatus === 'Paid' ? 'badge-emerald' : 'badge-amber'}`}>
+                    {job.item.vendorPaymentStatus || 'Unpaid'}
+                  </span>
+                </div>
+
+                <div className="mobile-order-card-body">
+                  <div className="mobile-order-customer">{job.customerName}</div>
+                  <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#0f172a' }}>{job.item.productName}</div>
+                  <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                    Size: {job.item.width && job.item.height ? `${job.item.width}×${job.item.height} ${job.item.unit}` : job.item.unit} | Qty: {job.item.qty}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.4rem' }}>
+                    <div>
+                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Vendor: </span>
+                      <strong style={{ color: '#7c3aed' }}>{job.item.vendorName || 'Outsource Vendor'}</strong>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Actual Bill: </span>
+                      <strong style={{ color: '#0f172a' }}>₹{job.item.actualVendorBill || 0}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mobile-order-actions">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenBillModal(job)}
+                    className="btn btn-sm btn-primary"
+                    style={{ flex: 1, background: '#7c3aed', borderColor: '#7c3aed', fontSize: '0.78rem', fontWeight: 700 }}
+                  >
+                    Log Vendor Bill
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* DESKTOP TABLE VIEW */}
+        <div className="desktop-only">
+          <div className="table-responsive">
+            <table className="erp-table">
+              <thead>
                 <tr>
-                  <td colSpan="11" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                    No outsourced product jobs found for this selection.
-                  </td>
+                  <th>Job Card #</th>
+                  <th>SO #</th>
+                  <th>Customer</th>
+                  <th>Outsourced Product & Specifications</th>
+                  <th>Assigned Vendor</th>
+                  <th>Promised Delivery</th>
+                  <th>Est. Vendor Cost</th>
+                  <th>Actual Vendor Bill</th>
+                  <th>Bill Status</th>
+                  <th>Item Stage Status</th>
+                  <th style={{ textAlign: 'center' }}>Action</th>
                 </tr>
-              ) : (
-                filteredJobs.map((job, idx) => (
-                  <tr key={idx}>
-                    <td style={{ fontWeight: 800, color: '#7c3aed' }}>{job.jobCardId}</td>
-                    <td style={{ fontWeight: 700, color: '#1e40af' }}>{job.orderId}</td>
-                    <td style={{ fontWeight: 700 }}>
-                      {job.customerName}
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 800, color: '#0f172a' }}>{job.item.productName}</div>
-                      <div style={{ fontSize: '0.74rem', color: '#475569' }}>
-                        Size: {job.item.width && job.item.height ? `${job.item.width}×${job.item.height} ${job.item.unit}` : job.item.unit} | Qty: {job.item.qty}
-                      </div>
-                      {job.item.description && (
-                        <div style={{ fontSize: '0.72rem', color: '#64748b', fontStyle: 'italic' }}>Spec: {job.item.description}</div>
-                      )}
-                    </td>
-                    <td><span className="badge badge-violet">{job.item.vendorName || 'Outsource Vendor'}</span></td>
-                    <td style={{ fontWeight: 700, color: '#d97706' }}>{job.deliveryDate}</td>
-                    <td>₹{job.item.estimatedVendorCost || 0}</td>
-                    <td style={{ fontWeight: 800, color: '#0f172a' }}>
-                      ₹{job.item.actualVendorBill || 0}
-                    </td>
-                    <td>
-                      <span className={`badge ${job.item.vendorPaymentStatus === 'Paid' ? 'badge-emerald' : 'badge-amber'}`}>
-                        {job.item.vendorPaymentStatus || 'Unpaid'}
-                      </span>
-                    </td>
-                    <td>
-                      <select
-                        className="form-select form-select-sm"
-                        style={{ fontSize: '0.74rem', fontWeight: 800 }}
-                        value={job.item.productionStatus || PRODUCTION_STATUS.OUTSOURCE}
-                        onChange={(e) => updateItemProductionStatus(job.orderId, job.item.id, e.target.value)}
-                      >
-                        {statuses.map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button
-                        onClick={() => handleOpenBillModal(job)}
-                        className="btn btn-sm btn-primary"
-                        style={{ background: '#7c3aed', borderColor: '#7c3aed' }}
-                      >
-                        <Calculator size={14} /> Log Bill
-                      </button>
+              </thead>
+              <tbody>
+                {filteredJobs.length === 0 ? (
+                  <tr>
+                    <td colSpan="11" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                      No outsourced product jobs found for this selection.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  filteredJobs.map((job, idx) => (
+                    <tr key={idx}>
+                      <td style={{ fontWeight: 800, color: '#7c3aed' }}>{job.jobCardId}</td>
+                      <td style={{ fontWeight: 700, color: '#1e40af' }}>{job.orderId}</td>
+                      <td style={{ fontWeight: 700 }}>{job.customerName}</td>
+                      <td>
+                        <div style={{ fontWeight: 800, color: '#0f172a' }}>{job.item.productName}</div>
+                        <div style={{ fontSize: '0.74rem', color: '#475569' }}>
+                          Size: {job.item.width && job.item.height ? `${job.item.width}×${job.item.height} ${job.item.unit}` : job.item.unit} | Qty: {job.item.qty}
+                        </div>
+                        {job.item.description && (
+                          <div style={{ fontSize: '0.72rem', color: '#64748b', fontStyle: 'italic' }}>Spec: {job.item.description}</div>
+                        )}
+                      </td>
+                      <td><span className="badge badge-violet">{job.item.vendorName || 'Outsource Vendor'}</span></td>
+                      <td style={{ fontWeight: 700, color: '#d97706' }}>{job.deliveryDate}</td>
+                      <td>₹{job.item.estimatedVendorCost || 0}</td>
+                      <td style={{ fontWeight: 800, color: '#0f172a' }}>₹{job.item.actualVendorBill || 0}</td>
+                      <td>
+                        <span className={`badge ${job.item.vendorPaymentStatus === 'Paid' ? 'badge-emerald' : 'badge-amber'}`}>
+                          {job.item.vendorPaymentStatus || 'Unpaid'}
+                        </span>
+                      </td>
+                      <td>
+                        <select
+                          className="form-select form-select-sm"
+                          style={{ fontSize: '0.74rem', fontWeight: 800 }}
+                          value={job.item.productionStatus || PRODUCTION_STATUS.OUTSOURCE}
+                          onChange={(e) => updateItemProductionStatus(job.orderId, job.item.id, e.target.value)}
+                        >
+                          {statuses.map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          onClick={() => handleOpenBillModal(job)}
+                          className="btn btn-sm btn-primary"
+                          style={{ background: '#7c3aed', borderColor: '#7c3aed' }}
+                        >
+                          <Calculator size={14} /> Log Bill
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -308,6 +381,7 @@ export const OutsourceVendorsView = () => {
         </div>
       )}
 
+      {/* Create Modal */}
       <CreateVendorModal
         isOpen={isCreateVendorOpen}
         onClose={() => setIsCreateVendorOpen(false)}
@@ -315,6 +389,13 @@ export const OutsourceVendorsView = () => {
           setVendorFilter(v.id);
           setIsCreateVendorOpen(false);
         }}
+      />
+
+      {/* Edit Modal */}
+      <EditVendorModal
+        isOpen={!!editingVendor}
+        vendor={editingVendor}
+        onClose={() => setEditingVendor(null)}
       />
     </div>
   );

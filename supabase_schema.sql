@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS public.customers (
     credit_limit NUMERIC DEFAULT 0,
     outstanding NUMERIC DEFAULT 0,
     total_orders INT DEFAULT 0,
+    care_of_id TEXT,
+    care_of_name TEXT,
     created_at DATE DEFAULT CURRENT_DATE
 );
 
@@ -104,6 +106,7 @@ CREATE TABLE IF NOT EXISTS public.care_of_persons (
     email TEXT,
     role TEXT,
     referral_commission_pct NUMERIC DEFAULT 0,
+    commission_type TEXT DEFAULT 'profit',
     total_referred_sales NUMERIC DEFAULT 0,
     active_orders INT DEFAULT 0,
     notes TEXT
