@@ -652,41 +652,6 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
       {/* CREATE SALES ORDER OR QUOTATION VIEW */}
       {viewMode === 'create' && (
         <form onSubmit={handleSaveOrder} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          {/* WORKFLOW TYPE SELECTOR */}
-          <div className="card" style={{ borderLeft: orderHeader.orderType === 'Quotation' ? '4px solid #f59e0b' : '4px solid #2563eb', padding: '1rem 1.25rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-              <div>
-                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>DOCUMENT TYPE & WORKFLOW</span>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: '0.2rem 0', color: '#0f172a' }}>
-                  {orderHeader.orderType === 'Quotation' ? '📄 Quotation Creation (Workflow 2)' : '🛒 Direct Sales Order (Workflow 1)'}
-                </h3>
-                <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                  {orderHeader.orderType === 'Quotation'
-                    ? 'Generates a QT-YYYY-XXXX quotation. Can be converted to an active Sales Order anytime with 1-click.'
-                    : 'Generates a direct SO-YYYY-XXXX order into the production & job work pipeline without requiring a quote.'}
-                </span>
-              </div>
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                <button
-                  type="button"
-                  onClick={() => setOrderHeader(prev => ({ ...prev, orderType: 'Direct' }))}
-                  className={`btn ${orderHeader.orderType === 'Direct' ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ fontWeight: 700 }}
-                >
-                  Direct Sales Order
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOrderHeader(prev => ({ ...prev, orderType: 'Quotation' }))}
-                  className={`btn ${orderHeader.orderType === 'Quotation' ? 'btn-warning' : 'btn-secondary'}`}
-                  style={{ background: orderHeader.orderType === 'Quotation' ? '#d97706' : undefined, color: orderHeader.orderType === 'Quotation' ? '#fff' : undefined, fontWeight: 700 }}
-                >
-                  Optional Quotation
-                </button>
-              </div>
-            </div>
-          </div>
-
           {/* CUSTOMER SEARCH & SELECTION SECTION */}
           <div className="card" style={{ borderTop: '4px solid #2563eb' }}>
             <div className="card-header">
