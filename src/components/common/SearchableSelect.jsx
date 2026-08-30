@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Search,
   ChevronDown,
   X,
   Check,
-  Plus,
   User,
   Package,
   UserCheck,
@@ -18,11 +18,13 @@ import {
 } from 'lucide-react';
 
 /**
- * Universal Reusable Searchable Dropdown / Combobox for ScreenArts ERP
+ * Universal Portal-Based Searchable Dropdown / Combobox for ScreenArts ERP
  *
- * Supports simple single-line product name search, instant filtering,
- * keyboard navigation (Up/Down/Enter/Escape), mouse selection, auto-focus search,
- * and clean compact master-data presets.
+ * Renders via React Portal directly into document.body with fixed viewport coordinates
+ * to completely eliminate clipping from overflow-hidden / overflow-auto table containers.
+ *
+ * Supports single-line product name search, instant filtering, keyboard navigation
+ * (Up/Down/Enter/Escape), auto-scroll into view, and master-data presets.
  */
 export const SearchableSelect = ({
   options = [],
@@ -45,18 +47,24 @@ export const SearchableSelect = ({
   className = '',
   style = {},
   menuStyle = {},
-  maxMenuHeight = 280,
+  maxMenuHeight = 340,
   autoFocusSearch = true,
   noResultsText = 'No matching records found.',
-  badge,
-  showCategoryFilters = false
+  badge
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [dropdownPosition, setDropdownPosition] = useState({
+    top: 0,
+    bottom: 'auto',
+    left: 0,
+    width: 380,
+    openUpward: false
+  });
 
   const containerRef = useRef(null);
+  const popoverRef = useRef(null);
   const searchInputRef = useRef(null);
   const listRef = useRef(null);
 
@@ -99,19 +107,6 @@ export const SearchableSelect = ({
       );
     }) || null;
   }, [options, value, getValue, getLabel]);
-
-  // Extract unique categories if available (disabled for product preset to keep it ultra simple)
-  const availableCategories = useMemo(() => {
-    if (!showCategoryFilters || type === 'product' || !options || options.length === 0) return [];
-    const cats = new Set();
-    options.forEach((opt) => {
-      if (opt && typeof opt === 'object') {
-        const c = opt.category || opt.productCategory || opt.type || opt.role || opt.department;
-        if (c && typeof c === 'string') cats.add(c);
-      }
-    });
-    return Array.from(cats);
-  }, [options, showCategoryFilters, type]);
 
   // Determine search placeholder based on preset
   const computedSearchPlaceholder = useMemo(() => {
@@ -161,19 +156,9 @@ export const SearchableSelect = ({
 
   // Filtered options based on search query
   const filteredOptions = useMemo(() => {
-    let list = options || [];
-
-    // Filter by Category tab if applicable
-    if (selectedCategory !== 'ALL') {
-      list = list.filter((opt) => {
-        if (!opt || typeof opt !== 'object') return true;
-        const c = opt.category || opt.productCategory || opt.type || opt.role || opt.department;
-        return c === selectedCategory;
-      });
-    }
-
+    const list = options || [];
     const q = (searchQuery || '').trim().toLowerCase();
-    if (!q) return list;
+    if (!q) return list; // When empty, return ALL available products/records
 
     return list.filter((opt) => {
       if (opt === null || opt === undefined) return false;
@@ -198,27 +183,84 @@ export const SearchableSelect = ({
 
       return false;
     });
-  }, [options, searchQuery, selectedCategory, effectiveSearchFields, getLabel, getValue, type]);
+  }, [options, searchQuery, effectiveSearchFields, getLabel, getValue, type]);
 
-  // Outside click to close
+  // Calculate and update fixed viewport position for the portal dropdown
+  const updateDropdownPosition = useCallback(() => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+
+    // Desired dropdown width between 380px and 450px, minimum matching trigger width
+    const targetWidth = Math.min(Math.max(rect.width, 380), 450, viewportWidth - 24);
+
+    // Horizontal alignment clamped within viewport
+    let left = rect.left;
+    if (left + targetWidth > viewportWidth - 12) {
+      left = viewportWidth - 12 - targetWidth;
+    }
+    if (left < 12) {
+      left = 12;
+    }
+
+    // Vertical placement (open upward if space below is too small)
+    const spaceBelow = viewportHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const estimatedDropdownHeight = 360;
+
+    const openUpward = spaceBelow < 280 && spaceAbove > spaceBelow;
+
+    if (openUpward) {
+      setDropdownPosition({
+        top: 'auto',
+        bottom: viewportHeight - rect.top + 4,
+        left,
+        width: targetWidth,
+        openUpward: true
+      });
+    } else {
+      setDropdownPosition({
+        top: rect.bottom + 4,
+        bottom: 'auto',
+        left,
+        width: targetWidth,
+        openUpward: false
+      });
+    }
+  }, []);
+
+  // Update position on open and handle outside click + scroll/resize events
   useEffect(() => {
+    if (!isOpen) return;
+
+    updateDropdownPosition();
+
     const handleOutsideClick = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
+      const isInsideTrigger = containerRef.current && containerRef.current.contains(e.target);
+      const isInsidePopover = popoverRef.current && popoverRef.current.contains(e.target);
+      if (!isInsideTrigger && !isInsidePopover) {
         setIsOpen(false);
         setSearchQuery('');
-        setSelectedCategory('ALL');
       }
     };
 
-    if (isOpen) {
-      document.addEventListener('mousedown', handleOutsideClick);
-      document.addEventListener('touchstart', handleOutsideClick);
-    }
+    const handleScrollOrResize = () => {
+      updateDropdownPosition();
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('touchstart', handleOutsideClick);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick);
       document.removeEventListener('touchstart', handleOutsideClick);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
     };
-  }, [isOpen]);
+  }, [isOpen, updateDropdownPosition]);
 
   // Auto focus search input when opening
   useEffect(() => {
@@ -258,7 +300,6 @@ export const SearchableSelect = ({
     }
     setIsOpen(false);
     setSearchQuery('');
-    setSelectedCategory('ALL');
   };
 
   const handleClear = (e) => {
@@ -304,12 +345,10 @@ export const SearchableSelect = ({
         e.preventDefault();
         setIsOpen(false);
         setSearchQuery('');
-        setSelectedCategory('ALL');
         break;
       case 'Tab':
         setIsOpen(false);
         setSearchQuery('');
-        setSelectedCategory('ALL');
         break;
       default:
         break;
@@ -357,8 +396,8 @@ export const SearchableSelect = ({
           style={{
             fontWeight: isSelected ? 700 : 500,
             color: isSelected ? '#1e40af' : '#0f172a',
-            fontSize: '0.84rem',
-            lineHeight: 1.35,
+            fontSize: '0.85rem',
+            lineHeight: 1.4,
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis'
@@ -541,6 +580,179 @@ export const SearchableSelect = ({
 
   const isSmall = size === 'sm';
 
+  // The floating popover rendered into document.body via Portal
+  const popoverElement = isOpen ? (
+    <div
+      ref={popoverRef}
+      className="combobox-portal-popover"
+      style={{
+        position: 'fixed',
+        top: dropdownPosition.top,
+        bottom: dropdownPosition.bottom,
+        left: dropdownPosition.left,
+        width: `${dropdownPosition.width}px`,
+        maxHeight: `${maxMenuHeight + 55}px`,
+        zIndex: 999999,
+        backgroundColor: '#ffffff',
+        border: '1px solid #94a3b8',
+        borderRadius: '8px',
+        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.15)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        animation: 'fadeIn 0.1s ease-out',
+        ...menuStyle
+      }}
+      onKeyDown={handleKeyDown}
+    >
+      {/* Sticky Search Header */}
+      <div
+        style={{
+          padding: '0.5rem',
+          borderBottom: '1px solid #e2e8f0',
+          backgroundColor: '#f8fafc',
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'center',
+          flexShrink: 0
+        }}
+      >
+        <Search
+          size={15}
+          color="#2563eb"
+          style={{
+            position: 'absolute',
+            left: '14px',
+            pointerEvents: 'none'
+          }}
+        />
+        <input
+          ref={searchInputRef}
+          type="text"
+          className="form-control"
+          placeholder={computedSearchPlaceholder}
+          value={searchQuery}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setHighlightedIndex(0);
+          }}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            paddingLeft: '34px',
+            paddingRight: searchQuery ? '28px' : '10px',
+            fontSize: '0.84rem',
+            height: '32px',
+            borderColor: '#93c5fd',
+            backgroundColor: '#ffffff',
+            borderRadius: '6px'
+          }}
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => {
+              setSearchQuery('');
+              if (searchInputRef.current) searchInputRef.current.focus();
+            }}
+            style={{
+              position: 'absolute',
+              right: '14px',
+              background: 'none',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center'
+            }}
+          >
+            <X size={13} />
+          </button>
+        )}
+      </div>
+
+      {/* Items Scroll Area */}
+      <div
+        ref={listRef}
+        style={{
+          maxHeight: `${maxMenuHeight}px`,
+          overflowY: 'auto',
+          overscrollBehavior: 'contain',
+          flex: 1
+        }}
+      >
+        {filteredOptions.length === 0 ? (
+          <div
+            style={{
+              padding: '1.25rem',
+              textAlign: 'center',
+              color: '#64748b',
+              fontSize: '0.82rem',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '0.3rem'
+            }}
+          >
+            <AlertCircle size={18} color="#94a3b8" />
+            <span>{searchQuery ? `No products found matching "${searchQuery}"` : noResultsText}</span>
+          </div>
+        ) : (
+          filteredOptions.map((opt, index) => {
+            const optVal = getValue(opt);
+            const isSelected = selectedOption ? getValue(selectedOption) === optVal : value === optVal;
+            const isHighlighted = highlightedIndex === index;
+
+            return (
+              <div
+                key={typeof opt === 'object' && opt?.id ? opt.id : `${optVal}_${index}`}
+                className="combobox-option-item"
+                onClick={() => handleSelect(opt)}
+                onMouseEnter={() => setHighlightedIndex(index)}
+                style={{
+                  padding: '0.45rem 0.75rem',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid #f8fafc',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.5rem',
+                  backgroundColor: isHighlighted ? '#eff6ff' : isSelected ? '#f1f5f9' : '#ffffff',
+                  transition: 'background 0.08s ease'
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {renderOptionContent(opt, isSelected)}
+                </div>
+                {isSelected && (
+                  <Check size={15} color="#2563eb" style={{ flexShrink: 0 }} />
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Footer Info Count */}
+      <div
+        style={{
+          padding: '0.35rem 0.75rem',
+          borderTop: '1px solid #f1f5f9',
+          backgroundColor: '#fafafa',
+          fontSize: '0.7rem',
+          color: '#94a3b8',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexShrink: 0
+        }}
+      >
+        <span>{filteredOptions.length} products available</span>
+        <span style={{ fontSize: '0.66rem' }}>↑↓ Navigate • Enter to select • Esc close</span>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div
       ref={containerRef}
@@ -549,7 +761,6 @@ export const SearchableSelect = ({
         position: 'relative',
         width: '100%',
         userSelect: 'none',
-        zIndex: isOpen ? 1000 : 'auto',
         ...style
       }}
       onKeyDown={handleKeyDown}
@@ -628,155 +839,8 @@ export const SearchableSelect = ({
         </div>
       </div>
 
-      {/* Searchable Dropdown Popover */}
-      {isOpen && (
-        <div
-          className="combobox-popover"
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 4px)',
-            left: 0,
-            zIndex: 9999,
-            backgroundColor: '#ffffff',
-            border: '1px solid #cbd5e1',
-            borderRadius: '6px',
-            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            animation: 'fadeIn 0.12s ease-out',
-            minWidth: '280px',
-            maxWidth: '420px',
-            width: '100%',
-            ...menuStyle
-          }}
-        >
-          {/* Search Header */}
-          <div
-            style={{
-              padding: '0.45rem',
-              borderBottom: '1px solid #e2e8f0',
-              backgroundColor: '#f8fafc',
-              position: 'relative',
-              display: 'flex',
-              alignItems: 'center'
-            }}
-          >
-            <Search
-              size={15}
-              color="#2563eb"
-              style={{
-                position: 'absolute',
-                left: '12px',
-                pointerEvents: 'none'
-              }}
-            />
-            <input
-              ref={searchInputRef}
-              type="text"
-              className="form-control"
-              placeholder={computedSearchPlaceholder}
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setHighlightedIndex(0);
-              }}
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                paddingLeft: '32px',
-                paddingRight: searchQuery ? '28px' : '10px',
-                fontSize: '0.84rem',
-                height: '32px',
-                borderColor: '#93c5fd',
-                backgroundColor: '#ffffff'
-              }}
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchQuery('');
-                  if (searchInputRef.current) searchInputRef.current.focus();
-                }}
-                style={{
-                  position: 'absolute',
-                  right: '12px',
-                  background: 'none',
-                  border: 'none',
-                  color: '#94a3b8',
-                  cursor: 'pointer',
-                  padding: '2px',
-                  display: 'flex',
-                  alignItems: 'center'
-                }}
-              >
-                <X size={13} />
-              </button>
-            )}
-          </div>
-
-          {/* Items Scroll List */}
-          <div
-            ref={listRef}
-            style={{
-              maxHeight: `${maxMenuHeight}px`,
-              overflowY: 'auto',
-              overscrollBehavior: 'contain'
-            }}
-          >
-            {filteredOptions.length === 0 ? (
-              <div
-                style={{
-                  padding: '1rem',
-                  textAlign: 'center',
-                  color: '#64748b',
-                  fontSize: '0.82rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '0.3rem'
-                }}
-              >
-                <AlertCircle size={18} color="#94a3b8" />
-                <span>{searchQuery ? `No products found for "${searchQuery}"` : noResultsText}</span>
-              </div>
-            ) : (
-              filteredOptions.map((opt, index) => {
-                const optVal = getValue(opt);
-                const isSelected = selectedOption ? getValue(selectedOption) === optVal : value === optVal;
-                const isHighlighted = highlightedIndex === index;
-
-                return (
-                  <div
-                    key={typeof opt === 'object' && opt?.id ? opt.id : `${optVal}_${index}`}
-                    className="combobox-option-item"
-                    onClick={() => handleSelect(opt)}
-                    onMouseEnter={() => setHighlightedIndex(index)}
-                    style={{
-                      padding: '0.45rem 0.75rem',
-                      cursor: 'pointer',
-                      borderBottom: '1px solid #f8fafc',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '0.5rem',
-                      backgroundColor: isHighlighted ? '#eff6ff' : isSelected ? '#f1f5f9' : '#ffffff',
-                      transition: 'background 0.1s ease'
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      {renderOptionContent(opt, isSelected)}
-                    </div>
-                    {isSelected && (
-                      <Check size={15} color="#2563eb" style={{ flexShrink: 0 }} />
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
+      {/* Render Popover directly into document.body to avoid table clipping */}
+      {typeof document !== 'undefined' && popoverElement && createPortal(popoverElement, document.body)}
     </div>
   );
 };
