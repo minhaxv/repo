@@ -97,6 +97,8 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
   const [selectedJobCardItem, setSelectedJobCardItem] = useState(null);
   const [selectedJobDetailJob, setSelectedJobDetailJob] = useState(null);
   const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState(null);
+  const [printJobCardOrder, setPrintJobCardOrder] = useState(null);
+  const [printInvoiceOrder, setPrintInvoiceOrder] = useState(null);
 
   // Multi-Vendor Outsource Jobs Modal State (1 or More Vendors per Line Item)
   const [outsourceModalIdx, setOutsourceModalIdx] = useState(null);
