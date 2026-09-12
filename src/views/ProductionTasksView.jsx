@@ -31,7 +31,12 @@ import {
   ChevronRight,
   TrendingUp,
   Sliders,
-  Settings
+  Settings,
+  PackageCheck,
+  Package,
+  Box,
+  Zap,
+  CheckSquare
 } from 'lucide-react';
 
 export const ProductionTasksView = ({ onNavigate = null }) => {
@@ -50,7 +55,7 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
     deleteProductionProcess
   } = useERP();
 
-  // Navigation sub-tab: 'board' | 'list' | 'workload' | 'processes'
+  // Navigation sub-tab: 'board' | 'list' | 'available_items' | 'workload' | 'processes'
   const [activeTab, setActiveTab] = useState('board');
   const [sortBy, setSortBy] = useState('date_desc');
 
@@ -59,14 +64,20 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
   const [employeeFilter, setEmployeeFilter] = useState('ALL');
   const [processFilter, setProcessFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [availableStageFilter, setAvailableStageFilter] = useState('ALL');
 
-  // Assign Task Modal state
+  // Take / Assign Task Modal state
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedEmployeeForAssign, setSelectedEmployeeForAssign] = useState(null);
   const [taskForm, setTaskForm] = useState({
     orderId: '',
+    itemId: '',
+    itemIndex: 1,
+    itemTitle: '',
+    itemDimensions: '',
+    itemMaterial: '',
     employeeId: '',
-    processName: 'Seal Making',
+    processName: 'Digital Printing',
     quantity: 1,
     unit: 'Nos',
     priority: 'Normal',
@@ -74,6 +85,15 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
     remarks: '',
     status: 'Pending'
   });
+
+  // Active Job Orders & Available Line Items
+  const activeJobOrders = useMemo(() => {
+    return (salesOrders || []).filter((o) => !['Delivered', 'Cancelled'].includes(o.productionStatus));
+  }, [salesOrders]);
+
+  const totalAvailableItemsCount = useMemo(() => {
+    return activeJobOrders.reduce((sum, o) => sum + (o.items ? o.items.length : 0), 0);
+  }, [activeJobOrders]);
 
   // Rework Modal state
   const [reworkPromptTask, setReworkPromptTask] = useState(null);
@@ -232,26 +252,85 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
     setReworkQtyInput('');
   };
 
-  // Open assign modal (optionally pre-selecting an employee)
-  const openAssignModal = (emp = null) => {
+  // Open assign / take task modal (optionally pre-selecting an employee, order, item, and immediate start)
+  const openAssignModal = (emp = null, prefillOrder = null, prefillItem = null, startImmediately = false) => {
     setSelectedEmployeeForAssign(emp);
+    const ord = prefillOrder
+      ? (typeof prefillOrder === 'object' ? prefillOrder : (salesOrders || []).find((o) => o.id === prefillOrder || o.orderNumber === prefillOrder))
+      : (salesOrders && salesOrders.length > 0 ? salesOrders[0] : null);
+
+    const items = ord?.items || [];
+    const item = prefillItem
+      ? (typeof prefillItem === 'object' ? prefillItem : items.find((i) => i.id === prefillItem))
+      : (items.length > 0 ? items[0] : null);
+
+    const itemIdx = item ? items.findIndex((i) => i.id === item.id) + 1 : 1;
+    const itemDims = item ? (item.dimensions || (item.totalSqFt ? `${item.totalSqFt} Sq.Ft (${item.width}x${item.height})` : (item.width ? `${item.width}x${item.height} ${item.unit || ''}` : ''))) : '';
+
     setTaskForm({
-      orderId: salesOrders && salesOrders.length > 0 ? salesOrders[0].id : '',
-      employeeId: emp ? emp.id : (employees && employees.length > 0 ? employees[0].id : ''),
-      processName: 'Seal Making',
-      quantity: 1,
-      unit: 'Nos',
-      priority: 'Normal',
+      orderId: ord ? ord.id : '',
+      itemId: item ? (item.id || '') : '',
+      itemIndex: itemIdx || 1,
+      itemTitle: item ? (item.productName || item.customTitle || 'Printing Item') : 'Printing Item',
+      itemDimensions: itemDims,
+      itemMaterial: item?.material || '',
+      employeeId: emp ? (typeof emp === 'object' ? emp.id : emp) : (employees && employees.length > 0 ? employees[0].id : ''),
+      processName: 'Digital Printing',
+      quantity: item?.qty || 1,
+      unit: item?.unit || 'Nos',
+      priority: item?.jobPriority || ord?.priority || 'Normal',
       machineId: '',
       remarks: '',
-      status: 'Pending'
+      status: startImmediately ? 'In Progress' : 'Pending'
     });
     setIsAssignModalOpen(true);
   };
 
-  // Submit assign task
-  const handleAssignSubmit = async (e) => {
-    e.preventDefault();
+  const handleOrderChange = (selectedOrderId) => {
+    const ord = (salesOrders || []).find((o) => o.id === selectedOrderId);
+    const items = ord?.items || [];
+    const firstItem = items[0] || null;
+    const itemDims = firstItem ? (firstItem.dimensions || (firstItem.totalSqFt ? `${firstItem.totalSqFt} Sq.Ft (${firstItem.width}x${firstItem.height})` : (firstItem.width ? `${firstItem.width}x${firstItem.height} ${firstItem.unit || ''}` : ''))) : '';
+
+    setTaskForm((prev) => ({
+      ...prev,
+      orderId: selectedOrderId,
+      itemId: firstItem ? (firstItem.id || '') : '',
+      itemIndex: firstItem ? 1 : 1,
+      itemTitle: firstItem ? (firstItem.productName || firstItem.customTitle || 'Printing Item') : 'Printing Item',
+      itemDimensions: itemDims,
+      itemMaterial: firstItem?.material || '',
+      quantity: firstItem?.qty || 1,
+      unit: firstItem?.unit || 'Nos',
+      priority: firstItem?.jobPriority || ord?.priority || prev.priority
+    }));
+  };
+
+  const handleItemChange = (selectedItemId) => {
+    const ord = (salesOrders || []).find((o) => o.id === taskForm.orderId);
+    const items = ord?.items || [];
+    const item = items.find((i) => i.id === selectedItemId);
+    if (!item) return;
+
+    const itemIdx = items.findIndex((i) => i.id === item.id) + 1;
+    const itemDims = item.dimensions || (item.totalSqFt ? `${item.totalSqFt} Sq.Ft (${item.width}x${item.height})` : (item.width ? `${item.width}x${item.height} ${item.unit || ''}` : ''));
+
+    setTaskForm((prev) => ({
+      ...prev,
+      itemId: item.id || '',
+      itemIndex: itemIdx,
+      itemTitle: item.productName || item.customTitle || 'Printing Item',
+      itemDimensions: itemDims,
+      itemMaterial: item.material || '',
+      quantity: item.qty || prev.quantity || 1,
+      unit: item.unit || prev.unit || 'Nos',
+      priority: item.jobPriority || prev.priority
+    }));
+  };
+
+  // Submit assign / take task
+  const handleAssignSubmit = async (e, forceStatus = null) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (!taskForm.employeeId || !taskForm.processName) {
       alert('Please choose an employee and a process.');
       return;
@@ -260,7 +339,13 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
     const empObj = (employees || []).find((em) => em.id === taskForm.employeeId);
     const mchObj = (machines || []).find((m) => m.id === taskForm.machineId);
     const ordObj = (salesOrders || []).find((o) => o.id === taskForm.orderId) || {};
-    const firstItem = (ordObj.items && ordObj.items[0]) || {};
+    const items = ordObj.items || [];
+    const selectedItem = items.find((i) => i.id === taskForm.itemId) || items[0] || {};
+    const itemIdx = taskForm.itemIndex || (selectedItem ? items.findIndex((i) => i.id === selectedItem.id) + 1 : 1);
+    const itemDims = taskForm.itemDimensions || selectedItem.dimensions || (selectedItem.totalSqFt ? `${selectedItem.totalSqFt} Sq.Ft (${selectedItem.width}x${selectedItem.height})` : (selectedItem.width ? `${selectedItem.width}x${selectedItem.height} ${selectedItem.unit || ''}` : ''));
+    const itemMaterial = taskForm.itemMaterial || selectedItem.material || '';
+
+    const effectiveStatus = forceStatus || taskForm.status || 'Pending';
 
     await createProductionTask({
       employeeId: taskForm.employeeId,
@@ -268,16 +353,19 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
       orderId: taskForm.orderId || (ordObj.id || 'ORD-GEN'),
       orderNumber: ordObj.orderNumber || ordObj.id || 'ORD-GEN',
       customerName: ordObj.customerName || 'Walk-in Customer',
-      itemId: firstItem.id || '',
-      itemTitle: firstItem.productName || 'Printing Item',
+      itemId: selectedItem.id || taskForm.itemId || '',
+      itemIndex: itemIdx,
+      itemTitle: selectedItem.productName || taskForm.itemTitle || 'Printing Item',
+      itemDimensions: itemDims,
+      itemMaterial: itemMaterial,
       processName: taskForm.processName,
-      quantity: Number(taskForm.quantity || 1),
-      unit: taskForm.unit || 'Nos',
-      priority: taskForm.priority || 'Normal',
+      quantity: Number(taskForm.quantity || selectedItem.qty || 1),
+      unit: taskForm.unit || selectedItem.unit || 'Nos',
+      priority: taskForm.priority || selectedItem.jobPriority || 'Normal',
       machineId: taskForm.machineId || '',
       machineName: mchObj ? mchObj.name : '',
       remarks: taskForm.remarks || '',
-      status: taskForm.status || 'Pending'
+      status: effectiveStatus
     });
 
     setIsAssignModalOpen(false);
@@ -387,6 +475,28 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
 
           <button
             type="button"
+            onClick={() => openAssignModal(null, null, null, true)}
+            className="btn btn-sm"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              fontWeight: 800,
+              padding: '0.55rem 1.15rem',
+              background: '#059669',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '6px',
+              boxShadow: '0 2px 4px rgba(5, 150, 105, 0.25)',
+              cursor: 'pointer'
+            }}
+            title="Take a specific line item from an open Job Order"
+          >
+            <PackageCheck size={17} /> 📥 Take Job Order Item
+          </button>
+
+          <button
+            type="button"
             onClick={() => openAssignModal()}
             className="btn btn-primary btn-sm"
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700, padding: '0.55rem 1rem' }}
@@ -397,10 +507,11 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
       </div>
 
       {/* Navigation Sub-Tabs */}
-      <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', gap: '0.5rem', background: '#ffffff', borderRadius: '8px 8px 0 0', padding: '0.25rem 0.5rem 0' }}>
+      <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', gap: '0.5rem', background: '#ffffff', borderRadius: '8px 8px 0 0', padding: '0.25rem 0.5rem 0', overflowX: 'auto' }}>
         {[
           { id: 'board', label: 'Task Kanban Board', icon: Layers, count: inProgressCount + pausedCount },
           { id: 'list', label: 'Task List View', icon: List, count: filteredTasks.length },
+          { id: 'available_items', label: 'Take Job Items (Available)', icon: PackageCheck, count: totalAvailableItemsCount },
           { id: 'workload', label: 'Employee Workload & Capacity', icon: User, count: employees.length },
           { id: 'processes', label: 'Process Master Directory', icon: Settings, count: (productionProcesses || []).length }
         ].map((tab) => {
@@ -791,11 +902,23 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
                             >
                               {task.processName}
                             </span>
-                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#334155', marginTop: '0.25rem' }}>
-                              {task.itemTitle || 'Printing Item'}
-                            </div>
-                            <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                              Customer: <strong>{task.customerName || 'N/A'}</strong>
+                            <div style={{ marginTop: '0.25rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.66rem', fontWeight: 800, background: '#f1f5f9', color: '#334155', padding: '0.05rem 0.35rem', borderRadius: '3px', border: '1px solid #cbd5e1' }}>
+                                  Item #{task.itemIndex || 1}
+                                </span>
+                                <strong style={{ fontSize: '0.8rem', color: '#0f172a' }}>
+                                  {task.itemTitle || 'Printing Item'}
+                                </strong>
+                              </div>
+                              {(task.itemDimensions || task.itemMaterial) && (
+                                <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.15rem' }}>
+                                  {task.itemDimensions ? `${task.itemDimensions} • ` : ''}{task.itemMaterial || ''}
+                                </div>
+                              )}
+                              <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.15rem' }}>
+                                Customer: <strong style={{ color: '#334155' }}>{task.customerName || 'N/A'}</strong> • Qty: <strong>{task.quantity} {task.unit || 'Nos'}</strong>
+                              </div>
                             </div>
                           </div>
 
@@ -1270,9 +1393,17 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
                             <div style={{ fontWeight: 700, color: '#1e293b' }}>
                               {task.customerName || 'Walk-in Customer'}
                             </div>
-                            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.1rem' }}>
-                              {task.itemTitle || 'Printing Job'}
+                            <div style={{ fontSize: '0.76rem', color: '#0f172a', marginTop: '0.15rem', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '0.66rem', fontWeight: 800, background: '#e2e8f0', color: '#334155', padding: '0.05rem 0.35rem', borderRadius: '3px' }}>
+                                Item #{task.itemIndex || 1}
+                              </span>
+                              <strong>{task.itemTitle || 'Printing Job'}</strong>
                             </div>
+                            {(task.itemDimensions || task.itemMaterial) && (
+                              <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.1rem' }}>
+                                {task.itemDimensions ? `${task.itemDimensions} • ` : ''}{task.itemMaterial || ''}
+                              </div>
+                            )}
                             {task.remarks && (
                               <div style={{ fontSize: '0.7rem', color: '#854d0e', background: '#fffbeb', padding: '0.15rem 0.4rem', borderRadius: '4px', display: 'inline-block', marginTop: '0.2rem' }}>
                                 Note: {task.remarks}
@@ -1607,7 +1738,296 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
       )}
 
       {/* ========================================================================= */}
-      {/* SUB-TAB 3: EMPLOYEE WORKLOAD & CAPACITY */}
+      {/* SUB-TAB: TAKE JOB ITEMS (AVAILABLE TO CLAIM) */}
+      {/* ========================================================================= */}
+      {activeTab === 'available_items' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Header & Filter Bar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', background: '#ffffff', padding: '1rem 1.25rem', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <PackageCheck size={20} color="#059669" />
+                <h4 style={{ margin: 0, fontWeight: 800, fontSize: '1.1rem', color: '#0f172a' }}>
+                  Open Job Orders & Line Items Available to Take
+                </h4>
+              </div>
+              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                One Job Order contains multiple line items. Shop floor employees can take individual items independently without locking the whole order.
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+              {/* Search */}
+              <div style={{ position: 'relative', minWidth: '220px' }}>
+                <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                <input
+                  type="text"
+                  placeholder="Search order, item, customer..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    padding: '0.45rem 0.6rem 0.45rem 2rem',
+                    fontSize: '0.82rem',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    width: '100%'
+                  }}
+                />
+              </div>
+
+              {/* Stage Filter */}
+              <select
+                value={availableStageFilter}
+                onChange={(e) => setAvailableStageFilter(e.target.value)}
+                style={{ padding: '0.45rem 0.6rem', fontSize: '0.82rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+              >
+                <option value="ALL">All Production Stages</option>
+                <option value="Quotation">Quotation</option>
+                <option value="New">New Order</option>
+                <option value="Designing">Designing</option>
+                <option value="Printing">Printing</option>
+                <option value="Finishing">Finishing</option>
+                <option value="Quality Check">Quality Check</option>
+                <option value="Ready for Delivery">Ready for Delivery</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Orders & Items List */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {(() => {
+              const q = searchQuery.toLowerCase().trim();
+              const filteredOrders = activeJobOrders.filter((ord) => {
+                const matchStage = availableStageFilter === 'ALL' || ord.productionStatus === availableStageFilter;
+                const matchQuery = !q ||
+                  (ord.orderNumber && ord.orderNumber.toLowerCase().includes(q)) ||
+                  (ord.id && ord.id.toLowerCase().includes(q)) ||
+                  (ord.customerName && ord.customerName.toLowerCase().includes(q)) ||
+                  (ord.items && ord.items.some(it =>
+                    (it.productName && it.productName.toLowerCase().includes(q)) ||
+                    (it.material && it.material.toLowerCase().includes(q)) ||
+                    (it.category && it.category.toLowerCase().includes(q))
+                  ));
+                return matchStage && matchQuery;
+              });
+
+              if (filteredOrders.length === 0) {
+                return (
+                  <div style={{ background: '#ffffff', padding: '3rem 1.5rem', textAlign: 'center', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <Package size={36} color="#94a3b8" style={{ margin: '0 auto 0.75rem', display: 'block' }} />
+                    <h5 style={{ margin: 0, fontWeight: 700, color: '#334155' }}>No active job order items found matching filters</h5>
+                    <p style={{ margin: '0.35rem 0 0', fontSize: '0.82rem', color: '#94a3b8' }}>All active orders may be completed or no items match your search query.</p>
+                  </div>
+                );
+              }
+
+              return filteredOrders.map((ord) => {
+                const items = ord.items || [];
+                const isUrgent = ord.priority === 'Urgent' || (items.some(i => i.jobPriority === 'Urgent'));
+
+                return (
+                  <div
+                    key={ord.id}
+                    style={{
+                      background: '#ffffff',
+                      borderRadius: '12px',
+                      border: isUrgent ? '1.5px solid #fca5a5' : '1px solid #e2e8f0',
+                      boxShadow: '0 2px 5px rgba(0,0,0,0.03)',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    {/* Order Card Header */}
+                    <div
+                      style={{
+                        padding: '0.85rem 1.25rem',
+                        background: isUrgent ? '#fef2f2' : '#f8fafc',
+                        borderBottom: '1px solid #e2e8f0',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '0.75rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 900, fontSize: '0.95rem', color: '#0f172a' }}>
+                          #{ord.orderNumber || ord.id}
+                        </span>
+
+                        <span style={{ fontSize: '0.82rem', color: '#475569', fontWeight: 600 }}>
+                          Customer: <strong style={{ color: '#0f172a' }}>{ord.customerName}</strong>
+                        </span>
+
+                        {ord.deliveryDate && (
+                          <span style={{ fontSize: '0.76rem', color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <Calendar size={13} /> Due: <strong>{ord.deliveryDate}</strong>
+                          </span>
+                        )}
+
+                        {isUrgent && (
+                          <span style={{ fontSize: '0.68rem', fontWeight: 900, background: '#ef4444', color: '#ffffff', padding: '0.1rem 0.45rem', borderRadius: '4px' }}>
+                            URGENT
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {/* Visual Stage Button */}
+                        <button
+                          type="button"
+                          onClick={() => onNavigate && onNavigate('production')}
+                          style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            padding: '0.2rem 0.5rem',
+                            borderRadius: '5px',
+                            background: '#eff6ff',
+                            color: '#2563eb',
+                            border: '1px solid #bfdbfe',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.25rem'
+                          }}
+                          title="Open on ScreenArts Visual Board"
+                        >
+                          <Factory size={12} /> Stage: {ord.productionStatus || 'In Production'} ↗
+                        </button>
+
+                        <span style={{ fontSize: '0.72rem', fontWeight: 800, background: '#e0e7ff', color: '#3730a3', padding: '0.2rem 0.6rem', borderRadius: '12px' }}>
+                          {items.length} Line {items.length === 1 ? 'Item' : 'Items'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Order Line Items */}
+                    <div style={{ padding: '0.85rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {items.map((it, idx) => {
+                        const itDims = it.dimensions || (it.totalSqFt ? `${it.totalSqFt} Sq.Ft (${it.width}x${it.height})` : (it.width ? `${it.width}x${it.height} ${it.unit || ''}` : ''));
+                        const itTasks = (productionTasks || []).filter(t => (t.orderId === ord.id || t.orderNumber === ord.orderNumber) && (t.itemId === it.id || (idx === 0 && !t.itemId)));
+
+                        return (
+                          <div
+                            key={it.id || idx}
+                            style={{
+                              background: '#f8fafc',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '8px',
+                              padding: '0.85rem 1rem',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              flexWrap: 'wrap',
+                              gap: '0.75rem'
+                            }}
+                          >
+                            {/* Left Item Details */}
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', flex: 1, minWidth: '260px' }}>
+                              <div
+                                style={{
+                                  width: '32px',
+                                  height: '32px',
+                                  borderRadius: '6px',
+                                  background: '#e0f2fe',
+                                  color: '#0284c7',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontWeight: 800,
+                                  fontSize: '0.75rem',
+                                  flexShrink: 0
+                                }}
+                              >
+                                #{idx + 1}
+                              </div>
+
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                  <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>
+                                    {it.productName || it.customTitle || 'Printing Item'}
+                                  </strong>
+                                  {it.category && (
+                                    <span style={{ fontSize: '0.68rem', color: '#64748b', background: '#e2e8f0', padding: '0.05rem 0.35rem', borderRadius: '3px' }}>
+                                      {it.category}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div style={{ fontSize: '0.76rem', color: '#475569', marginTop: '0.2rem' }}>
+                                  {itDims ? `${itDims} • ` : ''}Required Qty: <strong style={{ color: '#0f172a' }}>{it.qty || 1} {it.unit || 'Nos'}</strong>
+                                  {it.material ? ` • Substrate: ${it.material}` : ''}
+                                </div>
+
+                                {/* Item Active Processes Strip */}
+                                <div style={{ marginTop: '0.4rem', display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                                  <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>
+                                    Processes on this Item:
+                                  </span>
+                                  {itTasks.length > 0 ? (
+                                    itTasks.map(t => (
+                                      <span
+                                        key={t.id}
+                                        style={{
+                                          fontSize: '0.68rem',
+                                          fontWeight: 700,
+                                          padding: '0.12rem 0.45rem',
+                                          borderRadius: '4px',
+                                          background: t.status === 'Completed' ? '#dcfce7' : ['Started', 'In Progress', 'Resumed'].includes(t.status) ? '#dbeafe' : '#fef3c7',
+                                          color: t.status === 'Completed' ? '#166534' : ['Started', 'In Progress', 'Resumed'].includes(t.status) ? '#1e40af' : '#92400e',
+                                          border: `1px solid ${t.status === 'Completed' ? '#86efac' : ['Started', 'In Progress', 'Resumed'].includes(t.status) ? '#bfdbfe' : '#fde68a'}`
+                                        }}
+                                      >
+                                        ● {t.employeeName}: {t.processName} ({t.status})
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span style={{ fontSize: '0.7rem', color: '#059669', fontStyle: 'italic', fontWeight: 600 }}>
+                                      ⚪ No processes taken yet — Ready to take
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Right Action: Take This Item Button */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => openAssignModal(null, ord, it, true)}
+                                className="btn btn-sm"
+                                style={{
+                                  background: '#059669',
+                                  color: '#ffffff',
+                                  fontWeight: 800,
+                                  fontSize: '0.78rem',
+                                  padding: '0.45rem 0.85rem',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem',
+                                  boxShadow: '0 2px 4px rgba(5, 150, 105, 0.2)',
+                                  cursor: 'pointer'
+                                }}
+                                title={`Take / Claim process on Item #${idx + 1} (${it.productName})`}
+                              >
+                                <Zap size={13} fill="#ffffff" /> Take This Item Process
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SUB-TAB 4: EMPLOYEE WORKLOAD & CAPACITY */}
       {/* ========================================================================= */}
       {activeTab === 'workload' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -1746,14 +2166,36 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
                   </div>
 
                   {/* Action Buttons */}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: 'auto', paddingTop: '0.3rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.5rem', marginTop: 'auto', paddingTop: '0.3rem', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => openAssignModal(emp, null, null, true)}
+                      className="btn btn-sm"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.3rem',
+                        fontSize: '0.74rem',
+                        padding: '0.35rem 0.75rem',
+                        background: '#059669',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                      title={`Pick / Take an available job order item for ${emp.name}`}
+                    >
+                      <PackageCheck size={13} /> Take Item for {emp.name.split(' ')[0]}
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => openAssignModal(emp)}
                       className="btn btn-primary btn-sm"
-                      style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', padding: '0.35rem 0.75rem' }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.74rem', padding: '0.35rem 0.75rem' }}
                     >
-                      <Plus size={13} /> Assign Task to {emp.name.split(' ')[0]}
+                      <Plus size={13} /> Quick Assign
                     </button>
                   </div>
                 </div>
@@ -1882,21 +2324,28 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
       )}
 
       {/* ========================================================================= */}
-      {/* QUICK ASSIGN TASK MODAL */}
+      {/* TAKE / ASSIGN JOB ORDER ITEM MODAL */}
       {/* ========================================================================= */}
       {isAssignModalOpen && (
         <div className="modal-overlay" onClick={() => setIsAssignModalOpen(false)} style={{ zIndex: 99999 }}>
           <div
             className="modal-content"
             onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '580px', width: '95vw', padding: '1.5rem' }}
+            style={{ maxWidth: '680px', width: '95vw', padding: '1.5rem', maxHeight: '92vh', overflowY: 'auto' }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <UserCheck size={20} color="#2563eb" />
-                <h4 style={{ margin: 0, fontWeight: 800, fontSize: '1.05rem', color: '#0f172a' }}>
-                  Assign Production Task to Employee
-                </h4>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <PackageCheck size={22} />
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontWeight: 800, fontSize: '1.1rem', color: '#0f172a' }}>
+                    Take / Assign Job Order Item
+                  </h4>
+                  <span style={{ fontSize: '0.76rem', color: '#64748b' }}>
+                    Select order and choose specific line item. Workers take individual items, not the entire order wholesale.
+                  </span>
+                </div>
               </div>
               <button
                 type="button"
@@ -1907,32 +2356,142 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
               </button>
             </div>
 
-            <form onSubmit={handleAssignSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {/* Select Order */}
+            <form onSubmit={(e) => handleAssignSubmit(e)} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Select Job Order */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                  Select Sales Order / Job <span style={{ color: '#ef4444' }}>*</span>
+                  Step 1: Select Job Order <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <select
                   className="form-control"
                   value={taskForm.orderId}
-                  onChange={(e) => setTaskForm({ ...taskForm, orderId: e.target.value })}
+                  onChange={(e) => handleOrderChange(e.target.value)}
                   required
                   style={{ width: '100%', padding: '0.5rem 0.75rem', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
                 >
+                  <option value="">-- Choose Job Order --</option>
                   {(salesOrders || []).map((ord) => (
                     <option key={ord.id} value={ord.id}>
-                      #{ord.orderNumber || ord.id} — {ord.customerName} ({ord.items ? ord.items.length : 0} items)
+                      #{ord.orderNumber || ord.id} — {ord.customerName} ({ord.items ? ord.items.length : 0} items) • {ord.productionStatus || 'In Production'}
                     </option>
                   ))}
                 </select>
               </div>
 
+              {/* Step 2: Interactive Line Item Picker */}
+              {(() => {
+                const currentOrder = (salesOrders || []).find((o) => o.id === taskForm.orderId);
+                const items = currentOrder?.items || [];
+
+                return (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                      <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#059669', display: 'flex', alignItems: 'center', gap: '0.35rem', margin: 0 }}>
+                        <PackageCheck size={16} /> Step 2: Select Specific Line Item to Take ({items.length} items in Order) <span style={{ color: '#ef4444' }}>*</span>
+                      </label>
+                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                        Each item can be taken independently
+                      </span>
+                    </div>
+
+                    {items.length === 0 ? (
+                      <div style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.8rem', color: '#94a3b8' }}>
+                        Please select an order above to view its items
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '220px', overflowY: 'auto', paddingRight: '0.2rem' }}>
+                        {items.map((it, idx) => {
+                          const isSelected = (taskForm.itemId === it.id) || (!taskForm.itemId && idx === 0);
+                          const itDims = it.dimensions || (it.totalSqFt ? `${it.totalSqFt} Sq.Ft (${it.width}x${it.height})` : (it.width ? `${it.width}x${it.height} ${it.unit || ''}` : ''));
+                          const itTasks = (productionTasks || []).filter((t) => (t.orderId === currentOrder?.id || t.orderNumber === currentOrder?.orderNumber) && (t.itemId === it.id || (idx === 0 && !t.itemId)));
+
+                          return (
+                            <div
+                              key={it.id || idx}
+                              onClick={() => handleItemChange(it.id)}
+                              style={{
+                                padding: '0.7rem 0.85rem',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                background: isSelected ? '#ecfdf5' : '#ffffff',
+                                border: isSelected ? '2px solid #059669' : '1px solid #e2e8f0',
+                                boxShadow: isSelected ? '0 2px 8px rgba(5, 150, 105, 0.15)' : 'none',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                gap: '0.75rem',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
+                                <input
+                                  type="radio"
+                                  name="modalItemRadio"
+                                  checked={isSelected}
+                                  onChange={() => handleItemChange(it.id)}
+                                  style={{ marginTop: '0.25rem', accentColor: '#059669', cursor: 'pointer', width: '16px', height: '16px' }}
+                                />
+                                <div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.68rem', fontWeight: 900, background: isSelected ? '#059669' : '#64748b', color: '#ffffff', padding: '0.1rem 0.4rem', borderRadius: '3px' }}>
+                                      Item #{idx + 1}
+                                    </span>
+                                    <strong style={{ fontSize: '0.85rem', color: '#0f172a' }}>
+                                      {it.productName || it.customTitle || 'Printing Item'}
+                                    </strong>
+                                  </div>
+                                  <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '0.2rem' }}>
+                                    {itDims ? `${itDims} • ` : ''}Qty: <strong style={{ color: '#0f172a' }}>{it.qty || 1} {it.unit || 'Nos'}</strong>
+                                    {it.material ? ` • Substrate: ${it.material}` : ''}
+                                  </div>
+
+                                  {/* Tasks already associated with this item */}
+                                  <div style={{ marginTop: '0.35rem', display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                                    {itTasks.length > 0 ? (
+                                      itTasks.map((t) => (
+                                        <span
+                                          key={t.id}
+                                          style={{
+                                            fontSize: '0.65rem',
+                                            fontWeight: 700,
+                                            padding: '0.1rem 0.4rem',
+                                            borderRadius: '4px',
+                                            background: t.status === 'Completed' ? '#dcfce7' : ['Started', 'In Progress', 'Resumed'].includes(t.status) ? '#dbeafe' : '#fef3c7',
+                                            color: t.status === 'Completed' ? '#166534' : ['Started', 'In Progress', 'Resumed'].includes(t.status) ? '#1e40af' : '#92400e',
+                                            border: '1px solid rgba(0,0,0,0.08)'
+                                          }}
+                                        >
+                                          ● {t.employeeName}: {t.processName} ({t.status})
+                                        </span>
+                                      ))
+                                    ) : (
+                                      <span style={{ fontSize: '0.68rem', color: '#059669', fontStyle: 'italic', fontWeight: 600 }}>
+                                        ✓ Ready to Take (No active tasks yet)
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {isSelected && (
+                                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#059669', background: '#ffffff', padding: '0.2rem 0.5rem', borderRadius: '20px', border: '1px solid #86efac', whiteSpace: 'nowrap' }}>
+                                  ✓ Selected Item
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Employee & Process in 2 Columns */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                    Assign Employee <span style={{ color: '#ef4444' }}>*</span>
+                    Assign / Claim Employee <span style={{ color: '#ef4444' }}>*</span>
                   </label>
                   <select
                     className="form-control"
@@ -1944,7 +2503,7 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
                     <option value="">-- Choose Employee --</option>
                     {(employees || []).map((emp) => (
                       <option key={emp.id} value={emp.id}>
-                        {emp.name} ({emp.department || 'Production'})
+                        {emp.name} ({emp.department || 'Production'} • {emp.designation || 'Staff'})
                       </option>
                     ))}
                   </select>
@@ -1952,7 +2511,7 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                    Process / Operation <span style={{ color: '#ef4444' }}>*</span>
+                    Process / Operation to Perform <span style={{ color: '#ef4444' }}>*</span>
                   </label>
                   <select
                     className="form-control"
@@ -1963,7 +2522,7 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
                   >
                     {(productionProcesses || []).map((proc) => (
                       <option key={proc.id} value={proc.name}>
-                        {proc.name}
+                        {proc.name} {proc.department ? `(${proc.department})` : ''}
                       </option>
                     ))}
                   </select>
@@ -2013,11 +2572,11 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
                 </div>
               </div>
 
-              {/* Machine & Initial Status */}
+              {/* Machine & Instructions */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                    Machine (Optional)
+                    Machine / Workstation (Optional)
                   </label>
                   <select
                     className="form-control"
@@ -2025,7 +2584,7 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
                     onChange={(e) => setTaskForm({ ...taskForm, machineId: e.target.value })}
                     style={{ width: '100%', padding: '0.5rem 0.75rem', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
                   >
-                    <option value="">-- No Machine / Manual --</option>
+                    <option value="">-- No Machine / Manual Bench --</option>
                     {(machines || []).map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.name}
@@ -2036,37 +2595,21 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                    Initial Status
+                    Task Remarks / Notes
                   </label>
-                  <select
+                  <input
+                    type="text"
                     className="form-control"
-                    value={taskForm.status}
-                    onChange={(e) => setTaskForm({ ...taskForm, status: e.target.value })}
+                    placeholder="e.g. 5mm margin, check color registration"
+                    value={taskForm.remarks}
+                    onChange={(e) => setTaskForm({ ...taskForm, remarks: e.target.value })}
                     style={{ width: '100%', padding: '0.5rem 0.75rem', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                  >
-                    <option value="Pending">Pending</option>
-                    <option value="In Progress">Start Immediately</option>
-                  </select>
+                  />
                 </div>
               </div>
 
-              {/* Instructions / Remarks */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                  Instructions / Notes
-                </label>
-                <input
-                  type="text"
-                  className="form-control"
-                  placeholder="e.g. Ensure adhesive margin is 5mm, double-check alignment"
-                  value={taskForm.remarks}
-                  onChange={(e) => setTaskForm({ ...taskForm, remarks: e.target.value })}
-                  style={{ width: '100%', padding: '0.5rem 0.75rem', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                />
-              </div>
-
-              {/* Modal Buttons */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
+              {/* Modal Buttons: Queue or Start Immediately */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap', gap: '0.5rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem' }}>
                 <button
                   type="button"
                   onClick={() => setIsAssignModalOpen(false)}
@@ -2074,13 +2617,40 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary btn-sm"
-                  style={{ fontWeight: 700, padding: '0.5rem 1.25rem' }}
-                >
-                  Confirm & Assign Task
-                </button>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    onClick={(e) => handleAssignSubmit(e, 'Pending')}
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontWeight: 700, padding: '0.5rem 1rem' }}
+                    title="Assign in Pending Queue"
+                  >
+                    📥 Take & Add to Queue
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => handleAssignSubmit(e, 'In Progress')}
+                    className="btn btn-sm"
+                    style={{
+                      background: '#059669',
+                      color: '#ffffff',
+                      border: 'none',
+                      fontWeight: 800,
+                      padding: '0.5rem 1.25rem',
+                      borderRadius: '6px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      boxShadow: '0 2px 4px rgba(5, 150, 105, 0.25)',
+                      cursor: 'pointer'
+                    }}
+                    title="Assign and start working immediately"
+                  >
+                    <Timer size={15} /> ⚡ Take & Start Work Now
+                  </button>
+                </div>
               </div>
             </form>
           </div>

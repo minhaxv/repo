@@ -111,7 +111,8 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
     priority: 'Normal',
     machineId: '',
     remarks: '',
-    status: 'Pending'
+    status: 'Pending',
+    selectedItemId: ''
   });
   const [reworkPromptTask, setReworkPromptTask] = useState(null);
   const [reworkReason, setReworkReason] = useState('');
@@ -276,21 +277,31 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
     const empObj = (employees || []).find((em) => em.id === taskForm.employeeId);
     const mchObj = (machines || []).find((m) => m.id === taskForm.machineId);
     const procObj = (productionProcesses || []).find((p) => p.name === taskForm.processName);
-    const qtyVal = Number(taskForm.quantity || currentItem.qty || 1);
+
+    const targetItemId = taskForm.selectedItemId || currentItem.id || job.itemId || '';
+    const targetItem = (parentOrder.items || []).find((i) => i.id === targetItemId) || currentItem || {};
+    const itemIdx = (parentOrder.items || []).findIndex((i) => i.id === targetItem.id) + 1;
+    const itemDims = targetItem.dimensions || (targetItem.totalSqFt ? `${targetItem.totalSqFt} Sq.Ft (${targetItem.width}x${targetItem.height})` : (targetItem.width ? `${targetItem.width}x${targetItem.height} ${targetItem.unit || ''}` : ''));
+    const itemMat = targetItem.material || '';
+
+    const qtyVal = Number(taskForm.quantity || targetItem.qty || currentItem.qty || 1);
 
     await createProductionTask({
       employeeId: taskForm.employeeId,
       employeeName: empObj ? empObj.name : 'Assigned Worker',
-      orderId: job.orderId,
+      orderId: job.orderId || parentOrder.id,
       orderNumber: parentOrder.orderNumber || parentOrder.id || job.orderId,
       customerName: parentOrder.customerName || job.customerName || '',
-      itemId: currentItem.id || job.itemId || '',
-      itemTitle: currentItem.productName || job.productName || 'Printing Item',
+      itemId: targetItem.id || currentItem.id || job.itemId || '',
+      itemIndex: itemIdx || 1,
+      itemTitle: targetItem.productName || targetItem.customTitle || currentItem.productName || job.productName || 'Printing Item',
+      itemDimensions: itemDims,
+      itemMaterial: itemMat,
       processId: procObj ? procObj.id : '',
       processName: taskForm.processName,
       quantity: qtyVal,
-      unit: taskForm.unit || currentItem.unit || 'Nos',
-      priority: taskForm.priority || 'Normal',
+      unit: taskForm.unit || targetItem.unit || currentItem.unit || 'Nos',
+      priority: taskForm.priority || targetItem.jobPriority || 'Normal',
       machineId: taskForm.machineId || '',
       machineName: mchObj ? mchObj.name : '',
       remarks: taskForm.remarks || '',
@@ -306,7 +317,8 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
       priority: 'Normal',
       machineId: '',
       remarks: '',
-      status: 'Pending'
+      status: 'Pending',
+      selectedItemId: ''
     });
   };
 
@@ -685,6 +697,36 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
                   </div>
 
                   <form onSubmit={handleCreateTask} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {/* Line Item Target Selector for Multi-Item Orders */}
+                    {parentOrder.items && parentOrder.items.length > 1 && (
+                      <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: '#166534', marginBottom: '0.35rem' }}>
+                          🎯 Select Line Item to Process ({parentOrder.items.length} items in Order) <span style={{ color: '#ef4444' }}>*</span>
+                        </label>
+                        <select
+                          className="form-control"
+                          value={taskForm.selectedItemId || currentItem.id}
+                          onChange={(e) => {
+                            const selId = e.target.value;
+                            const it = (parentOrder.items || []).find((i) => i.id === selId);
+                            setTaskForm({
+                              ...taskForm,
+                              selectedItemId: selId,
+                              quantity: it?.qty || taskForm.quantity,
+                              unit: it?.unit || taskForm.unit
+                            });
+                          }}
+                          style={{ width: '100%', padding: '0.45rem 0.6rem', fontSize: '0.85rem', borderRadius: '6px', border: '1.5px solid #22c55e', background: '#ffffff', fontWeight: 600 }}
+                        >
+                          {parentOrder.items.map((it, idx) => (
+                            <option key={it.id || idx} value={it.id}>
+                              Item #{idx + 1}: {it.productName || it.customTitle} — Qty: {it.qty} {it.unit || 'Nos'} {it.material ? `(${it.material})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.85rem' }}>
                       {/* Employee Select */}
                       <div>

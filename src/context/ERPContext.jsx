@@ -3464,6 +3464,8 @@ export const ERPProvider = ({ children }) => {
     const taskId = taskData.id || `TSK-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
     const taskDate = taskData.taskDate || new Date().toISOString().split('T')[0];
     const initialStatus = taskData.status || 'Pending';
+    const isStarting = initialStatus === 'Started' || initialStatus === 'In Progress';
+    const effectiveStatus = isStarting ? 'In Progress' : initialStatus;
     const timeFormatted = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
     const newTask = {
@@ -3475,15 +3477,18 @@ export const ERPProvider = ({ children }) => {
       orderNumber: taskData.orderNumber || taskData.orderId || 'Direct Job',
       customerName: taskData.customerName || '',
       itemId: taskData.itemId || '',
+      itemIndex: taskData.itemIndex || 1,
       itemTitle: taskData.itemTitle || taskData.productName || 'Printing Item',
+      itemDimensions: taskData.itemDimensions || '',
+      itemMaterial: taskData.itemMaterial || '',
       processId: taskData.processId || '',
       processName: taskData.processName,
       quantity: Number(taskData.quantity || 1),
       unit: taskData.unit || 'Nos',
-      startTime: initialStatus === 'Started' ? (taskData.startTime || timeFormatted) : (taskData.startTime || ''),
+      startTime: isStarting ? (taskData.startTime || timeFormatted) : (taskData.startTime || ''),
       endTime: taskData.endTime || '',
       totalDurationMinutes: Number(taskData.totalDurationMinutes || 0),
-      status: initialStatus,
+      status: effectiveStatus,
       priority: taskData.priority || 'Normal',
       remarks: taskData.remarks || '',
       machineId: taskData.machineId || '',
@@ -3502,7 +3507,7 @@ export const ERPProvider = ({ children }) => {
       createdAt: new Date().toISOString(),
       completedBy: '',
       completedAt: '',
-      timeLogs: initialStatus === 'Started' ? [{
+      timeLogs: isStarting ? [{
         id: `TL-${taskId}-1`,
         action: 'START',
         timestamp: new Date().toISOString(),
