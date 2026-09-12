@@ -1,83 +1,197 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useERP } from '../context/ERPContext';
-import { PRODUCTION_STATUS } from '../types';
+import { STAGE_STATUS_COLORS, PRODUCTION_STAGES } from '../types';
 import { JobCardPrintModal } from '../components/modals/JobCardPrintModal';
-import { Factory, LayoutGrid, List, Printer, Clock, UserCheck, Building2, Palette, Scissors, Search, Filter, ShieldAlert } from 'lucide-react';
+import { JobDetailModal } from '../components/modals/JobDetailModal';
+import {
+  Factory,
+  LayoutGrid,
+  List,
+  Printer,
+  Clock,
+  UserCheck,
+  Building2,
+  Palette,
+  Scissors,
+  Search,
+  Filter,
+  ShieldAlert,
+  CheckCircle2,
+  Play,
+  Check,
+  Cpu,
+  User,
+  AlertTriangle,
+  ChevronRight,
+  Eye,
+  Calendar,
+  Layers,
+  ArrowRight,
+  Sliders,
+  Trash2
+} from 'lucide-react';
 
-export const ProductionView = () => {
-  const { salesOrders, workers, employees, updateItemProductionStatus, assignItemWorkers, calculateJobProfitAndIncentive } = useERP();
-  const [viewType, setViewType] = useState('kanban'); // 'kanban' or 'table'
-  const [selectedJobCardData, setSelectedJobCardData] = useState(null);
+export const ProductionView = ({ initialStageFilter = 'ALL' }) => {
+  const {
+    salesOrders,
+    employees,
+    machines,
+    updateJobOrderStage,
+    updateItemProductionStatus
+  } = useERP();
+
+  const [viewType, setViewType] = useState('kanban'); // 'kanban' | 'list'
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [selectedCustomerFilter, setSelectedCustomerFilter] = useState('ALL');
+  const [selectedMachineFilter, setSelectedMachineFilter] = useState('ALL');
+  const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState('ALL');
+  const [selectedPriorityFilter, setSelectedPriorityFilter] = useState('ALL');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState('ALL');
+  const [selectedDepartmentTab, setSelectedDepartmentTab] = useState(initialStageFilter); // 'ALL' | 'Designing' | 'Printing' | 'Finishing' | 'Quality Check' | 'Ready for Delivery' | 'Delivered'
 
-  const statuses = [
-    PRODUCTION_STATUS.NEW,
-    PRODUCTION_STATUS.DESIGN,
-    PRODUCTION_STATUS.PRINTING,
-    PRODUCTION_STATUS.OUTSOURCE,
-    PRODUCTION_STATUS.FINISHING,
-    PRODUCTION_STATUS.QUALITY_CHECK,
-    PRODUCTION_STATUS.READY,
-    PRODUCTION_STATUS.DELIVERED
+  const [selectedJobDetail, setSelectedJobDetail] = useState(null);
+  const [selectedJobCardPrint, setSelectedJobCardPrint] = useState(null);
+
+  // 6 Production Board Stages
+  const stages = [
+    { key: 'Designing', label: 'DESIGNING', icon: Palette, color: '#8b5cf6' },
+    { key: 'Printing', label: 'PRINTING', icon: Printer, color: '#2563eb' },
+    { key: 'Finishing', label: 'FINISHING', icon: Scissors, color: '#d97706' },
+    { key: 'Quality Check', label: 'QUALITY CHECK', icon: CheckCircle2, color: '#059669' },
+    { key: 'Ready for Delivery', label: 'READY', icon: CheckCircle2, color: '#0284c7' },
+    { key: 'Delivered', label: 'DELIVERY', icon: Factory, color: '#16a34a' }
   ];
 
-  // Flatten all sales order line items into individual Product Job Cards
-  const allProductJobCards = [];
-  salesOrders.forEach((o) => {
-    (o.items || []).forEach((it, idx) => {
-      const jcId = it.jobCardId || `JC-${o.id.split('-').pop()}-${idx + 1}`;
-      const itemStatus = it.productionStatus || o.productionStatus || PRODUCTION_STATUS.NEW;
-      const itemDeliveryDate = it.deliveryDate || o.deliveryDate;
+  // Flatten all sales order line items into rich Job Cards
+  const allJobCards = useMemo(() => {
+    const cards = [];
+    (salesOrders || []).forEach((o) => {
+      (o.items || []).forEach((it, idx) => {
+        const jcId = it.jobCardId || `JC-${o.id.split('-').pop()}-${idx + 1}`;
+        let itemStatus = it.productionStatus || o.productionStatus || 'New';
+        if (itemStatus === 'New') itemStatus = it.designerRequired === 'YES' ? 'Designing' : 'Printing';
+        if (itemStatus === 'Design') itemStatus = 'Designing';
+        if (itemStatus === 'Ready') itemStatus = 'Ready for Delivery';
 
-      allProductJobCards.push({
-        jobCardId: jcId,
-        orderId: o.id,
-        orderDate: o.orderDate,
-        customerName: o.customerName,
-        customerMobile: o.customerMobile,
-        careOfName: o.careOfName,
-        salesPersonName: o.salesPersonName,
-        itemIndex: idx + 1,
-        item: it,
-        productName: it.customTitle ? `${it.productName} — (${it.customTitle})` : it.productName,
-        productionStatus: itemStatus,
-        deliveryDate: itemDeliveryDate,
-        orderRemarks: o.remarks
+        const itemDeliveryDate = it.deliveryDate || o.deliveryDate;
+        const todayStr = new Date().toISOString().split('T')[0];
+        const isPastDue = itemDeliveryDate && new Date(itemDeliveryDate) < new Date(todayStr) && itemStatus !== 'Delivered';
+
+        // Calculate progress percentage
+        let progressPct = 15;
+        if (itemStatus === 'Designing') progressPct = it.designStatus === 'Completed' ? 30 : 15;
+        else if (itemStatus === 'Printing') progressPct = 45;
+        else if (itemStatus === 'Finishing') progressPct = 70;
+        else if (itemStatus === 'Quality Check') progressPct = 85;
+        else if (itemStatus === 'Ready for Delivery') progressPct = 95;
+        else if (itemStatus === 'Delivered') progressPct = 100;
+
+        cards.push({
+          id: it.id || `JC-ITEM-${idx + 1}`,
+          jobCardId: jcId,
+          orderId: o.id,
+          orderDate: o.orderDate || o.createdAt?.split('T')[0],
+          deliveryDate: itemDeliveryDate,
+          isDelayed: isPastDue,
+          customerId: o.customerId,
+          customerName: o.customerName,
+          customerMobile: o.customerMobile,
+          careOfName: o.careOfName,
+          salesPersonName: o.salesPersonName,
+          itemIndex: idx + 1,
+          item: it,
+          productName: it.customTitle ? `${it.productName} — (${it.customTitle})` : it.productName,
+          category: it.category || 'Print Job',
+          qty: it.qty || 1,
+          unit: it.unit || 'Sq.Ft',
+          dimensions: it.totalSqFt ? `${it.totalSqFt} Sq.Ft (${it.width}x${it.height})` : `${it.width || 0}x${it.height || 0} ${it.unit || ''}`,
+          material: it.material || 'Standard Substrate',
+          productionStatus: itemStatus,
+          jobPriority: it.jobPriority || 'Normal',
+          assignedDesigner: it.designerName || '',
+          assignedOperator: it.assignedOperatorName || it.printerName || '',
+          assignedMachine: it.assignedMachineName || '',
+          progressPct,
+          outsource: !!it.outsource,
+          vendorName: it.vendorName || '',
+          orderRemarks: o.remarks
+        });
       });
     });
-  });
+    return cards;
+  }, [salesOrders]);
 
-  // Filter Product Job Cards by Search & Category
-  const filteredJobCards = allProductJobCards.filter((card) => {
-    const q = searchQuery.toLowerCase();
-    const matchesSearch =
-      card.jobCardId.toLowerCase().includes(q) ||
-      card.orderId.toLowerCase().includes(q) ||
-      card.productName.toLowerCase().includes(q) ||
-      card.customerName.toLowerCase().includes(q) ||
-      (card.item.material && card.item.material.toLowerCase().includes(q));
+  // Filtered Job Cards
+  const filteredCards = useMemo(() => {
+    return allJobCards.filter((card) => {
+      const q = searchQuery.toLowerCase();
+      const matchesSearch =
+        card.jobCardId.toLowerCase().includes(q) ||
+        card.orderId.toLowerCase().includes(q) ||
+        card.productName.toLowerCase().includes(q) ||
+        (card.customerName && card.customerName.toLowerCase().includes(q)) ||
+        (card.material && card.material.toLowerCase().includes(q)) ||
+        (card.assignedOperator && card.assignedOperator.toLowerCase().includes(q)) ||
+        (card.assignedMachine && card.assignedMachine.toLowerCase().includes(q));
 
-    if (categoryFilter === 'ALL') return matchesSearch;
-    if (categoryFilter === 'OUTSOURCE') return matchesSearch && (card.item.outsource || card.item.vendorId);
-    if (categoryFilter === 'DESIGN') return matchesSearch && card.item.designerRequired === 'YES';
-    if (categoryFilter === 'FLEX') return matchesSearch && (card.productName.includes('Flex') || card.item.material.includes('Flex'));
-    if (categoryFilter === 'VINYL') return matchesSearch && (card.productName.includes('Vinyl') || card.item.material.includes('Vinyl'));
-    if (categoryFilter === 'SIGNAGE') return matchesSearch && (card.productName.includes('Sign') || card.productName.includes('Acrylic') || card.productName.includes('Metal'));
+      if (!matchesSearch) return false;
 
-    return matchesSearch;
-  });
+      if (selectedDepartmentTab !== 'ALL') {
+        if (selectedDepartmentTab === 'Designing' && card.productionStatus !== 'Designing') return false;
+        if (selectedDepartmentTab === 'Printing' && card.productionStatus !== 'Printing') return false;
+        if (selectedDepartmentTab === 'Finishing' && card.productionStatus !== 'Finishing') return false;
+        if (selectedDepartmentTab === 'Quality Check' && card.productionStatus !== 'Quality Check') return false;
+        if (selectedDepartmentTab === 'Ready for Delivery' && card.productionStatus !== 'Ready for Delivery') return false;
+        if (selectedDepartmentTab === 'Delivered' && card.productionStatus !== 'Delivered') return false;
+      }
+
+      if (selectedCustomerFilter !== 'ALL' && card.customerName !== selectedCustomerFilter) return false;
+      if (selectedMachineFilter !== 'ALL' && card.assignedMachine !== selectedMachineFilter) return false;
+      if (selectedEmployeeFilter !== 'ALL' && card.assignedOperator !== selectedEmployeeFilter && card.assignedDesigner !== selectedEmployeeFilter) return false;
+      if (selectedPriorityFilter !== 'ALL' && card.jobPriority !== selectedPriorityFilter) return false;
+      if (selectedStatusFilter === 'DELAYED' && !card.isDelayed) return false;
+
+      return true;
+    });
+  }, [allJobCards, searchQuery, selectedDepartmentTab, selectedCustomerFilter, selectedMachineFilter, selectedEmployeeFilter, selectedPriorityFilter, selectedStatusFilter]);
+
+  // Handle 1-click stage advance
+  const handleAdvanceStage = async (card, nextStage) => {
+    await updateJobOrderStage(
+      card.orderId,
+      card.item?.id || card.jobCardId,
+      nextStage,
+      'In Progress',
+      '',
+      '',
+      '',
+      '',
+      `Advanced to ${nextStage} from Production Board`
+    );
+  };
+
+  // Get next stage helper
+  const getNextStageKey = (currentStage) => {
+    switch (currentStage) {
+      case 'Designing': return 'Printing';
+      case 'Printing': return 'Finishing';
+      case 'Finishing': return 'Quality Check';
+      case 'Quality Check': return 'Ready for Delivery';
+      case 'Ready for Delivery': return 'Delivered';
+      default: return null;
+    }
+  };
 
   return (
     <div className="view-container">
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.85rem' }}>
         <div>
           <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Factory size={24} color="#2563eb" /> Product-Based Shop-Floor Production Kanban
+            <Factory size={24} color="#2563eb" /> ScreenArts Visual Production Board
           </h2>
           <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-            Each Product Line Item has its own unique Job Card, promised delivery date, and production stage tracking.
+            Visual multi-stage Kanban tracking Designing, Printing, Finishing, QC, Ready & Delivery across shop floor machines.
           </span>
         </div>
 
@@ -86,281 +200,280 @@ export const ProductionView = () => {
             onClick={() => setViewType('kanban')}
             className={`btn btn-sm ${viewType === 'kanban' ? 'btn-primary' : 'btn-secondary'}`}
           >
-            <LayoutGrid size={16} /> Kanban Board
+            <LayoutGrid size={15} /> Board View
           </button>
           <button
-            onClick={() => setViewType('table')}
-            className={`btn btn-sm ${viewType === 'table' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setViewType('list')}
+            className={`btn btn-sm ${viewType === 'list' ? 'btn-primary' : 'btn-secondary'}`}
           >
-            <List size={16} /> List View
+            <List size={15} /> List View
           </button>
         </div>
       </div>
 
-      {/* Filter & Search Bar */}
-      <div className="card" style={{ padding: '0.75rem 1.25rem', marginBottom: '1.25rem' }}>
+      {/* Department Tabs & Filter Bar */}
+      <div className="card" style={{ padding: '0.85rem 1.25rem', marginBottom: '1.25rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+          {/* Department Tabs */}
+          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
             {[
-              { id: 'ALL', label: 'All Job Cards' },
-              { id: 'OUTSOURCE', label: 'Outsourced Jobs' },
-              { id: 'DESIGN', label: 'Design Required' },
-              { id: 'FLEX', label: 'Flex Printing' },
-              { id: 'VINYL', label: 'Digital Vinyl' },
-              { id: 'SIGNAGE', label: 'Signage & LED' }
-            ].map((f) => (
+              { id: 'ALL', label: 'All Floor Jobs' },
+              { id: 'Designing', label: '🎨 Designing' },
+              { id: 'Printing', label: '🖨️ Printing Floor' },
+              { id: 'Finishing', label: '✂️ Finishing' },
+              { id: 'Quality Check', label: '✅ Quality Check' },
+              { id: 'Ready for Delivery', label: '📦 Ready' },
+              { id: 'Delivered', label: '🚚 Delivered' }
+            ].map((tab) => (
               <button
-                key={f.id}
-                onClick={() => setCategoryFilter(f.id)}
-                className={`btn btn-sm ${categoryFilter === f.id ? 'btn-primary' : 'btn-secondary'}`}
+                key={tab.id}
+                onClick={() => setSelectedDepartmentTab(tab.id)}
+                className={`btn btn-sm ${selectedDepartmentTab === tab.id ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ fontSize: '0.76rem', padding: '0.25rem 0.6rem' }}
               >
-                {f.label}
+                {tab.label}
               </button>
             ))}
           </div>
 
+          {/* Quick Search */}
           <div style={{ width: '280px', position: 'relative' }}>
-            <Search size={16} color="#64748b" style={{ position: 'absolute', left: '10px', top: '9px' }} />
+            <Search size={15} color="#64748b" style={{ position: 'absolute', left: '10px', top: '10px' }} />
             <input
               type="text"
               className="form-control form-control-sm"
               style={{ paddingLeft: '32px' }}
-              placeholder="Search JC#, Product, Customer, Material..."
+              placeholder="Search Job#, Customer, Machine..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
         </div>
+
+        {/* Secondary Filter Row */}
+        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>Filters:</span>
+
+          <select
+            className="form-select form-select-sm"
+            style={{ width: 'auto', fontSize: '0.75rem' }}
+            value={selectedPriorityFilter}
+            onChange={(e) => setSelectedPriorityFilter(e.target.value)}
+          >
+            <option value="ALL">All Priorities</option>
+            <option value="Urgent">🚨 Urgent</option>
+            <option value="High">⚠️ High</option>
+            <option value="Normal">Normal</option>
+            <option value="Low">Low</option>
+          </select>
+
+          <select
+            className="form-select form-select-sm"
+            style={{ width: 'auto', fontSize: '0.75rem' }}
+            value={selectedMachineFilter}
+            onChange={(e) => setSelectedMachineFilter(e.target.value)}
+          >
+            <option value="ALL">All Machines</option>
+            {(machines || []).map((m) => (
+              <option key={m.id} value={m.name}>{m.name}</option>
+            ))}
+          </select>
+
+          <select
+            className="form-select form-select-sm"
+            style={{ width: 'auto', fontSize: '0.75rem' }}
+            value={selectedEmployeeFilter}
+            onChange={(e) => setSelectedEmployeeFilter(e.target.value)}
+          >
+            <option value="ALL">All Operators</option>
+            {(employees || []).map((e) => (
+              <option key={e.id} value={e.name}>{e.name} ({e.role || e.department})</option>
+            ))}
+          </select>
+
+          <button
+            onClick={() => setSelectedStatusFilter(selectedStatusFilter === 'DELAYED' ? 'ALL' : 'DELAYED')}
+            className={`btn btn-sm ${selectedStatusFilter === 'DELAYED' ? 'btn-danger' : 'btn-secondary'}`}
+            style={{ fontSize: '0.75rem' }}
+          >
+            🔴 Show Delayed Only
+          </button>
+        </div>
       </div>
 
-      {/* PRODUCT-BASED KANBAN BOARD */}
+      {/* KANBAN BOARD VIEW */}
       {viewType === 'kanban' && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(8, minmax(280px, 1fr))',
-          gap: '0.85rem',
-          overflowX: 'auto',
-          paddingBottom: '1rem'
-        }}>
-          {statuses.map((status) => {
-            const cardsInStatus = filteredJobCards.filter((c) => c.productionStatus === status);
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(6, minmax(290px, 1fr))',
+            gap: '0.85rem',
+            overflowX: 'auto',
+            paddingBottom: '1rem'
+          }}
+        >
+          {stages.map((st) => {
+            const cardsInStage = filteredCards.filter((c) => c.productionStatus === st.key);
+            const Icon = st.icon;
 
             return (
               <div
-                key={status}
+                key={st.key}
                 style={{
                   background: '#f8fafc',
                   border: '1px solid #cbd5e1',
-                  borderRadius: 'var(--radius-lg)',
+                  borderRadius: '12px',
                   padding: '0.75rem',
                   display: 'flex',
                   flexDirection: 'column',
                   maxHeight: '78vh'
                 }}
               >
-                <div style={{
-                  fontSize: '0.82rem',
-                  fontWeight: 800,
-                  color: '#0f172a',
-                  marginBottom: '0.75rem',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  paddingBottom: '0.4rem',
-                  borderBottom: '2px solid #cbd5e1'
-                }}>
-                  <span>{status}</span>
-                  <span className="badge badge-blue">{cardsInStatus.length}</span>
+                {/* Column Header */}
+                <div
+                  style={{
+                    fontSize: '0.82rem',
+                    fontWeight: 800,
+                    color: '#0f172a',
+                    marginBottom: '0.75rem',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    paddingBottom: '0.45rem',
+                    borderBottom: '2px solid #cbd5e1'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <Icon size={16} color={st.color} />
+                    <span>{st.label}</span>
+                  </div>
+                  <span className="badge badge-blue" style={{ fontSize: '0.72rem' }}>
+                    {cardsInStage.length}
+                  </span>
                 </div>
 
+                {/* Cards Container */}
                 <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {cardsInStatus.map((card) => (
-                    <div
-                      key={card.jobCardId}
-                      className="card"
-                      style={{
-                        padding: '0.75rem',
-                        borderLeft: card.item.outsource ? '4px solid #7c3aed' : '4px solid #2563eb',
-                        backgroundColor: '#ffffff',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                      }}
-                    >
-                      {/* Job Card Header */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.35rem' }}>
-                        <div>
-                          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#7c3aed', background: '#f5f3ff', padding: '0.15rem 0.4rem', borderRadius: '4px', border: '1px solid #ddd6fe' }}>
-                            {card.jobCardId}
-                          </span>
-                          <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: '0.3rem' }}>
-                            ({card.orderId})
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => setSelectedJobCardData(card)}
-                          className="btn-secondary btn-icon"
-                          style={{ border: 'none', padding: '0.15rem' }}
-                          title="Print Product Job Card"
+                  {cardsInStage.length === 0 ? (
+                    <div style={{ padding: '1.5rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.78rem' }}>
+                      No jobs in {st.label}
+                    </div>
+                  ) : (
+                    cardsInStage.map((card) => {
+                      const nextStage = getNextStageKey(card.productionStatus);
+                      const isUrgent = card.jobPriority === 'Urgent';
+                      const isHigh = card.jobPriority === 'High';
+
+                      return (
+                        <div
+                          key={`${card.orderId}-${card.jobCardId}`}
+                          className="card"
+                          style={{
+                            padding: '0.75rem',
+                            borderLeft: isUrgent ? '4px solid #ef4444' : isHigh ? '4px solid #f59e0b' : '4px solid #2563eb',
+                            backgroundColor: '#ffffff',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.4rem'
+                          }}
                         >
-                          <Printer size={14} color="#3b82f6" />
-                        </button>
-                      </div>
+                          {/* Card Top Row: Job# and Priority */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span
+                              style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                color: '#7c3aed',
+                                background: '#f5f3ff',
+                                padding: '0.15rem 0.4rem',
+                                borderRadius: '4px',
+                                border: '1px solid #ddd6fe'
+                              }}
+                            >
+                              {card.jobCardId}
+                            </span>
+                            <span
+                              className={`badge ${isUrgent ? 'badge-rose' : isHigh ? 'badge-amber' : 'badge-slate'}`}
+                              style={{ fontSize: '0.65rem' }}
+                            >
+                              {card.jobPriority}
+                            </span>
+                          </div>
 
-                      {/* Product Name & Specs */}
-                      <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#0f172a', marginBottom: '0.25rem', lineHeight: '1.2' }}>
-                        {card.productName}
-                      </div>
-
-                      <div style={{ fontSize: '0.75rem', color: '#334155', background: '#f1f5f9', padding: '0.25rem 0.4rem', borderRadius: '4px', marginBottom: '0.35rem' }}>
-                        <strong>Dimensions:</strong> {card.item.width && card.item.height ? `${card.item.width}×${card.item.height} ${card.item.unit}` : `N/A (${card.item.unit})`}
-                        {card.item.totalSqFt > 0 && <span> ({card.item.totalSqFt} sqft)</span>}
-                        <span style={{ fontWeight: 700, marginLeft: '0.3rem', color: '#1e40af' }}>Qty: {card.item.qty}</span>
-                      </div>
-
-                      <div style={{ fontSize: '0.72rem', color: '#475569', marginBottom: '0.35rem' }}>
-                        <strong>Material:</strong> {card.item.material}
-                      </div>
-
-                      {/* 0.5% Profit Incentive & Worker Assignments */}
-                      {(() => {
-                        const order = salesOrders.find(o => o.id === card.orderId);
-                        const { itemProfit, incentiveAmount } = calculateJobProfitAndIncentive ? calculateJobProfitAndIncentive(card.item, order, 0.5) : { itemProfit: 0, incentiveAmount: 0 };
-                        const allStaff = [...(workers || []), ...(employees || [])];
-
-                        return (
-                          <div style={{ background: '#f8fafc', padding: '0.35rem 0.5rem', borderRadius: '6px', margin: '0.35rem 0', border: '1px solid #e2e8f0', fontSize: '0.72rem' }}>
-                            <div style={{ fontWeight: 700, color: '#059669', marginBottom: '0.25rem' }}>
-                              ⚡ 0.5% Profit Incentive: <strong>₹{incentiveAmount.toFixed(2)}</strong> (Profit: ₹{itemProfit.toLocaleString()})
+                          {/* Customer & Product */}
+                          <div>
+                            <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#0f172a', lineHeight: 1.3 }}>
+                              {card.productName}
                             </div>
-
-                            {/* Printer Assignment */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.25rem' }}>
-                              <span style={{ fontWeight: 600, color: '#1e40af', width: '55px' }}>🖨️ Printer:</span>
-                              <select
-                                className="form-select form-select-sm"
-                                style={{ fontSize: '0.68rem', padding: '0.1rem 0.3rem', flex: 1 }}
-                                value={card.item.printerName || 'Vikas Patil'}
-                                onChange={(e) => {
-                                  const selWorker = allStaff.find(w => w.name === e.target.value);
-                                  assignItemWorkers(card.orderId, card.item.id, { printerId: selWorker?.id || 'WRK-01', printerName: e.target.value });
-                                }}
-                              >
-                                {allStaff.map(w => (
-                                  <option key={w.id || w.name} value={w.name}>{w.name} ({w.role || w.department || 'Printer'})</option>
-                                ))}
-                              </select>
-                            </div>
-
-                            {/* Finisher Assignment */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                              <span style={{ fontWeight: 600, color: '#7c3aed', width: '55px' }}>✂️ Finisher:</span>
-                              <select
-                                className="form-select form-select-sm"
-                                style={{ fontSize: '0.68rem', padding: '0.1rem 0.3rem', flex: 1 }}
-                                value={card.item.finisherName || 'Prakash Shinde'}
-                                onChange={(e) => {
-                                  const selWorker = allStaff.find(w => w.name === e.target.value);
-                                  assignItemWorkers(card.orderId, card.item.id, { finisherId: selWorker?.id || 'WRK-03', finisherName: e.target.value });
-                                }}
-                              >
-                                {allStaff.map(w => (
-                                  <option key={w.id || w.name} value={w.name}>{w.name} ({w.role || w.department || 'Finisher'})</option>
-                                ))}
-                              </select>
+                            <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '1px' }}>
+                              👤 <strong>{card.customerName}</strong> {card.careOfName ? `(C/O: ${card.careOfName})` : ''}
                             </div>
                           </div>
-                        );
-                      })()}
 
-                      {/* Badges for Outsource & Designer */}
-                      <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
-                        {card.item.outsource && (
-                          <span className="badge badge-violet" style={{ fontSize: '0.65rem' }}>
-                            Vendor: {card.item.vendorName || 'Outsourced'}
-                          </span>
-                        )}
-                        {card.item.designerRequired === 'YES' && (
-                          <span className="badge badge-blue" style={{ fontSize: '0.65rem' }}>
-                            Des: {card.item.designerName || 'Assigned'} ({card.item.artworkStatus || 'Pending'})
-                          </span>
-                        )}
-                      </div>
+                          {/* Qty, Dimensions & Material */}
+                          <div style={{ fontSize: '0.74rem', color: '#64748b', background: '#f8fafc', padding: '0.35rem 0.5rem', borderRadius: '6px' }}>
+                            <div>📐 {card.dimensions} • <strong>{card.qty} {card.unit}</strong></div>
+                            <div style={{ color: '#0284c7', fontWeight: 600 }}>{card.material}</div>
+                          </div>
 
-                      {/* Customer & Delivery Due */}
-                      <div style={{ fontSize: '0.72rem', color: '#64748b', borderTop: '1px dashed #e2e8f0', paddingTop: '0.3rem', marginTop: '0.3rem' }}>
-                        <div>Cust: <strong>{card.customerName}</strong></div>
-                        <div style={{ color: '#d97706', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.1rem' }}>
-                          <Clock size={11} /> Item Promised Due: {card.deliveryDate}
+                          {/* Staff & Machine */}
+                          <div style={{ fontSize: '0.72rem', color: '#64748b', display: 'flex', justifyContent: 'space-between' }}>
+                            <span>👤 {card.assignedOperator || card.assignedDesigner || 'Unassigned'}</span>
+                            <span>⚙️ {card.assignedMachine || 'No Machine'}</span>
+                          </div>
+
+                          {/* Due Date & Urgency Indicator */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem' }}>
+                            <span style={{ color: card.isDelayed ? '#dc2626' : '#d97706', fontWeight: 700 }}>
+                              🕒 Due: {card.deliveryDate || 'N/A'}
+                            </span>
+                            {card.isDelayed && (
+                              <span className="badge badge-rose" style={{ fontSize: '0.65rem' }}>
+                                Delayed
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Progress Bar */}
+                          <div style={{ width: '100%', height: '4px', backgroundColor: '#e2e8f0', borderRadius: '2px', overflow: 'hidden' }}>
+                            <div style={{ width: `${card.progressPct}%`, height: '100%', backgroundColor: '#2563eb' }} />
+                          </div>
+
+                          {/* Card Action Buttons */}
+                          <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.3rem', paddingTop: '0.4rem', borderTop: '1px solid #f1f5f9' }}>
+                            <button
+                              onClick={() => setSelectedJobDetail(card)}
+                              className="btn btn-sm btn-secondary"
+                              style={{ flex: 1, padding: '0.25rem', fontSize: '0.72rem' }}
+                              title="Open Full 7-Tab Job Detail Screen"
+                            >
+                              <Eye size={12} /> Detail
+                            </button>
+
+                            <button
+                              onClick={() => setSelectedJobCardPrint(card)}
+                              className="btn btn-sm btn-secondary btn-icon"
+                              style={{ padding: '0.25rem 0.4rem' }}
+                              title="Print Job Card"
+                            >
+                              <Printer size={12} />
+                            </button>
+
+                            {nextStage && (
+                              <button
+                                onClick={() => handleAdvanceStage(card, nextStage)}
+                                className="btn btn-sm btn-primary"
+                                style={{ flex: 1.2, padding: '0.25rem', fontSize: '0.72rem' }}
+                                title={`Advance to ${nextStage}`}
+                              >
+                                {nextStage === 'Delivered' ? 'Deliver' : nextStage.split(' ')[0]} <ChevronRight size={12} />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-
-                      {/* Active Work Box Stage Indicator */}
-                      {card.productionStatus === 'Design' || card.item.designStatus === 'In Progress' ? (
-                        <div style={{ background: '#eff6ff', border: '1px solid #93c5fd', padding: '0.35rem 0.5rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#1e40af', margin: '0.3rem 0', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                          🎨 WORK IN DESIGN BOX ({card.item.designerName || 'Assigned Designer'})
-                        </div>
-                      ) : card.productionStatus === 'Printing' ? (
-                        <div style={{ background: '#f5f3ff', border: '1px solid #c4b5fd', padding: '0.35rem 0.5rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#6d28d9', margin: '0.3rem 0', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                          🖨️ WORK IN PRINTING (Printer: {card.item.printerName || 'Vikas Patil'})
-                        </div>
-                      ) : card.productionStatus === 'Finishing' ? (
-                        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', padding: '0.35rem 0.5rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#b45309', margin: '0.3rem 0', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                          ✂️ WORK IN FINISHING (Finisher: {card.item.finisherName || 'Prakash Shinde'})
-                        </div>
-                      ) : null}
-
-                      {/* Quick Work Stage Action Buttons */}
-                      <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                        {(card.productionStatus === 'New' || card.productionStatus === 'Design') && (
-                          <button
-                            onClick={() => updateItemProductionStatus(card.orderId, card.item.id, 'Printing')}
-                            className="btn btn-sm"
-                            style={{ background: '#2563eb', color: '#ffffff', fontWeight: 800, fontSize: '0.72rem', width: '100%', border: 'none', padding: '0.25rem' }}
-                          >
-                            🖨️ Finish Design ➔ Send to Printing
-                          </button>
-                        )}
-
-                        {card.productionStatus === 'Printing' && (
-                          <button
-                            onClick={() => updateItemProductionStatus(card.orderId, card.item.id, 'Finishing')}
-                            className="btn btn-sm"
-                            style={{ background: '#7c3aed', color: '#ffffff', fontWeight: 800, fontSize: '0.72rem', width: '100%', border: 'none', padding: '0.25rem' }}
-                          >
-                            ✂️ Printer Finish ➔ Send to Finishing
-                          </button>
-                        )}
-
-                        {card.productionStatus === 'Finishing' && (
-                          <button
-                            onClick={() => updateItemProductionStatus(card.orderId, card.item.id, 'Ready for Delivery')}
-                            className="btn btn-sm"
-                            style={{ background: '#059669', color: '#ffffff', fontWeight: 800, fontSize: '0.72rem', width: '100%', border: 'none', padding: '0.25rem' }}
-                          >
-                            🚚 Finisher Finish ➔ Mark Ready for Delivery
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Product Item Status Selector */}
-                      <div style={{ marginTop: '0.4rem', paddingTop: '0.35rem', borderTop: '1px solid #cbd5e1' }}>
-                        <select
-                          className="form-select form-select-sm"
-                          style={{ fontSize: '0.72rem', fontWeight: 800, background: '#eff6ff', color: '#1e40af' }}
-                          value={card.productionStatus}
-                          onChange={(e) => updateItemProductionStatus(card.orderId, card.item.id, e.target.value)}
-                        >
-                          {statuses.map((s) => (
-                            <option key={s} value={s}>Move to: {s}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  ))}
-
-                  {cardsInStatus.length === 0 && (
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'center', padding: '2rem 0' }}>
-                      No items in {status}
-                    </div>
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -369,93 +482,99 @@ export const ProductionView = () => {
         </div>
       )}
 
-      {/* PRODUCT-BASED TABLE LIST VIEW */}
-      {viewType === 'table' && (
+      {/* LIST VIEW */}
+      {viewType === 'list' && (
         <div className="card">
           <div className="table-responsive">
             <table className="erp-table">
               <thead>
                 <tr>
-                  <th>Job Card #</th>
-                  <th>Order #</th>
-                  <th>Product Title & Specifications</th>
-                  <th>Size / Area</th>
-                  <th>Qty</th>
-                  <th>Material</th>
-                  <th>Customer Name</th>
-                  <th>Vendor / Designer</th>
-                  <th>Promised Delivery</th>
-                  <th>Item Production Status</th>
-                  <th style={{ textAlign: 'center' }}>Action</th>
+                  <th>Job #</th>
+                  <th>Product</th>
+                  <th>Customer</th>
+                  <th>Qty / Specs</th>
+                  <th>Due Date</th>
+                  <th>Stage</th>
+                  <th>Assigned Staff / Machine</th>
+                  <th style={{ textAlign: 'center' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredJobCards.map((card) => (
-                  <tr key={card.jobCardId}>
-                    <td style={{ fontWeight: 800, color: '#7c3aed' }}>{card.jobCardId}</td>
-                    <td style={{ fontWeight: 700, color: '#1e40af' }}>{card.orderId}</td>
-                    <td>
-                      <div style={{ fontWeight: 800, color: '#0f172a' }}>{card.productName}</div>
-                      {card.item.description && (
-                        <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{card.item.description}</div>
-                      )}
-                    </td>
-                    <td style={{ fontWeight: 700 }}>
-                      {card.item.width && card.item.height ? `${card.item.width}×${card.item.height} ${card.item.unit}` : card.item.unit}
-                      {card.item.totalSqFt > 0 && <div style={{ fontSize: '0.72rem', color: '#2563eb' }}>{card.item.totalSqFt} sqft</div>}
-                    </td>
-                    <td style={{ fontWeight: 800, textAlign: 'center' }}>{card.item.qty}</td>
-                    <td style={{ fontSize: '0.78rem' }}>{card.item.material}</td>
-                    <td>
-                      <div style={{ fontWeight: 700 }}>{card.customerName}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Mob: {card.customerMobile}</div>
-                    </td>
-                    <td>
-                      {card.item.outsource ? (
-                        <span className="badge badge-violet">Vendor: {card.item.vendorName || 'Outsourced'}</span>
-                      ) : card.item.designerRequired === 'YES' ? (
-                        <span className="badge badge-blue">Des: {card.item.designerName || 'Assigned'}</span>
-                      ) : (
-                        <span className="badge badge-slate">In-House Print</span>
-                      )}
-                    </td>
-                    <td style={{ fontWeight: 700, color: '#d97706' }}>{card.deliveryDate}</td>
-                    <td>
-                      <select
-                        className="form-select form-select-sm"
-                        style={{ fontWeight: 800 }}
-                        value={card.productionStatus}
-                        onChange={(e) => updateItemProductionStatus(card.orderId, card.item.id, e.target.value)}
-                      >
-                        {statuses.map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button
-                        onClick={() => setSelectedJobCardData(card)}
-                        className="btn btn-sm btn-primary"
-                        title="Print Product Job Card"
-                      >
-                        <Printer size={14} /> Printable JC
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {filteredCards.map((card) => {
+                  const statusStyle = STAGE_STATUS_COLORS[card.productionStatus] || STAGE_STATUS_COLORS['In Progress'];
+                  const nextStage = getNextStageKey(card.productionStatus);
+
+                  return (
+                    <tr key={`${card.orderId}-${card.jobCardId}`}>
+                      <td>
+                        <strong style={{ color: '#7c3aed' }}>{card.jobCardId}</strong>
+                        <div style={{ fontSize: '0.7rem', color: '#64748b' }}>SO: {card.orderId}</div>
+                      </td>
+                      <td>
+                        <strong>{card.productName}</strong>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{card.material}</div>
+                      </td>
+                      <td>
+                        <strong>{card.customerName}</strong>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{card.customerMobile || 'N/A'}</div>
+                      </td>
+                      <td>
+                        <strong>{card.qty} {card.unit}</strong>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{card.dimensions}</div>
+                      </td>
+                      <td>
+                        <strong style={{ color: card.isDelayed ? '#dc2626' : '#d97706' }}>{card.deliveryDate || 'N/A'}</strong>
+                        {card.isDelayed && <span className="badge badge-rose" style={{ display: 'block', width: 'fit-content', marginTop: '2px', fontSize: '0.65rem' }}>Delayed</span>}
+                      </td>
+                      <td>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '0.15rem 0.45rem', borderRadius: '4px', background: statusStyle.bg, color: statusStyle.text, border: `1px solid ${statusStyle.border}` }}>
+                          {card.productionStatus}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: '0.75rem' }}>
+                        <div>👤 {card.assignedOperator || card.assignedDesigner || 'Unassigned'}</div>
+                        {card.assignedMachine && <div style={{ color: '#64748b' }}>⚙️ {card.assignedMachine}</div>}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
+                          <button onClick={() => setSelectedJobDetail(card)} className="btn btn-sm btn-primary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}>
+                            <Eye size={12} /> View
+                          </button>
+                          <button onClick={() => setSelectedJobCardPrint(card)} className="btn btn-sm btn-secondary" style={{ padding: '0.2rem 0.4rem', fontSize: '0.75rem' }}>
+                            <Printer size={12} />
+                          </button>
+                          {nextStage && (
+                            <button onClick={() => handleAdvanceStage(card, nextStage)} className="btn btn-sm btn-success" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}>
+                              Next <ArrowRight size={12} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* Printable Product Job Card Modal */}
-      {selectedJobCardData && (
+      {/* 7-Tab Job Detail Modal */}
+      {selectedJobDetail && (
+        <JobDetailModal
+          job={selectedJobDetail}
+          isOpen={true}
+          onClose={() => setSelectedJobDetail(null)}
+          onPrintJobCard={(j) => setSelectedJobCardPrint(j)}
+        />
+      )}
+
+      {/* Job Card Print Modal */}
+      {selectedJobCardPrint && (
         <JobCardPrintModal
-          order={salesOrders.find((o) => o.id === selectedJobCardData.orderId)}
-          selectedItemCard={selectedJobCardData}
-          isOpen={!!selectedJobCardData}
-          onClose={() => setSelectedJobCardData(null)}
+          selectedItemCard={selectedJobCardPrint}
+          isOpen={true}
+          onClose={() => setSelectedJobCardPrint(null)}
         />
       )}
     </div>

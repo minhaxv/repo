@@ -21,7 +21,9 @@ import {
   initialPayroll,
   initialProductMaterialSpecs,
   initialEmployees,
-  initialWorkerJobIncentives
+  initialWorkerJobIncentives,
+  initialProductionProcesses,
+  initialProductionTasks
 } from '../src/data/mockData.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,6 +34,16 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.text({ type: ['text/*', 'application/octet-stream'] }));
+app.use((req, res, next) => {
+  if (typeof req.body === 'string' && req.body.trim().startsWith('{')) {
+    try {
+      req.body = JSON.parse(req.body);
+    } catch (e) {}
+  }
+  next();
+});
 
 // Seed initial mock data if database is empty on first run
 function seedInitialDataIfEmpty() {
@@ -230,9 +242,104 @@ function seedBiometricDataIfEmpty() {
   console.log('✅ ZKTeco K90 Biometric Device Users seeded successfully!');
 }
 
+// Seed production processes and multi-task logs if empty
+function seedProductionDataIfEmpty() {
+  try {
+    // 1. Ensure all initial employees (including Afsal, Niyas, Rahman, Sameer) exist in employees table
+    const insertEmp = db.prepare(`
+      INSERT OR IGNORE INTO employees (id, code, name, role, department, mobile, email, base_salary, incentive_rate, commission_rate, joined_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const emp of initialEmployees) {
+      insertEmp.run(
+        emp.id,
+        emp.code || emp.id,
+        emp.name,
+        emp.role || '',
+        emp.department || '',
+        emp.mobile || '',
+        emp.email || '',
+        Number(emp.basicSalary || emp.baseSalary || 0),
+        Number(emp.incentiveRate || 0),
+        Number(emp.commissionRate || 0),
+        emp.joiningDate || emp.joinedDate || ''
+      );
+    }
+
+    // 2. Check production processes
+    const processCount = db.prepare('SELECT COUNT(*) as count FROM production_processes').get().count;
+    if (processCount === 0) {
+      console.log('🏭 Seeding Production Processes Master...');
+      const insertProc = db.prepare(`
+        INSERT INTO production_processes (id, code, name, category, description, default_unit, is_active, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const procTx = db.transaction(() => {
+        for (const p of initialProductionProcesses) {
+          insertProc.run(p.id, p.code, p.name, p.category || 'Production', p.description || '', p.defaultUnit || 'Nos', p.isActive ? 1 : 0, p.sortOrder || 0);
+        }
+      });
+      procTx();
+      console.log('✅ Production Processes Master seeded successfully!');
+    }
+
+    // 3. Check production tasks
+    const taskCount = db.prepare('SELECT COUNT(*) as count FROM production_tasks').get().count;
+    if (taskCount === 0) {
+      console.log('📋 Seeding Multi-Task Production Work Logs...');
+      const insertTask = db.prepare(`
+        INSERT INTO production_tasks (
+          id, task_date, employee_id, employee_name, order_id, order_number, customer_name,
+          item_id, item_title, process_id, process_name, quantity, unit, start_time, end_time,
+          total_duration_minutes, status, priority, remarks, machine_id, machine_name, department,
+          production_location, original_qty, completed_qty, rejected_qty, rework_qty, final_qty,
+          qc_status, created_by, completed_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const insertTimeLog = db.prepare(`
+        INSERT INTO production_task_time_logs (id, task_id, action, timestamp, logged_by, notes, elapsed_seconds)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const taskTx = db.transaction(() => {
+        for (const t of initialProductionTasks) {
+          insertTask.run(
+            t.id, t.taskDate || new Date().toISOString().split('T')[0], t.employeeId, t.employeeName,
+            t.orderId, t.orderNumber, t.customerName || '', t.itemId || '', t.itemTitle || '',
+            t.processId || '', t.processName, Number(t.quantity || 1), t.unit || 'Nos',
+            t.startTime || '', t.endTime || '', Number(t.totalDurationMinutes || 0),
+            t.status || 'Pending', t.priority || 'Normal', t.remarks || '',
+            t.machineId || '', t.machineName || '', t.department || 'Production',
+            t.productionLocation || '', Number(t.originalQty || t.quantity || 1),
+            Number(t.completedQty || 0), Number(t.rejectedQty || 0), Number(t.reworkQty || 0),
+            Number(t.finalQty || t.quantity || 1), t.qcStatus || 'Pending',
+            t.createdBy || 'Admin User', t.completedBy || ''
+          );
+
+          if (t.timeLogs && Array.isArray(t.timeLogs)) {
+            for (let idx = 0; idx < t.timeLogs.length; idx++) {
+              const tl = t.timeLogs[idx];
+              insertTimeLog.run(
+                tl.id || `TL-${t.id}-${idx + 1}`, t.id, tl.action, tl.timestamp || new Date().toISOString(),
+                tl.loggedBy || t.employeeName, tl.notes || '', Number(tl.elapsedSeconds || 0)
+              );
+            }
+          }
+        }
+      });
+      taskTx();
+      console.log('✅ Multi-Task Production Work Logs seeded successfully!');
+    }
+  } catch (err) {
+    console.error('⚠️ Production seed warning:', err.message);
+  }
+}
+
 // Perform seed checks on startup
 seedInitialDataIfEmpty();
 seedBiometricDataIfEmpty();
+seedProductionDataIfEmpty();
 
 /* ==========================================================================
    REST API ENDPOINTS — PERSISTENT SQLITE OPERATIONAL LAYER
@@ -276,7 +383,9 @@ app.get('/api/all', (req, res) => {
 
     const biometricDevices = db.prepare('SELECT * FROM biometric_devices').all();
     const rawBioUsers = db.prepare(`
-      SELECT m.*, e.name as employee_name, e.code as employee_code, e.department, e.designation, e.status as employee_status
+      SELECT m.*, e.name as employee_name, e.code as employee_code, e.department, 
+             COALESCE(e.designation, e.role, '') as designation, 
+             COALESCE(e.status, CASE WHEN e.active = 1 THEN 'Active' ELSE 'Inactive' END) as employee_status
       FROM biometric_user_mappings m
       LEFT JOIN employees e ON m.employee_id = e.id
       ORDER BY CAST(m.biometric_user_id AS INTEGER) ASC
@@ -360,6 +469,57 @@ app.get('/api/all', (req, res) => {
     const workerJobIncentives = db.prepare('SELECT * FROM worker_job_incentives ORDER BY completed_at DESC').all();
     const payments = db.prepare('SELECT * FROM payments ORDER BY paid_date DESC').all();
 
+    // Multi-Task Employee Production & Work Logs
+    const rawProcesses = db.prepare('SELECT * FROM production_processes ORDER BY sort_order ASC, name ASC').all();
+    const rawTasks = db.prepare('SELECT * FROM production_tasks ORDER BY task_date DESC, created_at DESC').all();
+    const rawTimeLogs = db.prepare('SELECT * FROM production_task_time_logs ORDER BY timestamp ASC').all();
+
+    const formattedTasks = rawTasks.map(t => ({
+      id: t.id,
+      taskDate: t.task_date,
+      employeeId: t.employee_id,
+      employeeName: t.employee_name,
+      orderId: t.order_id,
+      orderNumber: t.order_number,
+      customerName: t.customer_name,
+      itemId: t.item_id,
+      itemTitle: t.item_title,
+      processId: t.process_id,
+      processName: t.process_name,
+      quantity: Number(t.quantity || 1),
+      unit: t.unit || 'Nos',
+      startTime: t.start_time || '',
+      endTime: t.end_time || '',
+      totalDurationMinutes: Number(t.total_duration_minutes || 0),
+      status: t.status || 'Pending',
+      priority: t.priority || 'Normal',
+      remarks: t.remarks || '',
+      machineId: t.machine_id || '',
+      machineName: t.machine_name || '',
+      department: t.department || 'Production',
+      productionLocation: t.production_location || '',
+      originalQty: Number(t.original_qty || t.quantity || 1),
+      completedQty: Number(t.completed_qty || 0),
+      rejectedQty: Number(t.rejected_qty || 0),
+      reworkQty: Number(t.rework_qty || 0),
+      finalQty: Number(t.final_qty || t.quantity || 1),
+      attachmentUrl: t.attachment_url || '',
+      supervisor: t.supervisor || '',
+      qcStatus: t.qc_status || 'Pending',
+      createdBy: t.created_by || '',
+      createdAt: t.created_at,
+      completedBy: t.completed_by || '',
+      completedAt: t.completed_at || '',
+      timeLogs: rawTimeLogs.filter(tl => tl.task_id === t.id).map(tl => ({
+        id: tl.id,
+        action: tl.action,
+        timestamp: tl.timestamp,
+        loggedBy: tl.logged_by,
+        notes: tl.notes,
+        elapsedSeconds: Number(tl.elapsed_seconds || 0)
+      }))
+    }));
+
     res.json({
       success: true,
       companyProfile,
@@ -390,7 +550,9 @@ app.get('/api/all', (req, res) => {
         incentiveAmount: Number(inc.incentive_amount),
         completedAt: inc.completed_at
       })),
-      payments: payments.map(p => ({ ...p, orderId: p.order_id, customerId: p.customer_id, customerName: p.customer_name, paidDate: p.paid_date, refNo: p.ref_no }))
+      payments: payments.map(p => ({ ...p, orderId: p.order_id, customerId: p.customer_id, customerName: p.customer_name, paidDate: p.paid_date, refNo: p.ref_no })),
+      productionProcesses: rawProcesses.map(p => ({ ...p, isActive: Boolean(p.is_active), sortOrder: Number(p.sort_order || 0) })),
+      productionTasks: formattedTasks
     });
   } catch (err) {
     console.error("GET /api/all Error:", err);
@@ -698,6 +860,391 @@ app.post('/api/worker-incentives', (req, res) => {
   }
 });
 
+// ============================================================================
+// 6B. MULTI-TASK EMPLOYEE PRODUCTION & WORK LOGS API ENDPOINTS
+// ============================================================================
+
+// 1. GET ALL PROCESSES
+app.get('/api/processes', (req, res) => {
+  try {
+    const processes = db.prepare('SELECT * FROM production_processes ORDER BY sort_order ASC, name ASC').all();
+    res.json({
+      success: true,
+      processes: processes.map(p => ({
+        ...p,
+        isActive: Boolean(p.is_active),
+        sortOrder: Number(p.sort_order || 0)
+      }))
+    });
+  } catch (err) {
+    console.error("GET /api/processes Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2. CREATE PROCESS
+app.post('/api/processes', (req, res) => {
+  try {
+    const { name, code, category, description, defaultUnit, isActive, sortOrder } = req.body;
+    if (!name) return res.status(400).json({ success: false, error: "Process name is required" });
+
+    const procId = req.body.id || `PROC-${Date.now()}`;
+    const procCode = code || `PROC-${name.slice(0, 3).toUpperCase()}`;
+
+    db.prepare(`
+      INSERT INTO production_processes (id, code, name, category, description, default_unit, is_active, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      procId, procCode, name, category || 'Production', description || '', defaultUnit || 'Nos',
+      isActive !== undefined ? (isActive ? 1 : 0) : 1, Number(sortOrder || 0)
+    );
+
+    res.json({ success: true, processId: procId });
+  } catch (err) {
+    console.error("POST /api/processes Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 3. UPDATE PROCESS
+app.put('/api/processes/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, code, category, description, defaultUnit, isActive, sortOrder } = req.body;
+
+    db.prepare(`
+      UPDATE production_processes SET
+        name = COALESCE(?, name),
+        code = COALESCE(?, code),
+        category = COALESCE(?, category),
+        description = COALESCE(?, description),
+        default_unit = COALESCE(?, default_unit),
+        is_active = COALESCE(?, is_active),
+        sort_order = COALESCE(?, sort_order)
+      WHERE id = ?
+    `).run(
+      name, code, category, description, defaultUnit,
+      isActive !== undefined ? (isActive ? 1 : 0) : null,
+      sortOrder !== undefined ? Number(sortOrder) : null,
+      id
+    );
+
+    res.json({ success: true, message: `Process ${id} updated` });
+  } catch (err) {
+    console.error("PUT /api/processes/:id Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4. DELETE PROCESS (Soft delete: toggle inactive)
+app.delete('/api/processes/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    db.prepare('UPDATE production_processes SET is_active = 0 WHERE id = ?').run(id);
+    res.json({ success: true, message: `Process ${id} deactivated` });
+  } catch (err) {
+    console.error("DELETE /api/processes/:id Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 5. GET PRODUCTION TASKS (Supports filtering)
+app.get('/api/production-tasks', (req, res) => {
+  try {
+    const { dateFrom, dateTo, employeeId, orderId, status, processId } = req.query;
+
+    let query = 'SELECT * FROM production_tasks WHERE 1=1';
+    const params = [];
+
+    if (dateFrom) {
+      query += ' AND task_date >= ?';
+      params.push(dateFrom);
+    }
+    if (dateTo) {
+      query += ' AND task_date <= ?';
+      params.push(dateTo);
+    }
+    if (employeeId) {
+      query += ' AND employee_id = ?';
+      params.push(employeeId);
+    }
+    if (orderId) {
+      query += ' AND (order_id = ? OR order_number = ?)';
+      params.push(orderId, orderId);
+    }
+    if (status) {
+      query += ' AND status = ?';
+      params.push(status);
+    }
+    if (processId) {
+      query += ' AND process_id = ?';
+      params.push(processId);
+    }
+
+    query += ' ORDER BY task_date DESC, created_at DESC';
+
+    const tasks = db.prepare(query).all(...params);
+    const timeLogs = db.prepare('SELECT * FROM production_task_time_logs ORDER BY timestamp ASC').all();
+
+    const formatted = tasks.map(t => ({
+      id: t.id,
+      taskDate: t.task_date,
+      employeeId: t.employee_id,
+      employeeName: t.employee_name,
+      orderId: t.order_id,
+      orderNumber: t.order_number,
+      customerName: t.customer_name,
+      itemId: t.item_id,
+      itemTitle: t.item_title,
+      processId: t.process_id,
+      processName: t.process_name,
+      quantity: Number(t.quantity || 1),
+      unit: t.unit || 'Nos',
+      startTime: t.start_time || '',
+      endTime: t.end_time || '',
+      totalDurationMinutes: Number(t.total_duration_minutes || 0),
+      status: t.status || 'Pending',
+      priority: t.priority || 'Normal',
+      remarks: t.remarks || '',
+      machineId: t.machine_id || '',
+      machineName: t.machine_name || '',
+      department: t.department || 'Production',
+      productionLocation: t.production_location || '',
+      originalQty: Number(t.original_qty || t.quantity || 1),
+      completedQty: Number(t.completed_qty || 0),
+      rejectedQty: Number(t.rejected_qty || 0),
+      reworkQty: Number(t.rework_qty || 0),
+      finalQty: Number(t.final_qty || t.quantity || 1),
+      attachmentUrl: t.attachment_url || '',
+      supervisor: t.supervisor || '',
+      qcStatus: t.qc_status || 'Pending',
+      createdBy: t.created_by || '',
+      createdAt: t.created_at,
+      completedBy: t.completed_by || '',
+      completedAt: t.completed_at || '',
+      timeLogs: timeLogs.filter(tl => tl.task_id === t.id).map(tl => ({
+        id: tl.id,
+        action: tl.action,
+        timestamp: tl.timestamp,
+        loggedBy: tl.logged_by,
+        notes: tl.notes,
+        elapsedSeconds: Number(tl.elapsed_seconds || 0)
+      }))
+    }));
+
+    res.json({ success: true, tasks: formatted });
+  } catch (err) {
+    console.error("GET /api/production-tasks Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. CREATE PRODUCTION TASK
+app.post('/api/production-tasks', (req, res) => {
+  try {
+    const t = req.body;
+    if (!t.employeeId || !t.employeeName || !t.processName) {
+      return res.status(400).json({ success: false, error: "Employee and Process Name are required" });
+    }
+
+    const taskId = t.id || `TSK-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+    const taskDate = t.taskDate || new Date().toISOString().split('T')[0];
+    const initialStatus = t.status || 'Pending';
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const timeFormatted = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    const createTx = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO production_tasks (
+          id, task_date, employee_id, employee_name, order_id, order_number, customer_name,
+          item_id, item_title, process_id, process_name, quantity, unit, start_time, end_time,
+          total_duration_minutes, status, priority, remarks, machine_id, machine_name, department,
+          production_location, original_qty, completed_qty, rejected_qty, rework_qty, final_qty,
+          attachment_url, supervisor, qc_status, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        taskId, taskDate, t.employeeId, t.employeeName, t.orderId || '', t.orderNumber || t.orderId || 'Direct Job',
+        t.customerName || '', t.itemId || '', t.itemTitle || t.productName || 'Printing Item',
+        t.processId || '', t.processName, Number(t.quantity || 1), t.unit || 'Nos',
+        initialStatus === 'Started' ? (t.startTime || timeFormatted) : (t.startTime || ''),
+        t.endTime || '', Number(t.totalDurationMinutes || 0),
+        initialStatus, t.priority || 'Normal', t.remarks || '',
+        t.machineId || '', t.machineName || '', t.department || 'Production',
+        t.productionLocation || '', Number(t.originalQty || t.quantity || 1),
+        Number(t.completedQty || 0), Number(t.rejectedQty || 0), Number(t.reworkQty || 0),
+        Number(t.finalQty || t.quantity || 1), t.attachmentUrl || '', t.supervisor || '',
+        t.qcStatus || 'Pending', t.createdBy || 'Staff'
+      );
+
+      // If created in Started status, log initial START event
+      if (initialStatus === 'Started') {
+        db.prepare(`
+          INSERT INTO production_task_time_logs (id, task_id, action, timestamp, logged_by, notes, elapsed_seconds)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(`TL-${taskId}-1`, taskId, 'START', nowIso, t.employeeName, 'Task initiated on creation', 0);
+      }
+    });
+
+    createTx();
+    res.json({ success: true, taskId });
+  } catch (err) {
+    console.error("POST /api/production-tasks Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 7. UPDATE PRODUCTION TASK
+app.put('/api/production-tasks/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const t = req.body;
+
+    db.prepare(`
+      UPDATE production_tasks SET
+        employee_id = COALESCE(?, employee_id),
+        employee_name = COALESCE(?, employee_name),
+        process_name = COALESCE(?, process_name),
+        process_id = COALESCE(?, process_id),
+        quantity = COALESCE(?, quantity),
+        unit = COALESCE(?, unit),
+        priority = COALESCE(?, priority),
+        remarks = COALESCE(?, remarks),
+        machine_id = COALESCE(?, machine_id),
+        machine_name = COALESCE(?, machine_name),
+        department = COALESCE(?, department),
+        production_location = COALESCE(?, production_location),
+        completed_qty = COALESCE(?, completed_qty),
+        rejected_qty = COALESCE(?, rejected_qty),
+        rework_qty = COALESCE(?, rework_qty),
+        final_qty = COALESCE(?, final_qty),
+        supervisor = COALESCE(?, supervisor),
+        qc_status = COALESCE(?, qc_status),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(
+      t.employeeId, t.employeeName, t.processName, t.processId,
+      t.quantity !== undefined ? Number(t.quantity) : null,
+      t.unit, t.priority, t.remarks, t.machineId, t.machineName,
+      t.department, t.productionLocation,
+      t.completedQty !== undefined ? Number(t.completedQty) : null,
+      t.rejectedQty !== undefined ? Number(t.rejectedQty) : null,
+      t.reworkQty !== undefined ? Number(t.reworkQty) : null,
+      t.finalQty !== undefined ? Number(t.finalQty) : null,
+      t.supervisor, t.qcStatus, id
+    );
+
+    res.json({ success: true, message: `Task ${id} updated` });
+  } catch (err) {
+    console.error("PUT /api/production-tasks/:id Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 8. EXECUTE TASK ACTION (START, PAUSE, RESUME, COMPLETE, REWORK) WITH PURE WORKING DURATION
+app.post('/api/production-tasks/:id/action', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { action, notes = '', loggedBy = 'Staff', reworkQty = 0, rejectedQty = 0, completedQty = 0 } = req.body;
+
+    const task = db.prepare('SELECT * FROM production_tasks WHERE id = ?').get(id);
+    if (!task) return res.status(404).json({ success: false, error: 'Task not found' });
+
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const timeFormatted = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    let newStatus = task.status;
+    let newDuration = Number(task.total_duration_minutes || 0);
+    let newStartTime = task.start_time || '';
+    let newEndTime = task.end_time || '';
+    let newCompletedAt = task.completed_at;
+    let newCompletedBy = task.completed_by;
+    let newReworkQty = Number(task.rework_qty || 0);
+    let newRejectedQty = Number(task.rejected_qty || 0);
+    let newCompletedNum = Number(task.completed_qty || 0);
+    let elapsedSecondsSegment = 0;
+
+    // Retrieve previous logs for active time segment calculation
+    const logs = db.prepare('SELECT * FROM production_task_time_logs WHERE task_id = ? ORDER BY timestamp ASC').all(id);
+    const activeStartLog = [...logs].reverse().find(l => l.action === 'START' || l.action === 'RESUME');
+
+    if (action === 'START') {
+      newStatus = 'Started';
+      if (!newStartTime) newStartTime = timeFormatted;
+    } else if (action === 'PAUSE') {
+      newStatus = 'Paused';
+      if (activeStartLog && task.status !== 'Paused') {
+        const startMillis = new Date(activeStartLog.timestamp).getTime();
+        elapsedSecondsSegment = Math.max(0, Math.floor((now.getTime() - startMillis) / 1000));
+        newDuration += Math.round(elapsedSecondsSegment / 60);
+      }
+    } else if (action === 'RESUME') {
+      newStatus = 'Started';
+    } else if (action === 'COMPLETE') {
+      newStatus = 'Completed';
+      newEndTime = timeFormatted;
+      newCompletedAt = nowIso;
+      newCompletedBy = loggedBy;
+      if (activeStartLog && task.status !== 'Paused') {
+        const startMillis = new Date(activeStartLog.timestamp).getTime();
+        elapsedSecondsSegment = Math.max(0, Math.floor((now.getTime() - startMillis) / 1000));
+        newDuration += Math.round(elapsedSecondsSegment / 60);
+      }
+      if (completedQty) newCompletedNum = Number(completedQty);
+      else if (newCompletedNum === 0) newCompletedNum = Number(task.quantity || 1);
+    } else if (action === 'REWORK') {
+      newStatus = 'Rework';
+      if (reworkQty) newReworkQty += Number(reworkQty);
+      if (rejectedQty) newRejectedQty += Number(rejectedQty);
+    }
+
+    const actionTx = db.transaction(() => {
+      db.prepare(`
+        UPDATE production_tasks SET
+          status = ?,
+          start_time = ?,
+          end_time = ?,
+          total_duration_minutes = ?,
+          completed_at = ?,
+          completed_by = ?,
+          completed_qty = ?,
+          rejected_qty = ?,
+          rework_qty = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(
+        newStatus, newStartTime, newEndTime, newDuration, newCompletedAt, newCompletedBy,
+        newCompletedNum, newRejectedQty, newReworkQty, id
+      );
+
+      const logId = `TL-${id}-${Date.now()}`;
+      db.prepare(`
+        INSERT INTO production_task_time_logs (id, task_id, action, timestamp, logged_by, notes, elapsed_seconds)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(logId, id, action, nowIso, loggedBy, notes, elapsedSecondsSegment);
+    });
+
+    actionTx();
+    res.json({ success: true, status: newStatus, totalDurationMinutes: newDuration });
+  } catch (err) {
+    console.error("POST /api/production-tasks/:id/action Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 9. DELETE PRODUCTION TASK
+app.delete('/api/production-tasks/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    db.prepare('DELETE FROM production_tasks WHERE id = ?').run(id);
+    res.json({ success: true, message: `Task ${id} deleted` });
+  } catch (err) {
+    console.error("DELETE /api/production-tasks/:id Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 7. BIOMETRIC DEVICE EMPLOYEES & K90 INTEGRATION API ENDPOINTS
 
 // GET all biometric device users
@@ -778,7 +1325,9 @@ app.post('/api/biometric/import-users', (req, res) => {
     }
 
     const updatedRaw = db.prepare(`
-      SELECT m.*, e.name as employee_name, e.code as employee_code, e.department, e.designation, e.status as employee_status
+      SELECT m.*, e.name as employee_name, e.code as employee_code, e.department, 
+             COALESCE(e.designation, e.role, '') as designation, 
+             COALESCE(e.status, CASE WHEN e.active = 1 THEN 'Active' ELSE 'Inactive' END) as employee_status
       FROM biometric_user_mappings m
       LEFT JOIN employees e ON m.employee_id = e.id
       WHERE m.device_id = ?
@@ -923,6 +1472,65 @@ app.post('/api/biometric/assign-id', (req, res) => {
     console.error("POST /api/biometric/assign-id Error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// ==========================================
+// ZKTECO / eSSL CLOUD SERVER (ADMS) LISTENER
+// ==========================================
+
+// 1. Device Handshake & Heartbeat Ping
+app.get('/iclock/cdata', (req, res) => {
+  const sn = req.query.SN || req.query.sn || 'ZK-DEV';
+  console.log(`📡 Biometric Device Cloud Handshake / Heartbeat from SN: [${sn}]`);
+  
+  res.set('Content-Type', 'text/plain');
+  res.send(`GET OPTION FROM: ${sn}\nStamp=9999\nOpStamp=0\nErrorDelay=30\nDelay=10\nTransTimes=00:00;14:00\nTransInterval=1\nTransFlag=1111000000\nTimeZone=5.5\nRealtime=1\nEncrypt=0`);
+});
+
+// 2. Real-Time Punch Receive (POST from device)
+app.post('/iclock/cdata', (req, res) => {
+  try {
+    const sn = req.query.SN || req.query.sn || 'ZK-DEV';
+    const table = req.query.table || '';
+    const rawData = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    console.log(`📥 Biometric Real-time Push from [${sn}] (table: ${table}):\n${rawData}`);
+
+    if (rawData) {
+      const lines = rawData.trim().split(/\r?\n/);
+      for (const line of lines) {
+        const parts = line.split('\t');
+        if (parts.length >= 2) {
+          const bioUserId = parts[0].trim();
+          const punchTime = parts[1].trim(); // Format: YYYY-MM-DD HH:MM:SS
+          
+          const mapping = db.prepare('SELECT * FROM biometric_user_mappings WHERE biometric_user_id = ?').get(bioUserId);
+          
+          if (mapping && mapping.employee_id) {
+            console.log(`✅ Biometric Match: User #${bioUserId} -> Employee ${mapping.employee_id} at ${punchTime}`);
+          } else {
+            const punchId = `PUNCH-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            db.prepare(`
+              INSERT INTO unmapped_biometric_punches (id, device_id, biometric_user_id, biometric_name, punch_time, status)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `).run(punchId, sn, bioUserId, `Biometric User #${bioUserId}`, punchTime, 'Pending HR Action');
+          }
+        }
+      }
+    }
+
+    res.set('Content-Type', 'text/plain');
+    res.send('OK');
+  } catch (err) {
+    console.error('❌ Cloud Push Processing Error:', err);
+    res.set('Content-Type', 'text/plain');
+    res.status(500).send('ERROR');
+  }
+});
+
+// 3. Command Request Polling
+app.get('/iclock/getrequest', (req, res) => {
+  res.set('Content-Type', 'text/plain');
+  res.send('OK');
 });
 
 // Start listening

@@ -135,5 +135,90 @@ export const api = {
     });
     if (!res.ok) throw new Error(`API assignBiometricId failed`);
     return await res.json();
+  },
+
+  // Production Processes (Process Master)
+  async fetchProcesses() {
+    const res = await fetch(`${API_BASE}/processes`);
+    if (!res.ok) throw new Error(`API fetchProcesses failed`);
+    return await res.json();
+  },
+
+  async createProcess(process) {
+    const res = await fetch(`${API_BASE}/processes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(process)
+    });
+    if (!res.ok) throw new Error(`API createProcess failed`);
+    return await res.json();
+  },
+
+  async updateProcess(id, process) {
+    const res = await fetch(`${API_BASE}/processes/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(process)
+    });
+    if (!res.ok) throw new Error(`API updateProcess failed`);
+    return await res.json();
+  },
+
+  async deleteProcess(id) {
+    const res = await fetch(`${API_BASE}/processes/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`API deleteProcess failed`);
+    return await res.json();
+  },
+
+  // Multi-Task Employee Production Tasks / Work Logs
+  async fetchProductionTasks(filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.dateFrom) params.append('dateFrom', filters.dateFrom);
+    if (filters.dateTo) params.append('dateTo', filters.dateTo);
+    if (filters.employeeId) params.append('employeeId', filters.employeeId);
+    if (filters.orderId) params.append('orderId', filters.orderId);
+    if (filters.status) params.append('status', filters.status);
+    if (filters.processId) params.append('processId', filters.processId);
+
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const res = await fetch(`${API_BASE}/production-tasks${qs}`);
+    if (!res.ok) throw new Error(`API fetchProductionTasks failed`);
+    return await res.json();
+  },
+
+  async createProductionTask(task) {
+    const res = await fetch(`${API_BASE}/production-tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(task)
+    });
+    if (!res.ok) throw new Error(`API createProductionTask failed`);
+    return await res.json();
+  },
+
+  async updateProductionTask(id, task) {
+    const res = await fetch(`${API_BASE}/production-tasks/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(task)
+    });
+    if (!res.ok) throw new Error(`API updateProductionTask failed`);
+    return await res.json();
+  },
+
+  async executeTaskAction(id, actionData) {
+    const res = await fetch(`${API_BASE}/production-tasks/${id}/action`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(actionData)
+    });
+    if (!res.ok) throw new Error(`API executeTaskAction failed`);
+    return await res.json();
+  },
+
+  async deleteProductionTask(id) {
+    const res = await fetch(`${API_BASE}/production-tasks/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`API deleteProductionTask failed`);
+    return await res.json();
   }
 };

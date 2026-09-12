@@ -126,4 +126,83 @@ CREATE POLICY "Allow authenticated write to worker_job_incentives" ON public.wor
 CREATE INDEX IF NOT EXISTS idx_worker_incentives_worker ON public.worker_job_incentives(worker_id);
 CREATE INDEX IF NOT EXISTS idx_worker_incentives_order ON public.worker_job_incentives(order_id);
 
+-- 9. Production Processes (Process Master)
+CREATE TABLE IF NOT EXISTS public.production_processes (
+    id TEXT PRIMARY KEY,
+    code TEXT UNIQUE,
+    name TEXT NOT NULL,
+    category TEXT DEFAULT 'Production',
+    description TEXT,
+    default_unit TEXT DEFAULT 'Nos',
+    is_active INTEGER DEFAULT 1,
+    sort_order INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.production_processes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public read to production_processes" ON public.production_processes FOR SELECT USING (true);
+CREATE POLICY "Allow public write to production_processes" ON public.production_processes FOR ALL USING (true);
+
+-- 10. Production Tasks / Employee Work Logs
+CREATE TABLE IF NOT EXISTS public.production_tasks (
+    id TEXT PRIMARY KEY,
+    task_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    employee_id TEXT NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
+    employee_name TEXT NOT NULL,
+    order_id TEXT NOT NULL REFERENCES public.sales_orders(id) ON DELETE CASCADE,
+    order_number TEXT NOT NULL,
+    customer_name TEXT,
+    item_id TEXT,
+    item_title TEXT,
+    process_id TEXT,
+    process_name TEXT NOT NULL,
+    quantity NUMERIC DEFAULT 1,
+    unit TEXT DEFAULT 'Nos',
+    start_time TEXT,
+    end_time TEXT,
+    total_duration_minutes INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'Pending',
+    priority TEXT DEFAULT 'Normal',
+    remarks TEXT,
+    machine_id TEXT,
+    machine_name TEXT,
+    department TEXT DEFAULT 'Production',
+    production_location TEXT,
+    original_qty NUMERIC DEFAULT 1,
+    completed_qty NUMERIC DEFAULT 0,
+    rejected_qty NUMERIC DEFAULT 0,
+    rework_qty NUMERIC DEFAULT 0,
+    final_qty NUMERIC DEFAULT 0,
+    attachment_url TEXT,
+    supervisor TEXT,
+    qc_status TEXT DEFAULT 'Pending',
+    created_by TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_by TEXT,
+    completed_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_emp ON public.production_tasks(employee_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_order ON public.production_tasks(order_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_date ON public.production_tasks(task_date DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON public.production_tasks(status);
+ALTER TABLE public.production_tasks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public read to production_tasks" ON public.production_tasks FOR SELECT USING (true);
+CREATE POLICY "Allow public write to production_tasks" ON public.production_tasks FOR ALL USING (true);
+
+-- 11. Production Task Time Logs (State transitions, pause/resume intervals)
+CREATE TABLE IF NOT EXISTS public.production_task_time_logs (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL REFERENCES public.production_tasks(id) ON DELETE CASCADE,
+    action TEXT NOT NULL,
+    timestamp TIMESTAMPTZ DEFAULT NOW(),
+    logged_by TEXT,
+    notes TEXT,
+    elapsed_seconds INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_task_time_logs ON public.production_task_time_logs(task_id);
+ALTER TABLE public.production_task_time_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public read to production_task_time_logs" ON public.production_task_time_logs FOR SELECT USING (true);
+CREATE POLICY "Allow public write to production_task_time_logs" ON public.production_task_time_logs FOR ALL USING (true);
+
+
 

@@ -152,6 +152,8 @@ export function initDatabase() {
       incentive_rate REAL DEFAULT 0,
       commission_rate REAL DEFAULT 0,
       joined_date TEXT,
+      designation TEXT,
+      status TEXT DEFAULT 'Active',
       active INTEGER DEFAULT 1
     );
 
@@ -418,7 +420,81 @@ export function initDatabase() {
       status TEXT DEFAULT 'Pending HR Action',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
+
+    -- 21. Production Processes (Process Master)
+    CREATE TABLE IF NOT EXISTS production_processes (
+      id TEXT PRIMARY KEY,
+      code TEXT UNIQUE,
+      name TEXT NOT NULL,
+      category TEXT DEFAULT 'Production',
+      description TEXT,
+      default_unit TEXT DEFAULT 'Nos',
+      is_active INTEGER DEFAULT 1,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 22. Production Tasks / Employee Work Logs
+    CREATE TABLE IF NOT EXISTS production_tasks (
+      id TEXT PRIMARY KEY,
+      task_date TEXT NOT NULL,
+      employee_id TEXT NOT NULL,
+      employee_name TEXT NOT NULL,
+      order_id TEXT NOT NULL,
+      order_number TEXT NOT NULL,
+      customer_name TEXT,
+      item_id TEXT,
+      item_title TEXT,
+      process_id TEXT,
+      process_name TEXT NOT NULL,
+      quantity REAL DEFAULT 1,
+      unit TEXT DEFAULT 'Nos',
+      start_time TEXT,
+      end_time TEXT,
+      total_duration_minutes INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'Pending',
+      priority TEXT DEFAULT 'Normal',
+      remarks TEXT,
+      machine_id TEXT,
+      machine_name TEXT,
+      department TEXT DEFAULT 'Production',
+      production_location TEXT,
+      original_qty REAL DEFAULT 1,
+      completed_qty REAL DEFAULT 0,
+      rejected_qty REAL DEFAULT 0,
+      rework_qty REAL DEFAULT 0,
+      final_qty REAL DEFAULT 0,
+      attachment_url TEXT,
+      supervisor TEXT,
+      qc_status TEXT DEFAULT 'Pending',
+      created_by TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      completed_by TEXT,
+      completed_at TEXT,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_tasks_emp ON production_tasks(employee_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_order ON production_tasks(order_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_date ON production_tasks(task_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_tasks_status ON production_tasks(status);
+
+    -- 23. Production Task Time Logs (State transitions, pause/resume intervals)
+    CREATE TABLE IF NOT EXISTS production_task_time_logs (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      logged_by TEXT,
+      notes TEXT,
+      elapsed_seconds INTEGER DEFAULT 0,
+      FOREIGN KEY (task_id) REFERENCES production_tasks(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_time_logs ON production_task_time_logs(task_id);
   `);
+
+  try { db.prepare("ALTER TABLE employees ADD COLUMN designation TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE employees ADD COLUMN status TEXT DEFAULT 'Active'").run(); } catch(e) {}
 }
 
 // Call schema initialization

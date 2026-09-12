@@ -7,6 +7,7 @@ import { CreateEmployeeModal } from '../components/modals/CreateEmployeeModal';
 import CreateCareOfModal from '../components/modals/CreateCareOfModal';
 import { CreateVendorModal } from '../components/modals/CreateVendorModal';
 import { JobCardPrintModal } from '../components/modals/JobCardPrintModal';
+import { JobDetailModal } from '../components/modals/JobDetailModal';
 import { TaxInvoicePrintModal } from '../components/modals/TaxInvoicePrintModal';
 import { SearchableSelect } from '../components/common/SearchableSelect';
 import { handleSendWhatsApp } from '../utils/whatsapp';
@@ -93,8 +94,9 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
   const [isCreateVendorModalOpen, setIsCreateVendorModalOpen] = useState(false);
   const [activeProdTargetIndex, setActiveProdTargetIndex] = useState(0);
   const [activeVendorTargetIndex, setActiveVendorTargetIndex] = useState(0);
-  const [printJobCardOrder, setPrintJobCardOrder] = useState(null);
-  const [printInvoiceOrder, setPrintInvoiceOrder] = useState(null);
+  const [selectedJobCardItem, setSelectedJobCardItem] = useState(null);
+  const [selectedJobDetailJob, setSelectedJobDetailJob] = useState(null);
+  const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState(null);
 
   // Multi-Vendor Outsource Jobs Modal State (1 or More Vendors per Line Item)
   const [outsourceModalIdx, setOutsourceModalIdx] = useState(null);
@@ -957,6 +959,94 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                                 setItems(newItems);
                               }}
                             />
+                          )}
+
+                          {/* TWO CLEAN BOXES: PRODUCT & SPECIFICATION (Rendered upon product selection) */}
+                          {item.productName && (
+                            <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              {/* BOX 1: PRODUCT */}
+                              <div
+                                style={{
+                                  background: '#f8fafc',
+                                  border: '1px solid #cbd5e1',
+                                  borderRadius: '6px',
+                                  padding: '0.4rem 0.6rem',
+                                  fontSize: '0.74rem'
+                                }}
+                              >
+                                <div style={{ fontWeight: 800, color: '#1e40af', marginBottom: '2px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span>📦 BOX 1: PRODUCT</span>
+                                  <span className="badge badge-blue" style={{ fontSize: '0.62rem', padding: '0.05rem 0.3rem' }}>{item.category || 'Print'}</span>
+                                </div>
+                                <div style={{ color: '#0f172a', fontWeight: 700 }}>{item.productName}</div>
+                                <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                                  Base Media: {item.material || 'Standard Substrate'} • Unit: {item.unit || 'Sq.Ft'} • HSN: {item.hsnCode || '9989'}
+                                </div>
+                              </div>
+
+                              {/* BOX 2: SPECIFICATION */}
+                              <div
+                                style={{
+                                  background: '#faf5ff',
+                                  border: '1px solid #e9d5ff',
+                                  borderRadius: '6px',
+                                  padding: '0.4rem 0.6rem',
+                                  fontSize: '0.74rem'
+                                }}
+                              >
+                                <div style={{ fontWeight: 800, color: '#7e22ce', marginBottom: '2px' }}>
+                                  ✂️ BOX 2: SPECIFICATION
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '2px' }}>
+                                  <div>
+                                    <label style={{ fontSize: '0.65rem', color: '#6b21a8', fontWeight: 700 }}>Color Mode</label>
+                                    <select
+                                      className="form-select form-select-sm"
+                                      style={{ fontSize: '0.7rem', padding: '0.15rem 0.35rem' }}
+                                      value={item.colorMode || '4C Full Color'}
+                                      onChange={(e) => {
+                                        const newItems = [...items];
+                                        newItems[idx].colorMode = e.target.value;
+                                        setItems(newItems);
+                                      }}
+                                    >
+                                      <option value="4C Full Color">4C Full Color (CMYK)</option>
+                                      <option value="1C Single Color">1C Single Color</option>
+                                      <option value="2C Spot Color">2C Spot Color</option>
+                                      <option value="White + CMYK">White + CMYK (UV)</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label style={{ fontSize: '0.65rem', color: '#6b21a8', fontWeight: 700 }}>Sides</label>
+                                    <select
+                                      className="form-select form-select-sm"
+                                      style={{ fontSize: '0.7rem', padding: '0.15rem 0.35rem' }}
+                                      value={item.sides || 'Single Sided'}
+                                      onChange={(e) => {
+                                        const newItems = [...items];
+                                        newItems[idx].sides = e.target.value;
+                                        setItems(newItems);
+                                      }}
+                                    >
+                                      <option value="Single Sided">Single Sided</option>
+                                      <option value="Double Sided">Double Sided</option>
+                                    </select>
+                                  </div>
+                                </div>
+                                <input
+                                  type="text"
+                                  className="form-control form-control-sm"
+                                  style={{ marginTop: '4px', fontSize: '0.72rem', padding: '0.2rem 0.4rem' }}
+                                  placeholder="Finishing specs (e.g. Matte Lam + Creasing)..."
+                                  value={item.finishingSpec || ''}
+                                  onChange={(e) => {
+                                    const newItems = [...items];
+                                    newItems[idx].finishingSpec = e.target.value;
+                                    setItems(newItems);
+                                  }}
+                                />
+                              </div>
+                            </div>
                           )}
 
                           <input
@@ -2349,6 +2439,17 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
           </div>
         </div>
       )}
+
+      {/* 7-Tab Job Detail Modal */}
+      {selectedJobDetailJob && (
+        <JobDetailModal
+          job={selectedJobDetailJob}
+          isOpen={true}
+          onClose={() => setSelectedJobDetailJob(null)}
+          onPrintJobCard={(j) => setPrintJobCardOrder(j)}
+        />
+      )}
     </div>
   );
 };
+

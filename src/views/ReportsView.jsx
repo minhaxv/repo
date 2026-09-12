@@ -24,6 +24,7 @@ import { ReportFilterBar } from '../components/reports/ReportFilterBar';
 import { BarChartWidget, DonutChartWidget, TrendLineWidget } from '../components/reports/ReportCharts';
 import { PivotReportView } from '../components/reports/PivotReportView';
 import { EmailScheduleModal } from '../components/modals/EmailScheduleModal';
+import { EmployeeWorkReportView } from './EmployeeWorkReportView';
 
 export const ReportsView = ({ initialReportKey = 'SALES' }) => {
   const { companyProfile, salesOrders, customers, salesPersons, careOfPersons, workers, vendors, products, inventory, designers, payments } = useERP();
@@ -51,7 +52,8 @@ export const ReportsView = ({ initialReportKey = 'SALES' }) => {
       case 'report-stock-detail': return { category: 'INVENTORY', subReport: 'STOCK_DETAILS' };
       case 'report-inventory-aging': return { category: 'INVENTORY', subReport: 'INVENTORY_AGING' };
       case 'report-other-charges': return { category: 'PNL', subReport: 'STATEMENT' };
-      case 'report-employee': return { category: 'EMPLOYEE', subReport: 'ATTENDANCE' };
+      case 'report-employee': return { category: 'EMPLOYEE', subReport: 'WORK_LOGS' };
+      case 'report-employee-work': return { category: 'EMPLOYEE', subReport: 'WORK_LOGS' };
       case 'report-attendance': return { category: 'EMPLOYEE', subReport: 'ATTENDANCE' };
       case 'report-payroll': return { category: 'EMPLOYEE', subReport: 'PAYROLL' };
       case 'report-accounts': return { category: 'PNL', subReport: 'STATEMENT' };
@@ -282,6 +284,7 @@ export const ReportsView = ({ initialReportKey = 'SALES' }) => {
       { id: 'STOCK_MOVEMENT', label: 'Stock Movement' }
     ],
     EMPLOYEE: [
+      { id: 'WORK_LOGS', label: 'Employee Daily Work Report & Production Logs' },
       { id: 'SALESPERSON_PERF', label: 'Sales Person Performance' },
       { id: 'CAREOF_PERF', label: 'Care Of Performance' },
       { id: 'DESIGNER_PERF', label: 'Designer Performance' },
@@ -933,8 +936,13 @@ export const ReportsView = ({ initialReportKey = 'SALES' }) => {
         </div>
       )}
 
-      {/* Main Filter Bar */}
-      <ReportFilterBar
+      {/* If Employee Work Logs, render dedicated rich EmployeeWorkReportView */}
+      {activeCategory === 'EMPLOYEE' && activeSubReport === 'WORK_LOGS' ? (
+        <EmployeeWorkReportView />
+      ) : (
+        <>
+          {/* Main Filter Bar */}
+          <ReportFilterBar
         filters={filters}
         onFilterChange={handleFilterChange}
         onResetFilters={handleResetFilters}
@@ -1100,6 +1108,8 @@ export const ReportsView = ({ initialReportKey = 'SALES' }) => {
               )}
             </div>
           </div>
+        </>
+      )}
         </>
       )}
 

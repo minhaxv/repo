@@ -8,6 +8,7 @@ import { MobileBottomNav } from './components/layout/MobileBottomNav';
 
 import { DashboardView } from './views/DashboardView';
 import { SalesOrdersView } from './views/SalesOrdersView';
+import { JobOrdersView } from './views/JobOrdersView';
 import { CustomersView } from './views/CustomersView';
 import { EmployeesView } from './views/EmployeesView';
 import { SalesPersonsView } from './views/SalesPersonsView';
@@ -16,6 +17,9 @@ import { HRManagementView } from './views/HRManagementView';
 import { ProductsView } from './views/ProductsView';
 import { DesignersView } from './views/DesignersView';
 import { ProductionView } from './views/ProductionView';
+import { MachinesView } from './views/MachinesView';
+import { WorkflowsView } from './views/WorkflowsView';
+import { WastageView } from './views/WastageView';
 import { OutsourceVendorsView } from './views/OutsourceVendorsView';
 import { PaymentsView } from './views/PaymentsView';
 import { PurchaseView } from './views/PurchaseView';
@@ -27,6 +31,8 @@ import { ReportsView } from './views/ReportsView';
 import { AccountsView } from './views/AccountsView';
 import { UserManagementView } from './views/UserManagementView';
 import { SettingsView } from './views/SettingsView';
+import { ProductionTasksView } from './views/ProductionTasksView';
+import { EmployeeWorkReportView } from './views/EmployeeWorkReportView';
 import { LoginView } from './views/LoginView';
 import { Loader } from 'lucide-react';
 
@@ -108,13 +114,19 @@ const MainAppContent = () => {
       handleNavigate('sales-order-audit');
     };
 
+    const handleProductionNav = () => {
+      handleNavigate('production');
+    };
+
     window.addEventListener('ERP_NAVIGATE_ORDER', handleOrderNav);
     window.addEventListener('ERP_NAVIGATE_ORDER_CREATE', handleOrderCreateNav);
     window.addEventListener('ERP_NAVIGATE_AUDIT', handleAuditNav);
+    window.addEventListener('ERP_NAVIGATE_PRODUCTION', handleProductionNav);
     return () => {
       window.removeEventListener('ERP_NAVIGATE_ORDER', handleOrderNav);
       window.removeEventListener('ERP_NAVIGATE_ORDER_CREATE', handleOrderCreateNav);
       window.removeEventListener('ERP_NAVIGATE_AUDIT', handleAuditNav);
+      window.removeEventListener('ERP_NAVIGATE_PRODUCTION', handleProductionNav);
     };
   }, []);
 
@@ -171,24 +183,33 @@ const MainAppContent = () => {
                 onNavigate={handleNavigate}
               />
             )}
+            {activeTab === 'job-orders' && <JobOrdersView onNavigate={handleNavigate} />}
             {activeTab === 'customers' && <CustomersView onNavigate={handleNavigate} />}
             {activeTab === 'employees' && <EmployeesView />}
             {activeTab === 'sales-persons' && <SalesPersonsView />}
             {activeTab === 'care-of-persons' && <CareOfManagementView />}
             {(activeTab === 'hr-payroll' || activeTab === 'attendance') && <HRManagementView />}
             {activeTab === 'products' && <ProductsView />}
+            {activeTab === 'machines' && <MachinesView />}
+            {activeTab === 'workflows' && <WorkflowsView />}
+            {activeTab === 'wastage' && <WastageView />}
             {activeTab === 'designers' && <DesignersView />}
-            {activeTab === 'production' && <ProductionView />}
+            {activeTab === 'production' && <ProductionView initialStageFilter="ALL" />}
+            {activeTab === 'employee-tasks' && <ProductionTasksView />}
+            {activeTab === 'printing-dept' && <ProductionView initialStageFilter="Printing" />}
+            {activeTab === 'finishing-dept' && <ProductionView initialStageFilter="Finishing" />}
+            {activeTab === 'qc-dept' && <ProductionView initialStageFilter="Quality Check" />}
             {activeTab === 'vendors' && <OutsourceVendorsView />}
             {activeTab === 'payments' && <PaymentsView />}
             {activeTab === 'purchase' && <PurchaseView />}
-            {activeTab === 'inventory' && <InventoryView />}
+            {(activeTab === 'inventory' || activeTab === 'materials-spec' || activeTab === 'materials-master') && <InventoryView />}
             {activeTab === 'delivery' && <DeliveryView />}
             {activeTab === 'gst-invoicing' && <GSTInvoicingView />}
             {(activeTab === 'sales-order-audit' || activeTab === 'report-order-audit') && (
               <SalesOrderAuditView onNavigate={handleNavigate} />
             )}
-            {(activeTab === 'reports' || (activeTab.startsWith('report-') && activeTab !== 'report-order-audit')) && (
+            {activeTab === 'report-employee-work' && <EmployeeWorkReportView />}
+            {(activeTab === 'reports' || (activeTab.startsWith('report-') && activeTab !== 'report-order-audit' && activeTab !== 'report-employee-work')) && (
               <ReportsView key={activeTab} initialReportKey={activeTab} />
             )}
             {ACCOUNTS_SUB_ITEMS.includes(activeTab) && <AccountsView key={activeTab} initialTab={activeTab} />}

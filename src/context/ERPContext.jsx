@@ -20,9 +20,13 @@ import {
   initialProductMaterialSpecs,
   initialEmployees,
   initialWorkerJobIncentives,
-  initialOrderAuditLogs
+  initialOrderAuditLogs,
+  initialMachines,
+  initialWorkflows,
+  initialProductionProcesses,
+  initialProductionTasks
 } from '../data/mockData';
-import { USER_ROLES, PRODUCTION_STATUS } from '../types';
+import { USER_ROLES, PRODUCTION_STATUS, PRODUCTION_STAGES, STAGE_STATUS, MACHINE_STATUS } from '../types';
 import { api } from '../utils/api';
 
 const ERPContext = createContext();
@@ -145,9 +149,66 @@ export const ERPProvider = ({ children }) => {
     }
   });
 
+  const [machines, setMachines] = useState(() => {
+    try {
+      const saved = localStorage.getItem('stitch_erp_machines');
+      return saved ? JSON.parse(saved) : initialMachines;
+    } catch (e) {
+      return initialMachines;
+    }
+  });
+
+  const [workflows, setWorkflows] = useState(() => {
+    try {
+      const saved = localStorage.getItem('stitch_erp_workflows');
+      return saved ? JSON.parse(saved) : initialWorkflows;
+    } catch (e) {
+      return initialWorkflows;
+    }
+  });
+
+  const [wastageRecords, setWastageRecords] = useState(() => {
+    try {
+      const saved = localStorage.getItem('stitch_erp_wastage_records');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const [productionProcesses, setProductionProcesses] = useState(() => {
+    try {
+      const saved = localStorage.getItem('stitch_erp_production_processes');
+      return saved ? JSON.parse(saved) : initialProductionProcesses;
+    } catch (e) {
+      return initialProductionProcesses;
+    }
+  });
+
+  const [productionTasks, setProductionTasks] = useState(() => {
+    try {
+      const saved = localStorage.getItem('stitch_erp_production_tasks');
+      return saved ? JSON.parse(saved) : initialProductionTasks;
+    } catch (e) {
+      return initialProductionTasks;
+    }
+  });
+
   const [followUps, setFollowUps] = useState([]);
 
   // Automatic LocalStorage Persistence Hooks so page refresh never loses sales orders or job data
+  useEffect(() => {
+    if (productionProcesses && productionProcesses.length > 0) {
+      try { localStorage.setItem('stitch_erp_production_processes', JSON.stringify(productionProcesses)); } catch (e) {}
+    }
+  }, [productionProcesses]);
+
+  useEffect(() => {
+    if (productionTasks && productionTasks.length > 0) {
+      try { localStorage.setItem('stitch_erp_production_tasks', JSON.stringify(productionTasks)); } catch (e) {}
+    }
+  }, [productionTasks]);
+
   useEffect(() => {
     if (salesOrders && salesOrders.length > 0) {
       try { localStorage.setItem('stitch_erp_sales_orders', JSON.stringify(salesOrders)); } catch (e) {}
@@ -177,6 +238,24 @@ export const ERPProvider = ({ children }) => {
       try { localStorage.setItem('stitch_erp_products', JSON.stringify(products)); } catch (e) {}
     }
   }, [products]);
+
+  useEffect(() => {
+    if (machines && machines.length > 0) {
+      try { localStorage.setItem('stitch_erp_machines', JSON.stringify(machines)); } catch (e) {}
+    }
+  }, [machines]);
+
+  useEffect(() => {
+    if (workflows && workflows.length > 0) {
+      try { localStorage.setItem('stitch_erp_workflows', JSON.stringify(workflows)); } catch (e) {}
+    }
+  }, [workflows]);
+
+  useEffect(() => {
+    if (wastageRecords && wastageRecords.length > 0) {
+      try { localStorage.setItem('stitch_erp_wastage_records', JSON.stringify(wastageRecords)); } catch (e) {}
+    }
+  }, [wastageRecords]);
 
   useEffect(() => {
     if (employees && employees.length > 0) {
@@ -283,6 +362,8 @@ export const ERPProvider = ({ children }) => {
         if (data.salesOrders) setSalesOrders(data.salesOrders);
         if (data.workerJobIncentives) setWorkerJobIncentives(data.workerJobIncentives);
         if (data.payments) setPayments(data.payments);
+        if (data.productionProcesses && data.productionProcesses.length > 0) setProductionProcesses(data.productionProcesses);
+        if (data.productionTasks && data.productionTasks.length > 0) setProductionTasks(data.productionTasks);
       }
     } catch (err) {
       console.warn("API fetchAllERPData warning, using local state:", err);
@@ -302,6 +383,8 @@ export const ERPProvider = ({ children }) => {
       const savedCareOf = localStorage.getItem('stitch_erp_care_of_persons');
       const savedSalesPersons = localStorage.getItem('stitch_erp_sales_persons');
       const savedVendors = localStorage.getItem('stitch_erp_vendors');
+      const savedProcesses = localStorage.getItem('stitch_erp_production_processes');
+      const savedTasks = localStorage.getItem('stitch_erp_production_tasks');
 
       setCompanyProfile(initialCompanyProfile);
       setCompanyBankAccounts(initialCompanyBankAccounts);
@@ -322,9 +405,13 @@ export const ERPProvider = ({ children }) => {
       setAttendanceRecords(initialAttendance);
       setPayrollRecords(initialPayroll);
       setWorkerJobIncentives(savedIncentives ? JSON.parse(savedIncentives) : initialWorkerJobIncentives);
+      setProductionProcesses(savedProcesses ? JSON.parse(savedProcesses) : initialProductionProcesses);
+      setProductionTasks(savedTasks ? JSON.parse(savedTasks) : initialProductionTasks);
     } catch (e) {
       setSalesOrders(initialSalesOrders);
       setWorkerJobIncentives(initialWorkerJobIncentives);
+      setProductionProcesses(initialProductionProcesses);
+      setProductionTasks(initialProductionTasks);
     }
   };
 
@@ -3044,6 +3131,508 @@ export const ERPProvider = ({ children }) => {
     }
   };
 
+  // Machine Management Handlers
+  const addMachine = async (machineData) => {
+    const newId = machineData.id || `MCH-${String(machines.length + 1).padStart(2, '0')}`;
+    const newMch = {
+      ...machineData,
+      id: newId,
+      status: machineData.status || 'Running',
+      activeJobCount: machineData.activeJobCount || 0,
+      totalHoursRun: machineData.totalHoursRun || 0,
+      createdAt: new Date().toISOString()
+    };
+    setMachines((prev) => [newMch, ...prev.filter(m => m.id !== newId)]);
+    return newMch;
+  };
+
+  const updateMachine = async (id, updatedData) => {
+    setMachines((prev) => prev.map((m) => (m.id === id ? { ...m, ...updatedData } : m)));
+    return true;
+  };
+
+  const deleteMachine = async (id) => {
+    setMachines((prev) => prev.filter((m) => m.id !== id));
+    return true;
+  };
+
+  // Workflow Management Handlers
+  const addWorkflow = async (workflowData) => {
+    const newId = workflowData.id || `WF-${String(workflows.length + 1).padStart(2, '0')}`;
+    const newWf = {
+      ...workflowData,
+      id: newId,
+      stages: workflowData.stages || ['Designing', 'Printing', 'Finishing', 'Quality Check', 'Ready for Delivery', 'Delivered'],
+      createdAt: new Date().toISOString()
+    };
+    setWorkflows((prev) => [newWf, ...prev.filter(w => w.id !== newId)]);
+    return newWf;
+  };
+
+  const updateWorkflow = async (id, updatedData) => {
+    setWorkflows((prev) => prev.map((w) => (w.id === id ? { ...w, ...updatedData } : w)));
+    return true;
+  };
+
+  const deleteWorkflow = async (id) => {
+    setWorkflows((prev) => prev.filter((w) => w.id !== id));
+    return true;
+  };
+
+  // Production Stage & Job Order Management Handlers
+  const updateJobOrderStage = async (orderId, itemId, stageName, stageStatus, operatorId = '', operatorName = '', machineId = '', machineName = '', notes = '') => {
+    setSalesOrders((prev) =>
+      prev.map((o) => {
+        if (o.id !== orderId) return o;
+        const updatedItems = (o.items || []).map((it) => {
+          if (it.id === itemId || it.jobCardId === itemId) {
+            const currentStages = it.stageTimeline || [
+              { stage: 'Designing', status: 'Completed', timestamp: o.orderDate },
+              { stage: 'Printing', status: 'In Progress', timestamp: new Date().toISOString() },
+              { stage: 'Finishing', status: 'Pending' },
+              { stage: 'Quality Check', status: 'Pending' },
+              { stage: 'Ready for Delivery', status: 'Pending' },
+              { stage: 'Delivered', status: 'Pending' }
+            ];
+
+            const updatedStages = currentStages.map((s) => {
+              if (s.stage === stageName || s.name === stageName) {
+                return {
+                  ...s,
+                  status: stageStatus,
+                  operatorId: operatorId || s.operatorId,
+                  operatorName: operatorName || s.operatorName,
+                  machineId: machineId || s.machineId,
+                  machineName: machineName || s.machineName,
+                  notes: notes || s.notes,
+                  updatedAt: new Date().toISOString()
+                };
+              }
+              return s;
+            });
+
+            // If this stage is marked In Progress or Completed, map to productionStatus
+            let nextProdStatus = it.productionStatus;
+            if (stageName === 'Designing') nextProdStatus = stageStatus === 'Completed' ? 'Printing' : 'Designing';
+            else if (stageName === 'Printing') nextProdStatus = stageStatus === 'Completed' ? 'Finishing' : 'Printing';
+            else if (stageName === 'Finishing') nextProdStatus = stageStatus === 'Completed' ? 'Quality Check' : 'Finishing';
+            else if (stageName === 'Quality Check') nextProdStatus = stageStatus === 'Completed' ? 'Ready for Delivery' : 'Quality Check';
+            else if (stageName === 'Ready for Delivery' || stageName === 'Ready') nextProdStatus = 'Ready for Delivery';
+            else if (stageName === 'Delivered') nextProdStatus = 'Delivered';
+
+            return {
+              ...it,
+              productionStatus: nextProdStatus,
+              stageTimeline: updatedStages,
+              assignedOperatorId: operatorId || it.assignedOperatorId,
+              assignedOperatorName: operatorName || it.assignedOperatorName,
+              assignedMachineId: machineId || it.assignedMachineId,
+              assignedMachineName: machineName || it.assignedMachineName,
+              lastStageUpdated: stageName,
+              lastStageStatus: stageStatus,
+              lastStageNotes: notes || it.lastStageNotes
+            };
+          }
+          return it;
+        });
+
+        // Determine order level overall status
+        const allStatuses = updatedItems.map((i) => i.productionStatus);
+        let overallStatus = o.productionStatus;
+        if (allStatuses.every((s) => s === 'Delivered')) overallStatus = 'Delivered';
+        else if (allStatuses.every((s) => s === 'Ready for Delivery' || s === 'Delivered')) overallStatus = 'Ready for Delivery';
+        else if (allStatuses.some((s) => s === 'Quality Check')) overallStatus = 'Quality Check';
+        else if (allStatuses.some((s) => s === 'Finishing')) overallStatus = 'Finishing';
+        else if (allStatuses.some((s) => s === 'Printing')) overallStatus = 'Printing';
+        else if (allStatuses.some((s) => s === 'Designing')) overallStatus = 'Designing';
+
+        return { ...o, items: updatedItems, productionStatus: overallStatus };
+      })
+    );
+
+    // If a machine is assigned, update its workload count
+    if (machineId) {
+      setMachines((prev) =>
+        prev.map((m) => {
+          if (m.id === machineId) {
+            return { ...m, activeJobCount: (m.activeJobCount || 0) + (stageStatus === 'Completed' ? -1 : 1) };
+          }
+          return m;
+        })
+      );
+    }
+
+    return true;
+  };
+
+  // Record Wastage on Line Item / Job Card
+  const updateJobWastage = async (orderId, itemId, wastageData) => {
+    const { producedQty, materialUsed, wastageQty, wastagePct, unit = 'Units', reason = '', recordedBy = '' } = wastageData;
+    const calcWastageQty = Number(wastageQty) || Math.max(0, (Number(materialUsed) || 0) - (Number(producedQty) || 0));
+    const calcWastagePct = Number(wastagePct) || (Number(materialUsed) > 0 ? parseFloat(((calcWastageQty / Number(materialUsed)) * 100).toFixed(1)) : 0);
+
+    const wasteLogEntry = {
+      id: `WST-${Date.now()}`,
+      orderId,
+      itemId,
+      producedQty: Number(producedQty) || 0,
+      materialUsed: Number(materialUsed) || 0,
+      wastageQty: calcWastageQty,
+      wastagePct: calcWastagePct,
+      unit,
+      reason: reason || 'Production Setup / Trim Scrap',
+      recordedBy: recordedBy || activeUser?.name || 'Machine Operator',
+      recordedAt: new Date().toISOString()
+    };
+
+    setWastageRecords((prev) => [wasteLogEntry, ...prev]);
+
+    setSalesOrders((prev) =>
+      prev.map((o) => {
+        if (o.id !== orderId) return o;
+        const updatedItems = (o.items || []).map((it) => {
+          if (it.id === itemId || it.jobCardId === itemId) {
+            return {
+              ...it,
+              producedQty: Number(producedQty) || it.qty,
+              materialUsed: Number(materialUsed) || (Number(producedQty) + calcWastageQty),
+              wastageQty: calcWastageQty,
+              wastagePct: calcWastagePct,
+              wastageReason: reason,
+              wastageHistory: [wasteLogEntry, ...(it.wastageHistory || [])]
+            };
+          }
+          return it;
+        });
+        return { ...o, items: updatedItems };
+      })
+    );
+
+    return wasteLogEntry;
+  };
+
+  // Update Estimated vs Actual Costing Breakdown on Line Item
+  const updateJobCosting = async (orderId, itemId, costingData) => {
+    setSalesOrders((prev) =>
+      prev.map((o) => {
+        if (o.id !== orderId) return o;
+        let orderActCost = 0;
+        let orderEstCost = 0;
+
+        const updatedItems = (o.items || []).map((it) => {
+          if (it.id === itemId || it.jobCardId === itemId) {
+            const estBreakdown = costingData.estimatedBreakdown || it.estimatedCostBreakdown || {
+              material: Number(costingData.estMaterial ?? it.estimatedCost ?? 0),
+              printing: Number(costingData.estPrinting ?? 0),
+              finishing: Number(costingData.estFinishing ?? 0),
+              labour: Number(costingData.estLabour ?? 0),
+              machine: Number(costingData.estMachine ?? 0),
+              outsourcing: Number(costingData.estOutsourcing ?? it.internalEstOutsourceCost ?? 0),
+              other: Number(costingData.estOther ?? 0)
+            };
+
+            const actBreakdown = costingData.actualBreakdown || it.actualCostBreakdown || {
+              material: Number(costingData.actMaterial ?? estBreakdown.material),
+              printing: Number(costingData.actPrinting ?? estBreakdown.printing),
+              finishing: Number(costingData.actFinishing ?? estBreakdown.finishing),
+              labour: Number(costingData.actLabour ?? estBreakdown.labour),
+              machine: Number(costingData.actMachine ?? estBreakdown.machine),
+              outsourcing: Number(costingData.actOutsourcing ?? it.actualVendorBill ?? estBreakdown.outsourcing),
+              other: Number(costingData.actOther ?? estBreakdown.other)
+            };
+
+            const totalEst = Object.values(estBreakdown).reduce((sum, v) => sum + (Number(v) || 0), 0);
+            const totalAct = Object.values(actBreakdown).reduce((sum, v) => sum + (Number(v) || 0), 0);
+            const variance = totalAct - totalEst;
+            const variancePct = totalEst > 0 ? parseFloat(((variance / totalEst) * 100).toFixed(1)) : 0;
+            const itemSelling = Number(it.amount || (it.sellingRate * (it.qty || 1)) || 0);
+            const itemProfit = itemSelling - totalAct;
+            const itemMarginPct = itemSelling > 0 ? parseFloat(((itemProfit / itemSelling) * 100).toFixed(1)) : 0;
+
+            orderEstCost += totalEst;
+            orderActCost += totalAct;
+
+            return {
+              ...it,
+              estimatedCost: totalEst,
+              actualCost: totalAct,
+              estimatedCostBreakdown: estBreakdown,
+              actualCostBreakdown: actBreakdown,
+              costVariance: variance,
+              costVariancePct: variancePct,
+              grossProfit: itemProfit,
+              grossMarginPct: itemMarginPct
+            };
+          }
+
+          orderEstCost += Number(it.estimatedCost || 0);
+          orderActCost += Number(it.actualCost || it.estimatedCost || 0);
+          return it;
+        });
+
+        const grossProfit = o.subtotal - orderActCost;
+        const profitMarginPct = o.subtotal > 0 ? parseFloat(((grossProfit / o.subtotal) * 100).toFixed(1)) : 0;
+
+        return {
+          ...o,
+          items: updatedItems,
+          totalEstimatedCost: orderEstCost,
+          totalActualCost: orderActCost,
+          grossProfit,
+          profitMarginPct
+        };
+      })
+    );
+
+    return true;
+  };
+
+  // Assign Machine and Operators to Job Item
+  const assignJobMachineAndOperator = async (orderId, itemId, { machineId = '', machineName = '', operatorId = '', operatorName = '', designerId = '', designerName = '' }) => {
+    setSalesOrders((prev) =>
+      prev.map((o) => {
+        if (o.id !== orderId) return o;
+        const updatedItems = (o.items || []).map((it) => {
+          if (it.id === itemId || it.jobCardId === itemId) {
+            return {
+              ...it,
+              assignedMachineId: machineId || it.assignedMachineId,
+              assignedMachineName: machineName || it.assignedMachineName,
+              assignedOperatorId: operatorId || it.assignedOperatorId,
+              assignedOperatorName: operatorName || it.assignedOperatorName,
+              designerId: designerId || it.designerId,
+              designerName: designerName || it.designerName
+            };
+          }
+          return it;
+        });
+        return { ...o, items: updatedItems };
+      })
+    );
+    return true;
+  };
+
+  // ============================================================================
+  // MULTI-TASK EMPLOYEE PRODUCTION & WORK LOG HELPER METHODS
+  // ============================================================================
+
+  // 1. Process Master Helpers
+  const addProductionProcess = async (procData) => {
+    const newProc = {
+      id: procData.id || `PROC-${Date.now()}`,
+      code: procData.code || `PROC-${(procData.name || '').slice(0, 3).toUpperCase()}`,
+      name: procData.name,
+      category: procData.category || 'Production',
+      description: procData.description || '',
+      defaultUnit: procData.defaultUnit || 'Nos',
+      isActive: procData.isActive !== undefined ? procData.isActive : true,
+      sortOrder: Number(procData.sortOrder || (productionProcesses || []).length + 1)
+    };
+
+    try {
+      await api.createProcess(newProc);
+    } catch (e) {
+      console.warn("API createProcess fallback to local state:", e);
+    }
+
+    setProductionProcesses(prev => [...prev, newProc]);
+    return newProc;
+  };
+
+  const updateProductionProcess = async (id, procData) => {
+    try {
+      await api.updateProcess(id, procData);
+    } catch (e) {
+      console.warn("API updateProcess fallback to local state:", e);
+    }
+
+    setProductionProcesses(prev => prev.map(p => p.id === id ? { ...p, ...procData } : p));
+  };
+
+  const deleteProductionProcess = async (id) => {
+    try {
+      await api.deleteProcess(id);
+    } catch (e) {
+      console.warn("API deleteProcess fallback to local state:", e);
+    }
+
+    setProductionProcesses(prev => prev.map(p => p.id === id ? { ...p, isActive: false } : p));
+  };
+
+  // 2. Production Task / Employee Work Log Helpers
+  const createProductionTask = async (taskData) => {
+    const taskId = taskData.id || `TSK-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+    const taskDate = taskData.taskDate || new Date().toISOString().split('T')[0];
+    const initialStatus = taskData.status || 'Pending';
+    const timeFormatted = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    const newTask = {
+      id: taskId,
+      taskDate,
+      employeeId: taskData.employeeId,
+      employeeName: taskData.employeeName,
+      orderId: taskData.orderId || '',
+      orderNumber: taskData.orderNumber || taskData.orderId || 'Direct Job',
+      customerName: taskData.customerName || '',
+      itemId: taskData.itemId || '',
+      itemTitle: taskData.itemTitle || taskData.productName || 'Printing Item',
+      processId: taskData.processId || '',
+      processName: taskData.processName,
+      quantity: Number(taskData.quantity || 1),
+      unit: taskData.unit || 'Nos',
+      startTime: initialStatus === 'Started' ? (taskData.startTime || timeFormatted) : (taskData.startTime || ''),
+      endTime: taskData.endTime || '',
+      totalDurationMinutes: Number(taskData.totalDurationMinutes || 0),
+      status: initialStatus,
+      priority: taskData.priority || 'Normal',
+      remarks: taskData.remarks || '',
+      machineId: taskData.machineId || '',
+      machineName: taskData.machineName || '',
+      department: taskData.department || 'Production',
+      productionLocation: taskData.productionLocation || '',
+      originalQty: Number(taskData.originalQty || taskData.quantity || 1),
+      completedQty: Number(taskData.completedQty || 0),
+      rejectedQty: Number(taskData.rejectedQty || 0),
+      reworkQty: Number(taskData.reworkQty || 0),
+      finalQty: Number(taskData.finalQty || taskData.quantity || 1),
+      attachmentUrl: taskData.attachmentUrl || '',
+      supervisor: taskData.supervisor || '',
+      qcStatus: taskData.qcStatus || 'Pending',
+      createdBy: activeUser?.name || 'Staff',
+      createdAt: new Date().toISOString(),
+      completedBy: '',
+      completedAt: '',
+      timeLogs: initialStatus === 'Started' ? [{
+        id: `TL-${taskId}-1`,
+        action: 'START',
+        timestamp: new Date().toISOString(),
+        loggedBy: taskData.employeeName,
+        notes: 'Task started on creation',
+        elapsedSeconds: 0
+      }] : []
+    };
+
+    try {
+      await api.createProductionTask(newTask);
+    } catch (e) {
+      console.warn("API createProductionTask fallback to local state:", e);
+    }
+
+    setProductionTasks(prev => [newTask, ...prev]);
+    return newTask;
+  };
+
+  const updateProductionTask = async (id, taskData) => {
+    try {
+      await api.updateProductionTask(id, taskData);
+    } catch (e) {
+      console.warn("API updateProductionTask fallback to local state:", e);
+    }
+
+    setProductionTasks(prev => prev.map(t => t.id === id ? { ...t, ...taskData } : t));
+  };
+
+  const executeTaskAction = async (id, actionData) => {
+    const { action, notes = '', reworkQty = 0, rejectedQty = 0, completedQty = 0 } = actionData;
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const timeFormatted = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    try {
+      await api.executeTaskAction(id, {
+        action,
+        notes,
+        loggedBy: activeUser?.name || 'Staff',
+        reworkQty,
+        rejectedQty,
+        completedQty
+      });
+    } catch (e) {
+      console.warn("API executeTaskAction fallback to local state:", e);
+    }
+
+    setProductionTasks(prev => prev.map(t => {
+      if (t.id !== id) return t;
+
+      let newStatus = t.status;
+      let newDuration = Number(t.totalDurationMinutes || 0);
+      let newStartTime = t.startTime || '';
+      let newEndTime = t.endTime || '';
+      let newCompletedAt = t.completedAt;
+      let newCompletedBy = t.completedBy;
+      let newReworkQty = Number(t.reworkQty || 0);
+      let newRejectedQty = Number(t.rejectedQty || 0);
+      let newCompletedNum = Number(t.completedQty || 0);
+      let elapsedSecondsSegment = 0;
+
+      const logs = t.timeLogs || [];
+      const activeStartLog = [...logs].reverse().find(l => l.action === 'START' || l.action === 'RESUME');
+
+      if (action === 'START') {
+        newStatus = 'Started';
+        if (!newStartTime) newStartTime = timeFormatted;
+      } else if (action === 'PAUSE') {
+        newStatus = 'Paused';
+        if (activeStartLog && t.status !== 'Paused') {
+          const startMillis = new Date(activeStartLog.timestamp).getTime();
+          elapsedSecondsSegment = Math.max(0, Math.floor((now.getTime() - startMillis) / 1000));
+          newDuration += Math.round(elapsedSecondsSegment / 60);
+        }
+      } else if (action === 'RESUME') {
+        newStatus = 'Started';
+      } else if (action === 'COMPLETE') {
+        newStatus = 'Completed';
+        newEndTime = timeFormatted;
+        newCompletedAt = nowIso;
+        newCompletedBy = activeUser?.name || t.employeeName;
+        if (activeStartLog && t.status !== 'Paused') {
+          const startMillis = new Date(activeStartLog.timestamp).getTime();
+          elapsedSecondsSegment = Math.max(0, Math.floor((now.getTime() - startMillis) / 1000));
+          newDuration += Math.round(elapsedSecondsSegment / 60);
+        }
+        if (completedQty) newCompletedNum = Number(completedQty);
+        else if (newCompletedNum === 0) newCompletedNum = Number(t.quantity || 1);
+      } else if (action === 'REWORK') {
+        newStatus = 'Rework';
+        if (reworkQty) newReworkQty += Number(reworkQty);
+        if (rejectedQty) newRejectedQty += Number(rejectedQty);
+      }
+
+      const newLog = {
+        id: `TL-${id}-${Date.now()}`,
+        action,
+        timestamp: nowIso,
+        loggedBy: activeUser?.name || 'Staff',
+        notes,
+        elapsedSeconds: elapsedSecondsSegment
+      };
+
+      return {
+        ...t,
+        status: newStatus,
+        startTime: newStartTime,
+        endTime: newEndTime,
+        totalDurationMinutes: newDuration,
+        completedAt: newCompletedAt,
+        completedBy: newCompletedBy,
+        completedQty: newCompletedNum,
+        rejectedQty: newRejectedQty,
+        reworkQty: newReworkQty,
+        timeLogs: [...(t.timeLogs || []), newLog]
+      };
+    }));
+  };
+
+  const deleteProductionTask = async (id) => {
+    try {
+      await api.deleteProductionTask(id);
+    } catch (e) {
+      console.warn("API deleteProductionTask fallback to local state:", e);
+    }
+
+    setProductionTasks(prev => prev.filter(t => t.id !== id));
+  };
+
   return (
     <ERPContext.Provider
       value={{
@@ -3147,6 +3736,33 @@ export const ERPProvider = ({ children }) => {
         recordWorkerIncentive,
         assignItemWorkers,
         calculateJobProfitAndIncentive,
+        machines,
+        setMachines,
+        addMachine,
+        updateMachine,
+        deleteMachine,
+        workflows,
+        setWorkflows,
+        addWorkflow,
+        updateWorkflow,
+        deleteWorkflow,
+        wastageRecords,
+        setWastageRecords,
+        updateJobOrderStage,
+        updateJobWastage,
+        updateJobCosting,
+        assignJobMachineAndOperator,
+        productionProcesses,
+        setProductionProcesses,
+        productionTasks,
+        setProductionTasks,
+        addProductionProcess,
+        updateProductionProcess,
+        deleteProductionProcess,
+        createProductionTask,
+        updateProductionTask,
+        executeTaskAction,
+        deleteProductionTask,
         globalSearchQuery,
         setGlobalSearchQuery,
         isSearchOpen,

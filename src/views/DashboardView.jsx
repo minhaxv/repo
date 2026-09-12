@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useERP } from '../context/ERPContext';
 import {
   TrendingUp,
@@ -18,69 +18,101 @@ import {
   Building2,
   Package,
   CheckCircle2,
-  BarChart2
+  BarChart2,
+  Printer,
+  Scissors,
+  CheckSquare,
+  Cpu,
+  Flame,
+  ArrowRight,
+  Eye,
+  Sliders
 } from 'lucide-react';
 import { formatINR } from '../utils/reportEngine';
-import { BarChartWidget, DonutChartWidget, TrendLineWidget } from '../components/reports/ReportCharts';
 
 export const DashboardView = ({ onNavigate }) => {
-  const { salesOrders, customers, payments, salesPersons, careOfPersons, vendors, products, designers } = useERP();
+  const { salesOrders, customers, payments, machines, employees, products, vendors } = useERP();
 
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // Today KPI Metrics
+  // Flatten all items into rich job cards
+  const allJobs = useMemo(() => {
+    const list = [];
+    (salesOrders || []).forEach((o) => {
+      (o.items || []).forEach((it, idx) => {
+        const jcId = it.jobCardId || `JC-${o.id.split('-').pop()}-${idx + 1}`;
+        let itemStatus = it.productionStatus || o.productionStatus || 'New';
+        if (itemStatus === 'New') itemStatus = it.designerRequired === 'YES' ? 'Designing' : 'Printing';
+        if (itemStatus === 'Design') itemStatus = 'Designing';
+        if (itemStatus === 'Ready') itemStatus = 'Ready for Delivery';
+
+        const itemDeliveryDate = it.deliveryDate || o.deliveryDate;
+        const isPastDue = itemDeliveryDate && new Date(itemDeliveryDate) < new Date(todayStr) && itemStatus !== 'Delivered';
+
+        const estCost = Number(it.estimatedCost || 0);
+        const actCost = Number(it.actualCost || estCost);
+        const sellPrice = Number(it.amount || (it.sellingRate * (it.qty || 1)) || 0);
+        const grossProfit = sellPrice - actCost;
+
+        list.push({
+          id: it.id || `JOB-${idx + 1}`,
+          jobCardId: jcId,
+          orderId: o.id,
+          orderDate: o.orderDate || o.createdAt?.split('T')[0],
+          deliveryDate: itemDeliveryDate,
+          isDelayed: isPastDue,
+          customerName: o.customerName,
+          customerMobile: o.customerMobile,
+          productName: it.customTitle ? `${it.productName} — (${it.customTitle})` : it.productName,
+          qty: it.qty || 1,
+          unit: it.unit || 'Sq.Ft',
+          productionStatus: itemStatus,
+          jobPriority: it.jobPriority || 'Normal',
+          assignedOperator: it.assignedOperatorName || it.printerName || '',
+          assignedMachine: it.assignedMachineName || '',
+          sellingPrice: sellPrice,
+          actualCost: actCost,
+          grossProfit: grossProfit
+        });
+      });
+    });
+    return list;
+  }, [salesOrders, todayStr]);
+
+  // Today Orders & Sales
   const todayOrders = (salesOrders || []).filter((o) => o.orderDate === todayStr || o.createdAt?.startsWith(todayStr));
   const todaySalesVal = todayOrders.reduce((acc, o) => acc + (Number(o.grandTotal) || 0), 0);
   const todayProfitVal = todayOrders.reduce((acc, o) => acc + (Number(o.grossProfit) || 0), 0);
 
-  const todayCollections = (payments || [])
-    .filter((p) => p.date === todayStr)
-    .reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+  // Operational Printing Stages Counts
+  const designPendingJobs = allJobs.filter((j) => j.productionStatus === 'Designing');
+  const printingPendingJobs = allJobs.filter((j) => j.productionStatus === 'Printing');
+  const finishingPendingJobs = allJobs.filter((j) => j.productionStatus === 'Finishing');
+  const readyForDeliveryJobs = allJobs.filter((j) => j.productionStatus === 'Ready for Delivery');
+  const deliveredJobs = allJobs.filter((j) => j.productionStatus === 'Delivered');
 
-  // Operational Queues
-  const productionQueue = (salesOrders || []).filter((o) =>
-    ['New', 'Design', 'Printing', 'Outsource', 'Finishing', 'Quality Check'].includes(o.productionStatus)
-  );
+  // Urgent and Delayed Jobs
+  const urgentJobs = allJobs.filter((j) => (j.jobPriority === 'Urgent' || j.jobPriority === 'High') && j.productionStatus !== 'Delivered');
+  const delayedJobs = allJobs.filter((j) => j.isDelayed);
 
-  const pendingDesign = (salesOrders || []).filter((o) => o.productionStatus === 'Design' || (o.items || []).some((i) => i.artworkStatus === 'In Design'));
-  const pendingDelivery = (salesOrders || []).filter((o) => o.productionStatus === 'Ready for Delivery');
-  const pendingPayments = (salesOrders || []).filter((o) => (Number(o.balanceAmount) || 0) > 0);
-
+  // Financial Metrics
   const totalOutstanding = (customers || []).reduce((acc, c) => acc + (Number(c.outstanding ?? c.outstandingAmount) || 0), 0);
 
-  // Monthly Metrics
-  const monthlySales = (salesOrders || []).reduce((acc, o) => acc + (Number(o.grandTotal) || 0), 0);
-  const monthlyProfit = (salesOrders || []).reduce((acc, o) => acc + (Number(o.grossProfit) || 0), 0);
-  const overallMarginPct = monthlySales > 0 ? ((monthlyProfit / monthlySales) * 100).toFixed(1) : 0;
-
-  // Direct Orders vs Quotation Intelligence Metrics
-  const directOrders = (salesOrders || []).filter((o) => (o.orderType === 'Direct' || !o.orderType) && !o.convertedFromQuotation);
-  const directOrdersCount = directOrders.length;
-  const directOrdersVal = directOrders.reduce((acc, o) => acc + (Number(o.grandTotal) || 0), 0);
-
-  const quotationDocs = (salesOrders || []).filter((o) => o.orderType === 'Quotation' || o.id?.startsWith('QT-'));
-  const totalQuotationsCount = quotationDocs.length;
-  const totalQuotationsVal = quotationDocs.reduce((acc, o) => acc + (Number(o.grandTotal) || 0), 0);
-
-  const convertedOrders = (salesOrders || []).filter((o) => o.convertedFromQuotation || o.quotationStatus === 'Converted');
-  const convertedQuotationsCount = convertedOrders.length;
-  const quotationConversionRate = totalQuotationsCount > 0 ? ((convertedQuotationsCount / totalQuotationsCount) * 100).toFixed(1) : 0;
-
-  const quoteDraftCount = quotationDocs.filter((q) => !q.quotationStatus || q.quotationStatus === 'Draft').length;
-  const quoteSentCount = quotationDocs.filter((q) => q.quotationStatus === 'Sent to Customer').length;
-  const quoteApprovedCount = quotationDocs.filter((q) => q.quotationStatus === 'Customer Approved').length;
-
-  // Leaderboard computations
-  const topCustomers = [...(customers || [])].sort((a, b) => (Number(b.outstanding ?? b.outstandingAmount) || 0) - (Number(a.outstanding ?? a.outstandingAmount) || 0)).slice(0, 5);
-  const topProducts = [...(products || [])].slice(0, 5);
-  const topVendors = [...(vendors || [])].sort((a, b) => (Number(b.pendingPayment) || 0) - (Number(a.pendingPayment) || 0)).slice(0, 5);
+  // Machine Workloads
+  const machineWorkloadList = (machines || []).map((mch) => {
+    const runningJobsCount = allJobs.filter((j) => j.assignedMachine === mch.name && j.productionStatus === 'Printing').length;
+    return {
+      ...mch,
+      runningJobsCount
+    };
+  });
 
   const hour = new Date().getHours();
   const timeGreeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
 
   return (
     <div className="view-container">
-      {/* Hero Command Center Header (Mobile First Responsive) */}
+      {/* Hero Command Banner */}
       <div
         style={{
           background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #1d4ed8 100%)',
@@ -98,241 +130,327 @@ export const DashboardView = ({ onNavigate }) => {
       >
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-            <Sparkles size={18} color="#fde047" />
-            <span style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#93c5fd', fontWeight: 800 }}>
-              {timeGreeting}, ScreenArts
+            <span style={{ fontSize: '0.85rem', color: '#93c5fd', fontWeight: 700 }}>
+              {timeGreeting}, ScreenArts Production Master
+            </span>
+            <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '0.1rem 0.4rem' }}>
+              ● Live Floor Active
             </span>
           </div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>
-            ScreenArts Executive Dashboard
-          </h2>
-          <p style={{ fontSize: '0.82rem', color: '#cbd5e1', marginTop: '0.2rem', marginBottom: 0 }}>
-            Live Sales • Orders • Production • Delivery • Collections
-          </p>
-        </div>
-
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => onNavigate('reports')}
-            className="btn btn-sm"
-            style={{ background: 'rgba(255,255,255,0.15)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.3)', fontWeight: 700 }}
-          >
-            <BarChart2 size={16} /> Reports
-          </button>
-          <button
-            onClick={() => onNavigate('sales-orders', { create: true })}
-            className="btn btn-sm"
-            style={{ background: '#ffffff', color: '#1e40af', fontWeight: 800, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}
-          >
-            <Plus size={16} /> + New Order
-          </button>
-        </div>
-      </div>
-
-      {/* Row 1: Today's High-Level KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
-        {/* Today's Sales */}
-        <div className="card" style={{ borderLeft: '4px solid #2563eb' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 800 }}>TODAY'S SALES</span>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: '0.2rem 0' }}>
-                {formatINR(todaySalesVal)}
-              </h3>
-            </div>
-            <div style={{ background: '#dbeafe', padding: '0.5rem', borderRadius: '8px', color: '#1d4ed8' }}>
-              <TrendingUp size={22} />
-            </div>
-          </div>
-          <span style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 700 }}>
-            {todayOrders.length} Orders Logged Today
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em', color: '#ffffff' }}>
+            Printing Shop-Floor Command Center
+          </h1>
+          <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>
+            Real-time operations • {allJobs.length} Total Jobs • {machines.length} Machines Active • {urgentJobs.length} Urgent Queue
           </span>
         </div>
 
-        {/* Today's Collections */}
-        <div className="card" style={{ borderLeft: '4px solid #10b981' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 800 }}>TODAY'S COLLECTIONS</span>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#059669', margin: '0.2rem 0' }}>
-                {formatINR(todayCollections)}
-              </h3>
-            </div>
-            <div style={{ background: '#d1fae5', padding: '0.5rem', borderRadius: '8px', color: '#047857' }}>
-              <DollarSign size={22} />
-            </div>
-          </div>
-          <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Verified Bank/UPI receipts</span>
-        </div>
-
-        {/* Today's Profit */}
-        <div className="card" style={{ borderLeft: '4px solid #059669' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 800 }}>TODAY'S PROFIT</span>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#047857', margin: '0.2rem 0' }}>
-                {formatINR(todayProfitVal)}
-              </h3>
-            </div>
-            <div style={{ background: '#d1fae5', padding: '0.5rem', borderRadius: '8px', color: '#047857' }}>
-              <Sparkles size={22} />
-            </div>
-          </div>
-          <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>Est Gross Profit</span>
-        </div>
-
-        {/* Orders Today */}
-        <div className="card" style={{ borderLeft: '4px solid #8b5cf6' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 800 }}>ORDERS TODAY</span>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#6d28d9', margin: '0.2rem 0' }}>
-                {todayOrders.length} Orders
-              </h3>
-            </div>
-            <div style={{ background: '#ede9fe', padding: '0.5rem', borderRadius: '8px', color: '#6d28d9' }}>
-              <ShoppingBag size={22} />
-            </div>
-          </div>
-          <span style={{ fontSize: '0.72rem', color: '#6d28d9', fontWeight: 600 }}>Active Print Jobs</span>
+        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => onNavigate ? onNavigate('sales-orders', { create: true }) : window.dispatchEvent(new CustomEvent('ERP_NAVIGATE_ORDER_CREATE', { detail: {} }))}
+            className="btn btn-primary"
+            style={{ background: '#ffffff', color: '#1e3a8a', fontWeight: 800 }}
+          >
+            <Plus size={16} /> + New Job Order
+          </button>
+          <button
+            onClick={() => onNavigate ? onNavigate('production') : window.dispatchEvent(new CustomEvent('ERP_NAVIGATE_PRODUCTION'))}
+            className="btn btn-secondary"
+            style={{ background: 'rgba(255, 255, 255, 0.15)', color: '#ffffff', borderColor: 'rgba(255, 255, 255, 0.3)', fontWeight: 700 }}
+          >
+            <Factory size={16} /> Live Production Board
+          </button>
         </div>
       </div>
 
-      {/* Row 2: Operational Queues Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div className="card" onClick={() => onNavigate('production')} style={{ cursor: 'pointer' }}>
+      {/* Primary 8-Metric Printing Industry Executive Strip */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+        {/* Metric 1: Today's Orders */}
+        <div className="card" style={{ padding: '0.85rem', borderLeft: '4px solid #3b82f6' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>PRODUCTION QUEUE</span>
-            <Factory size={18} color="#2563eb" />
+            <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Today's Orders</span>
+            <ShoppingBag size={14} color="#3b82f6" />
           </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1e40af', margin: '0.2rem 0' }}>
-            {productionQueue.length} Jobs
+          <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', margin: '0.2rem 0' }}>
+            {todayOrders.length}
           </div>
-          <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Active in factory</span>
+          <span style={{ fontSize: '0.68rem', color: '#3b82f6', fontWeight: 700 }}>Orders Created</span>
         </div>
 
-        <div className="card" onClick={() => onNavigate('designers')} style={{ cursor: 'pointer' }}>
+        {/* Metric 2: Designing Pending */}
+        <div
+          className="card"
+          onClick={() => onNavigate ? onNavigate('production', { initialStageFilter: 'Designing' }) : null}
+          style={{ padding: '0.85rem', borderLeft: '4px solid #8b5cf6', cursor: 'pointer' }}
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>PENDING DESIGN</span>
-            <Palette size={18} color="#d97706" />
+            <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Design Pending</span>
+            <Palette size={14} color="#8b5cf6" />
           </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#b45309', margin: '0.2rem 0' }}>
-            {pendingDesign.length} Jobs
+          <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#7c3aed', margin: '0.2rem 0' }}>
+            {designPendingJobs.length}
           </div>
-          <span style={{ fontSize: '0.72rem', color: '#b45309' }}>Awaiting proofing</span>
+          <span style={{ fontSize: '0.68rem', color: '#64748b' }}>Art Queue</span>
         </div>
 
-        <div className="card" onClick={() => onNavigate('delivery')} style={{ cursor: 'pointer' }}>
+        {/* Metric 3: Printing Pending */}
+        <div
+          className="card"
+          onClick={() => onNavigate ? onNavigate('production', { initialStageFilter: 'Printing' }) : null}
+          style={{ padding: '0.85rem', borderLeft: '4px solid #2563eb', cursor: 'pointer' }}
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>PENDING DELIVERY</span>
-            <Truck size={18} color="#059669" />
+            <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Printing Floor</span>
+            <Printer size={14} color="#2563eb" />
           </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#059669', margin: '0.2rem 0' }}>
-            {pendingDelivery.length} Orders
+          <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1d4ed8', margin: '0.2rem 0' }}>
+            {printingPendingJobs.length}
           </div>
-          <span style={{ fontSize: '0.72rem', color: '#059669' }}>Ready for dispatch</span>
+          <span style={{ fontSize: '0.68rem', color: '#2563eb', fontWeight: 700 }}>On Press</span>
         </div>
 
-        <div className="card" onClick={() => onNavigate('payments')} style={{ cursor: 'pointer' }}>
+        {/* Metric 4: Finishing Pending */}
+        <div
+          className="card"
+          onClick={() => onNavigate ? onNavigate('production', { initialStageFilter: 'Finishing' }) : null}
+          style={{ padding: '0.85rem', borderLeft: '4px solid #d97706', cursor: 'pointer' }}
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>PENDING PAYMENTS</span>
-            <CreditCard size={18} color="#e11d48" />
+            <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Finishing</span>
+            <Scissors size={14} color="#d97706" />
           </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#e11d48', margin: '0.2rem 0' }}>
-            {pendingPayments.length} Orders
+          <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#d97706', margin: '0.2rem 0' }}>
+            {finishingPendingJobs.length}
           </div>
-          <span style={{ fontSize: '0.72rem', color: '#e11d48' }}>Outstanding balance</span>
+          <span style={{ fontSize: '0.68rem', color: '#64748b' }}>Cut/Lam/Bind</span>
+        </div>
+
+        {/* Metric 5: Ready for Delivery */}
+        <div
+          className="card"
+          onClick={() => onNavigate ? onNavigate('production', { initialStageFilter: 'Ready for Delivery' }) : null}
+          style={{ padding: '0.85rem', borderLeft: '4px solid #059669', cursor: 'pointer' }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Ready / QC</span>
+            <CheckCircle2 size={14} color="#059669" />
+          </div>
+          <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#059669', margin: '0.2rem 0' }}>
+            {readyForDeliveryJobs.length}
+          </div>
+          <span style={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: 700 }}>Awaiting Dispatch</span>
+        </div>
+
+        {/* Metric 6: Today's Sales */}
+        <div className="card" style={{ padding: '0.85rem', borderLeft: '4px solid #0284c7' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Today's Sales</span>
+            <TrendingUp size={14} color="#0284c7" />
+          </div>
+          <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: '0.2rem 0' }}>
+            {formatINR(todaySalesVal)}
+          </div>
+          <span style={{ fontSize: '0.68rem', color: '#0284c7', fontWeight: 700 }}>Billed Value</span>
+        </div>
+
+        {/* Metric 7: Outstanding Payment */}
+        <div className="card" style={{ padding: '0.85rem', borderLeft: '4px solid #dc2626' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.68rem', color: '#dc2626', fontWeight: 800, textTransform: 'uppercase' }}>Outstanding</span>
+            <CreditCard size={14} color="#dc2626" />
+          </div>
+          <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#dc2626', margin: '0.2rem 0' }}>
+            {formatINR(totalOutstanding)}
+          </div>
+          <span style={{ fontSize: '0.68rem', color: '#dc2626' }}>Customer Dues</span>
+        </div>
+
+        {/* Metric 8: Today's Profit */}
+        <div className="card" style={{ padding: '0.85rem', borderLeft: '4px solid #16a34a' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Today's Profit</span>
+            <DollarSign size={14} color="#16a34a" />
+          </div>
+          <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669', margin: '0.2rem 0' }}>
+            {formatINR(todayProfitVal)}
+          </div>
+          <span style={{ fontSize: '0.68rem', color: '#059669', fontWeight: 700 }}>Gross Margin</span>
         </div>
       </div>
 
-      {/* Row 3: Interactive Graphs & Visual Analytics */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
-        <TrendLineWidget title="Monthly Sales vs Gross Profit Graph" />
-        <BarChartWidget
-          title="Monthly Product Category Sales"
-          items={products.map((p) => ({ label: p.name, value: p.defaultRate * 150 }))}
-        />
-        <DonutChartWidget
-          title="Payment Status Distribution"
-          items={[
-            { label: 'Fully Paid', value: salesOrders.filter((o) => o.paymentStatus === 'Paid').length, color: '#10b981' },
-            { label: 'Partial Advance', value: salesOrders.filter((o) => o.paymentStatus === 'Partial').length, color: '#f59e0b' },
-            { label: 'Credit Account', value: salesOrders.filter((o) => o.paymentStatus === 'Credit').length, color: '#3b82f6' },
-            { label: 'Unpaid Pending', value: salesOrders.filter((o) => o.paymentStatus === 'Pending').length, color: '#e11d48' }
-          ]}
-        />
+      {/* Production Board Live Mini Widget */}
+      <div className="card" style={{ marginBottom: '1.25rem', padding: '1.25rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Factory size={18} color="#2563eb" /> Live Production Floor Pipeline Monitor
+            </h3>
+            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+              Interactive shop-floor stage tracker across all orders and customer jobs.
+            </span>
+          </div>
+
+          <button
+            onClick={() => onNavigate ? onNavigate('production') : null}
+            className="btn btn-sm btn-secondary"
+            style={{ fontSize: '0.78rem', fontWeight: 700 }}
+          >
+            Open Full Production Board <ArrowRight size={14} />
+          </button>
+        </div>
+
+        {/* Visual Pipeline Bar */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem' }}>
+          {[
+            { stage: 'Designing', label: '1. Designing', count: designPendingJobs.length, icon: Palette, color: '#8b5cf6', bg: '#f5f3ff', border: '#ddd6fe' },
+            { stage: 'Printing', label: '2. Printing Floor', count: printingPendingJobs.length, icon: Printer, color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe' },
+            { stage: 'Finishing', label: '3. Finishing', count: finishingPendingJobs.length, icon: Scissors, color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+            { stage: 'Quality Check', label: '4. Quality Check', count: allJobs.filter(j => j.productionStatus === 'Quality Check').length, icon: CheckSquare, color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
+            { stage: 'Ready for Delivery', label: '5. Ready', count: readyForDeliveryJobs.length, icon: CheckCircle2, color: '#0284c7', bg: '#f0f9ff', border: '#bae6fd' },
+            { stage: 'Delivered', label: '6. Delivered', count: deliveredJobs.length, icon: Truck, color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' }
+          ].map((col) => {
+            const Icon = col.icon;
+            return (
+              <div
+                key={col.stage}
+                onClick={() => onNavigate ? onNavigate('production', { initialStageFilter: col.stage }) : null}
+                style={{
+                  background: col.bg,
+                  border: `1.5px solid ${col.border}`,
+                  borderRadius: '10px',
+                  padding: '0.85rem',
+                  cursor: 'pointer',
+                  transition: 'transform 0.15s ease'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                  <Icon size={16} color={col.color} />
+                  <span style={{ fontSize: '1.25rem', fontWeight: 800, color: col.color }}>
+                    {col.count}
+                  </span>
+                </div>
+                <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0f172a' }}>
+                  {col.label}
+                </div>
+                <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                  {col.count === 1 ? '1 active job' : `${col.count} active jobs`}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Row 4: Performance Leaderboards & Top Performance Lists */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.25rem' }}>
-        {/* Top Sales Person Leaderboard */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Award size={18} color="#d97706" /> Top Sales Persons
-            </div>
+      {/* Two Column Section: Urgent/Delayed Jobs & Machine Workload */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.25rem', marginBottom: '1.25rem' }}>
+        {/* Section 1: Urgent & Overdue Action Center */}
+        <div className="card" style={{ padding: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Flame size={18} color="#dc2626" /> Urgent & Delayed Jobs Priority Center
+            </h3>
+            <span className="badge badge-rose" style={{ fontSize: '0.7rem' }}>
+              {urgentJobs.length + delayedJobs.length} Attention Needed
+            </span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {salesPersons.map((sp) => {
-              const pct = Math.min(100, Math.round((sp.achieved / sp.target) * 100));
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '280px', overflowY: 'auto' }}>
+            {urgentJobs.length === 0 && delayedJobs.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b', fontSize: '0.82rem' }}>
+                🎉 All jobs on track! No urgent or delayed bottlenecks.
+              </div>
+            ) : (
+              [...urgentJobs, ...delayedJobs.filter(d => !urgentJobs.some(u => u.jobCardId === d.jobCardId))].slice(0, 6).map((job) => (
+                <div
+                  key={`${job.orderId}-${job.jobCardId}`}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '0.6rem 0.75rem',
+                    background: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    borderRadius: '8px',
+                    fontSize: '0.8rem'
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 800, color: '#0f172a' }}>
+                      {job.jobCardId} • {job.productName}
+                    </div>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                      👤 {job.customerName} • <strong>{job.qty} {job.unit}</strong>
+                    </span>
+                  </div>
+
+                  <div style={{ textAlign: 'right' }}>
+                    <span className={`badge ${job.isDelayed ? 'badge-rose' : 'badge-amber'}`} style={{ fontSize: '0.66rem' }}>
+                      {job.isDelayed ? 'Delayed' : job.jobPriority}
+                    </span>
+                    <div style={{ fontSize: '0.7rem', color: '#dc2626', fontWeight: 700, marginTop: '2px' }}>
+                      Due: {job.deliveryDate || 'ASAP'}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Section 2: Machine Workload & Status */}
+        <div className="card" style={{ padding: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Cpu size={18} color="#2563eb" /> Machinery Floor Workload & Health
+            </h3>
+            <button
+              onClick={() => onNavigate ? onNavigate('machines') : null}
+              className="btn btn-sm btn-secondary"
+              style={{ fontSize: '0.75rem' }}
+            >
+              Machines Master
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '280px', overflowY: 'auto' }}>
+            {machineWorkloadList.slice(0, 5).map((mch) => {
+              const isRunning = mch.status === 'Running';
+              const isIdle = mch.status === 'Idle';
+
               return (
-                <div key={sp.id} style={{ fontSize: '0.82rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
-                    <strong style={{ color: '#0f172a' }}>{sp.name}</strong>
-                    <span style={{ fontWeight: 800, color: '#059669' }}>{formatINR(sp.achieved)}</span>
+                <div
+                  key={mch.id}
+                  style={{
+                    padding: '0.6rem 0.75rem',
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0f172a' }}>
+                      {mch.name}
+                    </div>
+                    <span className={`badge ${isRunning ? 'badge-emerald' : isIdle ? 'badge-amber' : 'badge-rose'}`} style={{ fontSize: '0.66rem' }}>
+                      {mch.status}
+                    </span>
                   </div>
-                  <div style={{ width: '100%', background: '#e2e8f0', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
-                    <div style={{ width: `${pct}%`, background: '#2563eb', height: '100%' }}></div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#64748b' }}>
+                    <span>Type: {mch.type}</span>
+                    <span>Rate: ₹{mch.hourlyCost}/hr</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#64748b', marginTop: '0.15rem' }}>
-                    <span>Target: {formatINR(sp.target)}</span>
-                    <span>Comm: {sp.commissionRate}%</span>
+
+                  {/* Workload bar */}
+                  <div style={{ width: '100%', height: '4px', backgroundColor: '#e2e8f0', borderRadius: '2px', overflow: 'hidden', marginTop: '2px' }}>
+                    <div style={{ width: `${Math.min(100, (mch.activeJobCount || mch.runningJobsCount || 1) * 25)}%`, height: '100%', backgroundColor: '#2563eb' }} />
                   </div>
                 </div>
               );
             })}
-          </div>
-        </div>
-
-        {/* Top Care Of Persons */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Users size={18} color="#059669" /> Top Care Of Persons
-            </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-            {careOfPersons.map((co) => (
-              <div key={co.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f172a' }}>{co.name}</div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{co.role}</div>
-                </div>
-                <span className="badge badge-blue">{co.activeOrders} Active Jobs</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Top Vendors */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Building2 size={18} color="#7c3aed" /> Top Outsource Vendors
-            </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-            {topVendors.map((v) => (
-              <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f172a' }}>{v.name}</div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{v.category}</div>
-                </div>
-                <span className={`badge ${v.pendingPayment > 0 ? 'badge-amber' : 'badge-emerald'}`}>
-                  {formatINR(v.pendingPayment)}
-                </span>
-              </div>
-            ))}
           </div>
         </div>
       </div>
