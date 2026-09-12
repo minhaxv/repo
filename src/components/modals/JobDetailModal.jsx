@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useERP } from '../../context/ERPContext';
 import { STAGE_STATUS_COLORS, PRODUCTION_STAGES, STAGE_STATUS } from '../../types';
 import { formatINR } from '../../utils/reportEngine';
@@ -13,25 +13,20 @@ import {
   DollarSign,
   FileText,
   Clock,
-  User,
-  Phone,
-  UserCheck,
-  AlertTriangle,
-  CheckCircle2,
-  Play,
-  Check,
-  Pause,
-  Upload,
-  Calendar,
   Layers,
+  CreditCard,
+  History,
+  Image as ImageIcon,
+  Building2,
+  CheckCircle2,
+  AlertCircle,
+  Play,
+  Pause,
+  Check,
+  UserCheck,
+  User,
   Cpu,
   Trash2,
-  History,
-  TrendingUp,
-  CreditCard,
-  Building2,
-  Image as ImageIcon,
-  ExternalLink,
   Edit,
   Save,
   RotateCcw,
@@ -39,7 +34,7 @@ import {
   Timer
 } from 'lucide-react';
 
-export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard }) => {
+export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTab = 'overview' }) => {
   const {
     salesOrders,
     employees,
@@ -60,7 +55,13 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard }) => {
     deleteProductionTask
   } = useERP();
 
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'production' | 'materials' | 'costing' | 'outsourcing' | 'payments' | 'files' | 'history'
+  const [activeTab, setActiveTab] = useState(initialTab || 'overview'); // 'overview' | 'production' | 'materials' | 'costing' | 'outsourcing' | 'payments' | 'files' | 'history'
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   // Stage update form state
   const [selectedStageName, setSelectedStageName] = useState('Printing');
@@ -119,8 +120,8 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard }) => {
   if (!isOpen || !job) return null;
 
   // Find parent order from live context
-  const parentOrder = (salesOrders || []).find((o) => o.id === job.orderId) || {};
-  const currentItem = (parentOrder.items || []).find((i) => (i.id === job.itemId || i.jobCardId === job.jobCardId)) || job.item || {};
+  const parentOrder = (salesOrders || []).find((o) => o.id === job.orderId || o.id === job.id || o.orderNumber === job.orderNumber || o.orderNumber === job.id || (job.orderId && o.id?.includes(job.orderId))) || {};
+  const currentItem = (parentOrder.items || []).find((i) => (i.id === job.itemId || i.jobCardId === job.jobCardId || i.id === job.id)) || job.item || (parentOrder.items && parentOrder.items[0]) || {};
 
   // Current Stages Timeline
   const stagesList = [

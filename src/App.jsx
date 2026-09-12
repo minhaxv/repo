@@ -194,11 +194,11 @@ const MainAppContent = () => {
             {activeTab === 'workflows' && <WorkflowsView />}
             {activeTab === 'wastage' && <WastageView />}
             {activeTab === 'designers' && <DesignersView />}
-            {activeTab === 'production' && <ProductionView initialStageFilter="ALL" />}
-            {activeTab === 'employee-tasks' && <ProductionTasksView />}
-            {activeTab === 'printing-dept' && <ProductionView initialStageFilter="Printing" />}
-            {activeTab === 'finishing-dept' && <ProductionView initialStageFilter="Finishing" />}
-            {activeTab === 'qc-dept' && <ProductionView initialStageFilter="Quality Check" />}
+            {activeTab === 'production' && <ProductionView initialStageFilter="ALL" onNavigate={handleNavigate} />}
+            {activeTab === 'employee-tasks' && <ProductionTasksView onNavigate={handleNavigate} />}
+            {activeTab === 'printing-dept' && <ProductionView initialStageFilter="Printing" onNavigate={handleNavigate} />}
+            {activeTab === 'finishing-dept' && <ProductionView initialStageFilter="Finishing" onNavigate={handleNavigate} />}
+            {activeTab === 'qc-dept' && <ProductionView initialStageFilter="Quality Check" onNavigate={handleNavigate} />}
             {activeTab === 'vendors' && <OutsourceVendorsView />}
             {activeTab === 'payments' && <PaymentsView />}
             {activeTab === 'purchase' && <PurchaseView />}

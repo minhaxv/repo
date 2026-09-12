@@ -31,11 +31,12 @@ import {
   Trash2
 } from 'lucide-react';
 
-export const ProductionView = ({ initialStageFilter = 'ALL' }) => {
+export const ProductionView = ({ initialStageFilter = 'ALL', onNavigate = null }) => {
   const {
     salesOrders,
     employees,
     machines,
+    productionTasks,
     updateJobOrderStage,
     updateItemProductionStatus
   } = useERP();
@@ -50,7 +51,17 @@ export const ProductionView = ({ initialStageFilter = 'ALL' }) => {
   const [selectedDepartmentTab, setSelectedDepartmentTab] = useState(initialStageFilter); // 'ALL' | 'Designing' | 'Printing' | 'Finishing' | 'Quality Check' | 'Ready for Delivery' | 'Delivered'
 
   const [selectedJobDetail, setSelectedJobDetail] = useState(null);
+  const [selectedJobDetailTab, setSelectedJobDetailTab] = useState('overview');
   const [selectedJobCardPrint, setSelectedJobCardPrint] = useState(null);
+
+  const formatDuration = (mins) => {
+    const total = Number(mins || 0);
+    if (total <= 0) return '0m';
+    const h = Math.floor(total / 60);
+    const m = Math.round(total % 60);
+    if (h > 0) return `${h}h ${m > 0 ? `${m}m` : ''}`;
+    return `${m}m`;
+  };
 
   // 6 Production Board Stages
   const stages = [
@@ -195,7 +206,41 @@ export const ProductionView = ({ initialStageFilter = 'ALL' }) => {
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Direct Connection to Employee Production & Multi-Task Hub */}
+          <button
+            type="button"
+            onClick={() => onNavigate && onNavigate('employee-tasks')}
+            className="btn btn-sm"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              background: '#eff6ff',
+              color: '#1d4ed8',
+              border: '1.5px solid #bfdbfe',
+              fontWeight: 700,
+              padding: '0.45rem 0.85rem',
+              borderRadius: '6px'
+            }}
+            title="Open Employee Production & Multi-Task Hub with floor workload and active timers"
+          >
+            <UserCheck size={16} color="#2563eb" />
+            <span>Employee Multi-Task Hub</span>
+            <span
+              style={{
+                fontSize: '0.72rem',
+                fontWeight: 900,
+                padding: '0.05rem 0.4rem',
+                borderRadius: '10px',
+                background: '#2563eb',
+                color: '#ffffff'
+              }}
+            >
+              {(productionTasks || []).length}
+            </span>
+          </button>
+
           <button
             onClick={() => setViewType('kanban')}
             className={`btn btn-sm ${viewType === 'kanban' ? 'btn-primary' : 'btn-secondary'}`}
@@ -435,6 +480,72 @@ export const ProductionView = ({ initialStageFilter = 'ALL' }) => {
                             )}
                           </div>
 
+                          {/* Connected Employee Production Tasks Strip */}
+                          {(() => {
+                            const cardTasks = (productionTasks || []).filter(t =>
+                              t.orderId === card.orderId ||
+                              t.orderNumber === card.orderId ||
+                              t.orderNumber === card.jobCardId ||
+                              (card.orderId && t.orderId && t.orderId.includes(card.orderId.split('-').pop()))
+                            );
+                            const activeFloorTask = cardTasks.find(t => ['Started', 'In Progress', 'Resumed'].includes(t.status));
+                            const completedTasksCount = cardTasks.filter(t => t.status === 'Completed').length;
+                            const reworkTask = cardTasks.find(t => t.status === 'Rework');
+
+                            return (
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedJobDetailTab('employee-tasks');
+                                  setSelectedJobDetail(card);
+                                }}
+                                style={{
+                                  background: reworkTask ? '#fef2f2' : activeFloorTask ? '#eff6ff' : '#f8fafc',
+                                  border: `1px solid ${reworkTask ? '#fecaca' : activeFloorTask ? '#bfdbfe' : '#e2e8f0'}`,
+                                  borderRadius: '6px',
+                                  padding: '0.35rem 0.5rem',
+                                  fontSize: '0.72rem',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '0.2rem',
+                                  transition: 'all 0.15s ease'
+                                }}
+                                title="Click to manage employee multi-task work logs & floor timers"
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontWeight: 800, color: reworkTask ? '#dc2626' : activeFloorTask ? '#1d4ed8' : '#475569', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                    <UserCheck size={13} />
+                                    {cardTasks.length > 0 ? `Employee Tasks: ${completedTasksCount}/${cardTasks.length} Done` : 'No Employee Tasks'}
+                                  </span>
+                                  <span style={{ color: '#2563eb', fontSize: '0.68rem', fontWeight: 700 }}>
+                                    {cardTasks.length > 0 ? 'Manage ↗' : '+ Assign'}
+                                  </span>
+                                </div>
+
+                                {activeFloorTask ? (
+                                  <div style={{ color: '#16a34a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#16a34a', display: 'inline-block' }} />
+                                    {activeFloorTask.employeeName}: {activeFloorTask.processName} ({formatDuration(activeFloorTask.totalDurationMinutes)})
+                                  </div>
+                                ) : reworkTask ? (
+                                  <div style={{ color: '#dc2626', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                    <AlertTriangle size={11} />
+                                    Rework: {reworkTask.processName} ({reworkTask.reworkReason || 'Defect'})
+                                  </div>
+                                ) : cardTasks.length > 0 ? (
+                                  <div style={{ color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {cardTasks.map(t => t.processName).slice(0, 3).join(', ')}{cardTasks.length > 3 ? '...' : ''}
+                                  </div>
+                                ) : (
+                                  <div style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+                                    Click to assign printing / finishing tasks
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+
                           {/* Progress Bar */}
                           <div style={{ width: '100%', height: '4px', backgroundColor: '#e2e8f0', borderRadius: '2px', overflow: 'hidden' }}>
                             <div style={{ width: `${card.progressPct}%`, height: '100%', backgroundColor: '#2563eb' }} />
@@ -443,12 +554,27 @@ export const ProductionView = ({ initialStageFilter = 'ALL' }) => {
                           {/* Card Action Buttons */}
                           <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.3rem', paddingTop: '0.4rem', borderTop: '1px solid #f1f5f9' }}>
                             <button
-                              onClick={() => setSelectedJobDetail(card)}
+                              onClick={() => {
+                                setSelectedJobDetailTab('overview');
+                                setSelectedJobDetail(card);
+                              }}
                               className="btn btn-sm btn-secondary"
                               style={{ flex: 1, padding: '0.25rem', fontSize: '0.72rem' }}
                               title="Open Full 7-Tab Job Detail Screen"
                             >
                               <Eye size={12} /> Detail
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setSelectedJobDetailTab('employee-tasks');
+                                setSelectedJobDetail(card);
+                              }}
+                              className="btn btn-sm btn-outline-primary"
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 700 }}
+                              title="Manage Employee Work Logs & Timers"
+                            >
+                              <UserCheck size={12} /> Tasks
                             </button>
 
                             <button
@@ -495,6 +621,7 @@ export const ProductionView = ({ initialStageFilter = 'ALL' }) => {
                   <th>Qty / Specs</th>
                   <th>Due Date</th>
                   <th>Stage</th>
+                  <th>Employee Tasks</th>
                   <th>Assigned Staff / Machine</th>
                   <th style={{ textAlign: 'center' }}>Actions</th>
                 </tr>
@@ -503,6 +630,14 @@ export const ProductionView = ({ initialStageFilter = 'ALL' }) => {
                 {filteredCards.map((card) => {
                   const statusStyle = STAGE_STATUS_COLORS[card.productionStatus] || STAGE_STATUS_COLORS['In Progress'];
                   const nextStage = getNextStageKey(card.productionStatus);
+                  const cardTasks = (productionTasks || []).filter(t =>
+                    t.orderId === card.orderId ||
+                    t.orderNumber === card.orderId ||
+                    t.orderNumber === card.jobCardId ||
+                    (card.orderId && t.orderId && t.orderId.includes(card.orderId.split('-').pop()))
+                  );
+                  const activeFloorTask = cardTasks.find(t => ['Started', 'In Progress', 'Resumed'].includes(t.status));
+                  const completedTasksCount = cardTasks.filter(t => t.status === 'Completed').length;
 
                   return (
                     <tr key={`${card.orderId}-${card.jobCardId}`}>
@@ -531,14 +666,65 @@ export const ProductionView = ({ initialStageFilter = 'ALL' }) => {
                           {card.productionStatus}
                         </span>
                       </td>
+                      {/* Connected Employee Tasks Column */}
+                      <td>
+                        <div
+                          onClick={() => {
+                            setSelectedJobDetailTab('employee-tasks');
+                            setSelectedJobDetail(card);
+                          }}
+                          style={{ cursor: 'pointer' }}
+                          title="Click to manage employee multi-task work logs"
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <span
+                              style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                padding: '0.15rem 0.45rem',
+                                borderRadius: '4px',
+                                background: activeFloorTask ? '#eff6ff' : '#f1f5f9',
+                                color: activeFloorTask ? '#1d4ed8' : '#475569',
+                                border: `1px solid ${activeFloorTask ? '#bfdbfe' : '#e2e8f0'}`
+                              }}
+                            >
+                              <UserCheck size={11} style={{ display: 'inline', marginRight: '3px' }} />
+                              {cardTasks.length > 0 ? `${completedTasksCount}/${cardTasks.length} Done` : '0 Tasks'}
+                            </span>
+                          </div>
+                          {activeFloorTask && (
+                            <div style={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: 700, marginTop: '2px' }}>
+                              ● {activeFloorTask.employeeName}: {activeFloorTask.processName}
+                            </div>
+                          )}
+                        </div>
+                      </td>
                       <td style={{ fontSize: '0.75rem' }}>
                         <div>👤 {card.assignedOperator || card.assignedDesigner || 'Unassigned'}</div>
                         {card.assignedMachine && <div style={{ color: '#64748b' }}>⚙️ {card.assignedMachine}</div>}
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
-                          <button onClick={() => setSelectedJobDetail(card)} className="btn btn-sm btn-primary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}>
+                          <button
+                            onClick={() => {
+                              setSelectedJobDetailTab('overview');
+                              setSelectedJobDetail(card);
+                            }}
+                            className="btn btn-sm btn-primary"
+                            style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
+                          >
                             <Eye size={12} /> View
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedJobDetailTab('employee-tasks');
+                              setSelectedJobDetail(card);
+                            }}
+                            className="btn btn-sm btn-outline-primary"
+                            style={{ padding: '0.2rem 0.45rem', fontSize: '0.75rem' }}
+                            title="Manage Employee Tasks"
+                          >
+                            <UserCheck size={12} />
                           </button>
                           <button onClick={() => setSelectedJobCardPrint(card)} className="btn btn-sm btn-secondary" style={{ padding: '0.2rem 0.4rem', fontSize: '0.75rem' }}>
                             <Printer size={12} />
@@ -564,8 +750,12 @@ export const ProductionView = ({ initialStageFilter = 'ALL' }) => {
         <JobDetailModal
           job={selectedJobDetail}
           isOpen={true}
-          onClose={() => setSelectedJobDetail(null)}
+          onClose={() => {
+            setSelectedJobDetail(null);
+            setSelectedJobDetailTab('overview');
+          }}
           onPrintJobCard={(j) => setSelectedJobCardPrint(j)}
+          initialTab={selectedJobDetailTab || 'overview'}
         />
       )}
 

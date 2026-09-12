@@ -34,7 +34,7 @@ import {
   Settings
 } from 'lucide-react';
 
-export const ProductionTasksView = () => {
+export const ProductionTasksView = ({ onNavigate = null }) => {
   const {
     productionTasks,
     productionProcesses,
@@ -377,6 +377,16 @@ export const ProductionTasksView = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
           <button
             type="button"
+            onClick={() => onNavigate && onNavigate('production')}
+            className="btn btn-secondary btn-sm"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 700, padding: '0.55rem 1rem' }}
+            title="Switch to ScreenArts Visual Production Board"
+          >
+            <Factory size={16} color="#2563eb" /> ScreenArts Visual Board
+          </button>
+
+          <button
+            type="button"
             onClick={() => openAssignModal()}
             className="btn btn-primary btn-sm"
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700, padding: '0.55rem 1rem' }}
@@ -712,11 +722,42 @@ export const ProductionTasksView = () => {
                             gap: '0.5rem'
                           }}
                         >
-                          {/* Top Row: Order # & Priority */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontWeight: 800, fontSize: '0.78rem', color: '#0f172a' }}>
-                              #{task.orderNumber || task.orderId}
-                            </span>
+                          {/* Top Row: Order #, Visual Stage, & Priority */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <span style={{ fontWeight: 800, fontSize: '0.78rem', color: '#0f172a' }}>
+                                #{task.orderNumber || task.orderId}
+                              </span>
+                              {(() => {
+                                const parentOrder = (salesOrders || []).find(o => o.id === task.orderId || o.orderNumber === task.orderNumber || o.id === task.orderNumber);
+                                const stageName = parentOrder?.productionStatus || 'In Production';
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onNavigate && onNavigate('production');
+                                    }}
+                                    style={{
+                                      fontSize: '0.65rem',
+                                      fontWeight: 800,
+                                      padding: '0.1rem 0.35rem',
+                                      borderRadius: '4px',
+                                      background: '#f1f5f9',
+                                      color: '#2563eb',
+                                      border: '1px solid #cbd5e1',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.2rem'
+                                    }}
+                                    title="View on ScreenArts Visual Production Board"
+                                  >
+                                    <Factory size={9} color="#2563eb" /> {stageName} ↗
+                                  </button>
+                                );
+                              })()}
+                            </div>
                             {task.priority && task.priority !== 'Normal' ? (
                               <span
                                 style={{
@@ -1189,7 +1230,37 @@ export const ProductionTasksView = () => {
                             <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0f172a' }}>
                               #{task.orderNumber || task.orderId}
                             </div>
-                            <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                            {(() => {
+                              const parentOrder = (salesOrders || []).find(o => o.id === task.orderId || o.orderNumber === task.orderNumber || o.id === task.orderNumber);
+                              const stageName = parentOrder?.productionStatus || 'Printing';
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onNavigate && onNavigate('production');
+                                  }}
+                                  style={{
+                                    fontSize: '0.66rem',
+                                    fontWeight: 700,
+                                    padding: '0.1rem 0.35rem',
+                                    borderRadius: '4px',
+                                    background: '#f8fafc',
+                                    color: '#2563eb',
+                                    border: '1px solid #cbd5e1',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.2rem',
+                                    marginTop: '0.2rem'
+                                  }}
+                                  title="View on ScreenArts Visual Production Board"
+                                >
+                                  <Factory size={9} /> {stageName} ↗
+                                </button>
+                              );
+                            })()}
+                            <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '0.1rem' }}>
                               ID: {task.id}
                             </div>
                           </td>
