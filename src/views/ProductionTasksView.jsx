@@ -11,6 +11,11 @@ import {
   Search,
   Filter,
   Layers,
+  List,
+  Table,
+  Download,
+  Printer,
+  ArrowUpDown,
   Clock,
   Timer,
   AlertCircle,
@@ -45,8 +50,9 @@ export const ProductionTasksView = () => {
     deleteProductionProcess
   } = useERP();
 
-  // Navigation sub-tab: 'board' | 'workload' | 'processes'
+  // Navigation sub-tab: 'board' | 'list' | 'workload' | 'processes'
   const [activeTab, setActiveTab] = useState('board');
+  const [sortBy, setSortBy] = useState('date_desc');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -116,6 +122,95 @@ export const ProductionTasksView = () => {
       return matchQuery && matchEmp && matchProc && matchStatus;
     });
   }, [productionTasks, searchQuery, employeeFilter, processFilter, statusFilter]);
+
+  // Sorted tasks for List View
+  const sortedTasks = useMemo(() => {
+    const list = [...filteredTasks];
+    if (sortBy === 'date_desc') {
+      return list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    }
+    if (sortBy === 'date_asc') {
+      return list.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+    }
+    if (sortBy === 'duration_desc') {
+      return list.sort((a, b) => Number(b.totalDurationMinutes || 0) - Number(a.totalDurationMinutes || 0));
+    }
+    if (sortBy === 'priority') {
+      const pWeights = { Urgent: 3, High: 2, Normal: 1, Low: 0 };
+      return list.sort((a, b) => (pWeights[b.priority] || 0) - (pWeights[a.priority] || 0));
+    }
+    if (sortBy === 'order') {
+      return list.sort((a, b) => String(a.orderNumber || a.orderId || '').localeCompare(String(b.orderNumber || b.orderId || '')));
+    }
+    if (sortBy === 'employee') {
+      return list.sort((a, b) => String(a.employeeName || '').localeCompare(String(b.employeeName || '')));
+    }
+    if (sortBy === 'process') {
+      return list.sort((a, b) => String(a.processName || '').localeCompare(String(b.processName || '')));
+    }
+    return list;
+  }, [filteredTasks, sortBy]);
+
+  // Export CSV for filtered and sorted tasks
+  const handleExportCSV = () => {
+    if (!sortedTasks || sortedTasks.length === 0) {
+      alert('No tasks to export.');
+      return;
+    }
+
+    const headers = [
+      'Task ID',
+      'Order #',
+      'Customer',
+      'Item Description',
+      'Process',
+      'Assigned Employee',
+      'Machine',
+      'Quantity',
+      'Unit',
+      'Priority',
+      'Status',
+      'Active Duration (Mins)',
+      'Active Duration (Formatted)',
+      'Rework Defect Cause',
+      'Rework Qty',
+      'Remarks',
+      'Created At'
+    ];
+
+    const rows = sortedTasks.map((t) => [
+      `"${t.id || ''}"`,
+      `"${t.orderNumber || t.orderId || ''}"`,
+      `"${(t.customerName || '').replace(/"/g, '""')}"`,
+      `"${(t.itemTitle || '').replace(/"/g, '""')}"`,
+      `"${(t.processName || '').replace(/"/g, '""')}"`,
+      `"${(t.employeeName || '').replace(/"/g, '""')}"`,
+      `"${(t.machineName || 'Manual').replace(/"/g, '""')}"`,
+      t.quantity || 1,
+      `"${t.unit || 'Nos'}"`,
+      `"${t.priority || 'Normal'}"`,
+      `"${t.status || ''}"`,
+      t.totalDurationMinutes || 0,
+      `"${formatDuration(t.totalDurationMinutes)}"`,
+      `"${(t.reworkReason || t.reworkNotes || '').replace(/"/g, '""')}"`,
+      t.reworkQty || 0,
+      `"${(t.remarks || '').replace(/"/g, '""')}"`,
+      `"${t.createdAt || ''}"`
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Production_Tasks_List_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   // Quick action handler
   const handleTaskAction = async (taskId, action, notes = '') => {
@@ -294,7 +389,8 @@ export const ProductionTasksView = () => {
       {/* Navigation Sub-Tabs */}
       <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', gap: '0.5rem', background: '#ffffff', borderRadius: '8px 8px 0 0', padding: '0.25rem 0.5rem 0' }}>
         {[
-          { id: 'board', label: 'Active Task Board (Kanban)', icon: Layers, count: inProgressCount + pausedCount },
+          { id: 'board', label: 'Task Kanban Board', icon: Layers, count: inProgressCount + pausedCount },
+          { id: 'list', label: 'Task List View', icon: List, count: filteredTasks.length },
           { id: 'workload', label: 'Employee Workload & Capacity', icon: User, count: employees.length },
           { id: 'processes', label: 'Process Master Directory', icon: Settings, count: (productionProcesses || []).length }
         ].map((tab) => {
@@ -460,6 +556,54 @@ export const ProductionTasksView = () => {
             <option value="Completed">Completed</option>
             <option value="Rework">Rework</option>
           </select>
+
+          {/* View Switcher: Board vs List View */}
+          {(activeTab === 'board' || activeTab === 'list') && (
+            <div style={{ display: 'flex', background: '#f1f5f9', padding: '2px', borderRadius: '6px', border: '1px solid #cbd5e1', marginLeft: '0.25rem' }}>
+              <button
+                type="button"
+                onClick={() => setActiveTab('board')}
+                title="Switch to Kanban Board View"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.35rem 0.65rem',
+                  fontSize: '0.78rem',
+                  fontWeight: activeTab === 'board' ? 700 : 500,
+                  color: activeTab === 'board' ? '#2563eb' : '#64748b',
+                  background: activeTab === 'board' ? '#ffffff' : 'transparent',
+                  border: 'none',
+                  borderRadius: '5px',
+                  boxShadow: activeTab === 'board' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <Layers size={13} /> Board
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('list')}
+                title="Switch to List / Table View"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.35rem 0.65rem',
+                  fontSize: '0.78rem',
+                  fontWeight: activeTab === 'list' ? 700 : 500,
+                  color: activeTab === 'list' ? '#2563eb' : '#64748b',
+                  background: activeTab === 'list' ? '#ffffff' : 'transparent',
+                  border: 'none',
+                  borderRadius: '5px',
+                  boxShadow: activeTab === 'list' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <List size={13} /> List View
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -769,7 +913,630 @@ export const ProductionTasksView = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* SUB-TAB 2: EMPLOYEE WORKLOAD & CAPACITY */}
+      {/* SUB-TAB 2: TASK LIST VIEW */}
+      {/* ========================================================================= */}
+      {activeTab === 'list' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* Quick Filter Status Pills + Sort & Action Bar */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              background: '#ffffff',
+              padding: '0.75rem 1rem',
+              borderRadius: '10px',
+              border: '1px solid #e2e8f0',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+            }}
+          >
+            {/* Status Pills */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', marginRight: '0.2rem' }}>
+                Status:
+              </span>
+              {[
+                { id: 'ALL', label: 'All Tasks', count: totalTasksCount, color: '#0f172a', bg: '#f1f5f9' },
+                { id: 'In Progress', label: 'In Progress', count: inProgressCount, color: '#2563eb', bg: '#eff6ff' },
+                { id: 'Paused', label: 'Paused', count: pausedCount, color: '#d97706', bg: '#fefce8' },
+                { id: 'Pending', label: 'Pending', count: (productionTasks || []).filter((t) => t.status === 'Pending' || t.status === 'Assigned').length, color: '#64748b', bg: '#f8fafc' },
+                { id: 'Completed', label: 'Completed', count: completedCount, color: '#16a34a', bg: '#f0fdf4' },
+                { id: 'Rework', label: 'Rework', count: reworkCount, color: '#dc2626', bg: '#fef2f2' }
+              ].map((pill) => {
+                const isSelected = statusFilter === pill.id;
+                return (
+                  <button
+                    key={pill.id}
+                    type="button"
+                    onClick={() => setStatusFilter(pill.id)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      padding: '0.3rem 0.65rem',
+                      fontSize: '0.75rem',
+                      fontWeight: isSelected ? 800 : 600,
+                      borderRadius: '20px',
+                      background: isSelected ? pill.color : pill.bg,
+                      color: isSelected ? '#ffffff' : pill.color,
+                      border: `1px solid ${isSelected ? pill.color : '#e2e8f0'}`,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <span>{pill.label}</span>
+                    <span
+                      style={{
+                        fontSize: '0.68rem',
+                        fontWeight: 900,
+                        padding: '0.05rem 0.35rem',
+                        borderRadius: '10px',
+                        background: isSelected ? 'rgba(255,255,255,0.25)' : '#ffffff',
+                        color: isSelected ? '#ffffff' : pill.color
+                      }}
+                    >
+                      {pill.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Sort Controls & Action Buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem', color: '#64748b' }}>
+                <ArrowUpDown size={14} />
+                <span>Sort by:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  style={{
+                    padding: '0.35rem 0.55rem',
+                    fontSize: '0.78rem',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    fontWeight: 600
+                  }}
+                >
+                  <option value="date_desc">Newest First</option>
+                  <option value="date_asc">Oldest First</option>
+                  <option value="priority">Priority (Urgent First)</option>
+                  <option value="duration_desc">Active Duration (Highest)</option>
+                  <option value="order">Order Number (A-Z)</option>
+                  <option value="employee">Employee Name (A-Z)</option>
+                  <option value="process">Process Name (A-Z)</option>
+                </select>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                className="btn btn-secondary btn-sm"
+                title="Export current view to CSV"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontSize: '0.78rem',
+                  padding: '0.35rem 0.75rem',
+                  fontWeight: 700,
+                  borderRadius: '6px'
+                }}
+              >
+                <Download size={14} /> Export CSV
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="btn btn-secondary btn-sm"
+                title="Print Task Work Sheet"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontSize: '0.78rem',
+                  padding: '0.35rem 0.75rem',
+                  fontWeight: 700,
+                  borderRadius: '6px'
+                }}
+              >
+                <Printer size={14} /> Print
+              </button>
+            </div>
+          </div>
+
+          {/* Table Container */}
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '12px',
+              border: '1px solid #e2e8f0',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
+              overflow: 'hidden'
+            }}
+          >
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1.5px solid #e2e8f0', color: '#475569' }}>
+                    <th style={{ padding: '0.75rem 1rem', fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                      Task / Order #
+                    </th>
+                    <th style={{ padding: '0.75rem 1rem', fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                      Customer & Item
+                    </th>
+                    <th style={{ padding: '0.75rem 1rem', fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                      Process
+                    </th>
+                    <th style={{ padding: '0.75rem 1rem', fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                      Assigned Employee
+                    </th>
+                    <th style={{ padding: '0.75rem 1rem', fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                      Machine / Station
+                    </th>
+                    <th style={{ padding: '0.75rem 1rem', fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                      Qty & Unit
+                    </th>
+                    <th style={{ padding: '0.75rem 1rem', fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                      Priority
+                    </th>
+                    <th style={{ padding: '0.75rem 1rem', fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                      Status
+                    </th>
+                    <th style={{ padding: '0.75rem 1rem', fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                      Active Time
+                    </th>
+                    <th style={{ padding: '0.75rem 1rem', fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase', textAlign: 'right' }}>
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedTasks.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} style={{ padding: '3.5rem 1rem', textAlign: 'center', color: '#94a3b8' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                          <AlertCircle size={32} color="#cbd5e1" />
+                          <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#475569' }}>
+                            No Production Tasks Found
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: '#94a3b8', maxWidth: '380px' }}>
+                            No tasks match your current filter criteria or search query. Try clearing filters or create a new task.
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => openAssignModal()}
+                            className="btn btn-primary btn-sm"
+                            style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                          >
+                            <Plus size={15} /> Quick Assign Task
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    sortedTasks.map((task, idx) => {
+                      const isStarted = ['Started', 'In Progress', 'Resumed'].includes(task.status);
+                      const isPaused = task.status === 'Paused';
+                      const isCompleted = task.status === 'Completed';
+                      const isRework = task.status === 'Rework';
+                      const isPending = task.status === 'Pending' || task.status === 'Assigned';
+                      const isQC = task.status === 'Quality Check';
+
+                      // Status pill formatting
+                      let statusBadgeBg = '#f1f5f9';
+                      let statusBadgeColor = '#475569';
+                      let statusBadgeBorder = '#e2e8f0';
+
+                      if (isStarted) {
+                        statusBadgeBg = '#eff6ff';
+                        statusBadgeColor = '#1d4ed8';
+                        statusBadgeBorder = '#bfdbfe';
+                      } else if (isPaused) {
+                        statusBadgeBg = '#fefce8';
+                        statusBadgeColor = '#b45309';
+                        statusBadgeBorder = '#fde68a';
+                      } else if (isCompleted) {
+                        statusBadgeBg = '#f0fdf4';
+                        statusBadgeColor = '#15803d';
+                        statusBadgeBorder = '#bbf7d0';
+                      } else if (isRework) {
+                        statusBadgeBg = '#fef2f2';
+                        statusBadgeColor = '#b91c1c';
+                        statusBadgeBorder = '#fecaca';
+                      } else if (isQC) {
+                        statusBadgeBg = '#faf5ff';
+                        statusBadgeColor = '#7e22ce';
+                        statusBadgeBorder = '#e9d5ff';
+                      }
+
+                      // Priority pill formatting
+                      let priorityBg = '#f1f5f9';
+                      let priorityColor = '#64748b';
+                      let priorityBorder = '#e2e8f0';
+
+                      if (task.priority === 'Urgent') {
+                        priorityBg = '#fef2f2';
+                        priorityColor = '#dc2626';
+                        priorityBorder = '#fecaca';
+                      } else if (task.priority === 'High') {
+                        priorityBg = '#fffbeb';
+                        priorityColor = '#d97706';
+                        priorityBorder = '#fde68a';
+                      } else if (task.priority === 'Normal') {
+                        priorityBg = '#eff6ff';
+                        priorityColor = '#2563eb';
+                        priorityBorder = '#dbeafe';
+                      }
+
+                      return (
+                        <tr
+                          key={task.id}
+                          style={{
+                            borderBottom: '1px solid #f1f5f9',
+                            background: idx % 2 === 0 ? '#ffffff' : '#fcfcfd',
+                            transition: 'background 0.15s ease'
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? '#ffffff' : '#fcfcfd')}
+                        >
+                          {/* Task / Order # */}
+                          <td style={{ padding: '0.75rem 1rem' }}>
+                            <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0f172a' }}>
+                              #{task.orderNumber || task.orderId}
+                            </div>
+                            <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                              ID: {task.id}
+                            </div>
+                          </td>
+
+                          {/* Customer & Item */}
+                          <td style={{ padding: '0.75rem 1rem' }}>
+                            <div style={{ fontWeight: 700, color: '#1e293b' }}>
+                              {task.customerName || 'Walk-in Customer'}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.1rem' }}>
+                              {task.itemTitle || 'Printing Job'}
+                            </div>
+                            {task.remarks && (
+                              <div style={{ fontSize: '0.7rem', color: '#854d0e', background: '#fffbeb', padding: '0.15rem 0.4rem', borderRadius: '4px', display: 'inline-block', marginTop: '0.2rem' }}>
+                                Note: {task.remarks}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Process & Department */}
+                          <td style={{ padding: '0.75rem 1rem' }}>
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                fontSize: '0.75rem',
+                                fontWeight: 800,
+                                padding: '0.2rem 0.55rem',
+                                borderRadius: '5px',
+                                background: '#e0f2fe',
+                                color: '#0369a1',
+                                border: '1px solid #bae6fd'
+                              }}
+                            >
+                              {task.processName}
+                            </span>
+                          </td>
+
+                          {/* Assigned Employee */}
+                          <td style={{ padding: '0.75rem 1rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                              <div
+                                style={{
+                                  width: '24px',
+                                  height: '24px',
+                                  borderRadius: '50%',
+                                  background: '#e0e7ff',
+                                  color: '#4338ca',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '0.7rem',
+                                  fontWeight: 800
+                                }}
+                              >
+                                {(task.employeeName || 'E').slice(0, 1)}
+                              </div>
+                              <span style={{ fontWeight: 700, color: '#0f172a' }}>{task.employeeName}</span>
+                            </div>
+                          </td>
+
+                          {/* Machine / Station */}
+                          <td style={{ padding: '0.75rem 1rem' }}>
+                            {task.machineName ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.76rem', color: '#334155', fontWeight: 600 }}>
+                                ⚙️ {task.machineName}
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>Manual / Bench</span>
+                            )}
+                          </td>
+
+                          {/* Qty & Unit */}
+                          <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#0f172a' }}>
+                            {task.quantity} <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>{task.unit || 'Nos'}</span>
+                          </td>
+
+                          {/* Priority */}
+                          <td style={{ padding: '0.75rem 1rem' }}>
+                            <span
+                              style={{
+                                fontSize: '0.7rem',
+                                fontWeight: 800,
+                                padding: '0.15rem 0.45rem',
+                                borderRadius: '4px',
+                                background: priorityBg,
+                                color: priorityColor,
+                                border: `1px solid ${priorityBorder}`
+                              }}
+                            >
+                              {task.priority || 'Normal'}
+                            </span>
+                          </td>
+
+                          {/* Status */}
+                          <td style={{ padding: '0.75rem 1rem' }}>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                                fontSize: '0.74rem',
+                                fontWeight: 800,
+                                padding: '0.2rem 0.55rem',
+                                borderRadius: '12px',
+                                background: statusBadgeBg,
+                                color: statusBadgeColor,
+                                border: `1px solid ${statusBadgeBorder}`
+                              }}
+                            >
+                              {isStarted && (
+                                <span
+                                  style={{
+                                    width: '6px',
+                                    height: '6px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#2563eb',
+                                    display: 'inline-block'
+                                  }}
+                                />
+                              )}
+                              {task.status}
+                            </span>
+
+                            {/* Defect / Rework Note badge if present */}
+                            {(task.reworkReason || isRework) && (
+                              <div
+                                style={{
+                                  marginTop: '0.25rem',
+                                  fontSize: '0.68rem',
+                                  color: '#dc2626',
+                                  fontWeight: 600,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem'
+                                }}
+                              >
+                                <AlertCircle size={11} />
+                                {task.reworkReason ? task.reworkReason : 'Defect logged'}
+                                {task.reworkQty > 0 ? ` (${task.reworkQty} pcs)` : ''}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Active Duration */}
+                          <td style={{ padding: '0.75rem 1rem' }}>
+                            <div
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.3rem',
+                                fontSize: '0.78rem',
+                                fontWeight: 800,
+                                color: '#7e22ce',
+                                background: '#faf5ff',
+                                padding: '0.2rem 0.5rem',
+                                borderRadius: '6px',
+                                border: '1px solid #e9d5ff'
+                              }}
+                            >
+                              <Timer size={13} /> {formatDuration(task.totalDurationMinutes)}
+                            </div>
+                          </td>
+
+                          {/* Actions */}
+                          <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.35rem' }}>
+                              {/* Start */}
+                              {(isPending || isRework) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleTaskAction(task.id, 'START')}
+                                  className="btn btn-sm"
+                                  title="Start Work Timer"
+                                  style={{
+                                    background: '#16a34a',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    padding: '0.25rem 0.5rem',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    borderRadius: '5px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.2rem'
+                                  }}
+                                >
+                                  <Play size={11} fill="#ffffff" /> Start
+                                </button>
+                              )}
+
+                              {/* Pause */}
+                              {isStarted && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleTaskAction(task.id, 'PAUSE')}
+                                  className="btn btn-sm"
+                                  title="Pause Active Timer"
+                                  style={{
+                                    background: '#d97706',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    padding: '0.25rem 0.5rem',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    borderRadius: '5px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.2rem'
+                                  }}
+                                >
+                                  <Pause size={11} /> Pause
+                                </button>
+                              )}
+
+                              {/* Resume */}
+                              {isPaused && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleTaskAction(task.id, 'RESUME')}
+                                  className="btn btn-sm"
+                                  title="Resume Active Timer"
+                                  style={{
+                                    background: '#2563eb',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    padding: '0.25rem 0.5rem',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    borderRadius: '5px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.2rem'
+                                  }}
+                                >
+                                  <Play size={11} fill="#ffffff" /> Resume
+                                </button>
+                              )}
+
+                              {/* Done / Complete */}
+                              {(isStarted || isPaused) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleTaskAction(task.id, 'COMPLETE')}
+                                  className="btn btn-sm"
+                                  title="Mark Completed"
+                                  style={{
+                                    background: '#059669',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    padding: '0.25rem 0.5rem',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    borderRadius: '5px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.2rem'
+                                  }}
+                                >
+                                  <Check size={11} /> Done
+                                </button>
+                              )}
+
+                              {/* Rework */}
+                              {(isCompleted || isStarted) && (
+                                <button
+                                  type="button"
+                                  title="Log Defect / Send to Rework"
+                                  onClick={() => setReworkPromptTask(task)}
+                                  className="btn btn-sm"
+                                  style={{
+                                    background: '#fee2e2',
+                                    color: '#dc2626',
+                                    border: '1px solid #fca5a5',
+                                    padding: '0.25rem 0.45rem',
+                                    borderRadius: '5px'
+                                  }}
+                                >
+                                  <RotateCcw size={11} />
+                                </button>
+                              )}
+
+                              {/* Delete */}
+                              <button
+                                type="button"
+                                title="Delete Task"
+                                onClick={() => {
+                                  if (window.confirm(`Delete this ${task.processName} task for #${task.orderNumber || task.orderId}?`)) {
+                                    deleteProductionTask(task.id);
+                                  }
+                                }}
+                                className="btn btn-sm"
+                                style={{
+                                  background: '#f8fafc',
+                                  color: '#94a3b8',
+                                  border: '1px solid #e2e8f0',
+                                  padding: '0.25rem 0.45rem',
+                                  borderRadius: '5px'
+                                }}
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Table Footer Summary */}
+            <div
+              style={{
+                padding: '0.75rem 1rem',
+                background: '#f8fafc',
+                borderTop: '1.5px solid #e2e8f0',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '0.5rem',
+                fontSize: '0.78rem',
+                color: '#64748b'
+              }}
+            >
+              <div>
+                Showing <strong>{sortedTasks.length}</strong> of <strong>{totalTasksCount}</strong> total production tasks
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                <div>
+                  Completed: <strong style={{ color: '#16a34a' }}>{sortedTasks.filter((t) => t.status === 'Completed').length}</strong>
+                </div>
+                <div>
+                  Active Working Duration:{' '}
+                  <strong style={{ color: '#7e22ce' }}>
+                    {(sortedTasks.reduce((acc, t) => acc + Number(t.totalDurationMinutes || 0), 0) / 60).toFixed(1)} hrs
+                  </strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SUB-TAB 3: EMPLOYEE WORKLOAD & CAPACITY */}
       {/* ========================================================================= */}
       {activeTab === 'workload' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
