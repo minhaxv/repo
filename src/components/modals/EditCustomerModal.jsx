@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useERP } from '../../context/ERPContext';
 import { CUSTOMER_TYPES } from '../../types';
-import { X, UserCheck, Phone, Mail, MapPin, Hash, Check, Building } from 'lucide-react';
+import { X, UserCheck, Phone, PhoneCall, Plus, Trash2, Mail, MapPin, Hash, Check, Building } from 'lucide-react';
 import CreateCareOfModal from './CreateCareOfModal';
 import { SearchableSelect } from '../common/SearchableSelect';
 
@@ -21,26 +21,55 @@ export const EditCustomerModal = ({ isOpen, onClose, customer }) => {
     creditLimit: 50000,
     careOfId: ''
   });
+  const [additionalMobiles, setAdditionalMobiles] = useState([]);
 
   useEffect(() => {
     if (isOpen && customer) {
+      let addMobiles = [];
+      if (customer.additionalMobiles) {
+        addMobiles = Array.isArray(customer.additionalMobiles) ? customer.additionalMobiles : [customer.additionalMobiles];
+      } else if (customer.additional_mobiles) {
+        try {
+          addMobiles = typeof customer.additional_mobiles === 'string' ? JSON.parse(customer.additional_mobiles) : customer.additional_mobiles;
+        } catch (e) {
+          addMobiles = [customer.additional_mobiles];
+        }
+      }
+
       setFormData({
         name: customer.name || '',
         mobile: customer.mobile || '',
         email: customer.email || '',
-        gstin: customer.gstin || '',
-        type: customer.type || CUSTOMER_TYPES.WALKIN,
+        gstin: customer.gstin || customer.gst_number || '',
+        type: customer.type || customer.customer_type || CUSTOMER_TYPES.WALKIN,
         address: customer.address || '',
         state: customer.state || 'Maharashtra (27)',
         creditLimit: customer.creditLimit ?? customer.credit_limit ?? 50000,
         careOfId: customer.careOfId ?? customer.care_of_id ?? ''
       });
+      setAdditionalMobiles(Array.isArray(addMobiles) ? addMobiles : []);
       setErrorMsg('');
       setIsSubmitting(false);
     }
   }, [isOpen, customer]);
 
   if (!isOpen || !customer) return null;
+
+  const handleAddAlternateMobile = () => {
+    setAdditionalMobiles((prev) => [...prev, '']);
+  };
+
+  const handleUpdateAlternateMobile = (index, value) => {
+    setAdditionalMobiles((prev) => {
+      const updated = [...prev];
+      updated[index] = value;
+      return updated;
+    });
+  };
+
+  const handleRemoveAlternateMobile = (index) => {
+    setAdditionalMobiles((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -49,6 +78,9 @@ export const EditCustomerModal = ({ isOpen, onClose, customer }) => {
     setErrorMsg('');
     const cleanName = (formData.name || '').trim();
     const cleanMobile = (formData.mobile || '').trim();
+    const cleanExtra = (additionalMobiles || [])
+      .map((m) => String(m).trim())
+      .filter((m) => m && m !== cleanMobile);
 
     if (!cleanName || !cleanMobile) {
       setErrorMsg('Customer Name and Mobile Number are required.');
@@ -57,11 +89,12 @@ export const EditCustomerModal = ({ isOpen, onClose, customer }) => {
 
     try {
       setIsSubmitting(true);
-      const selectedCareOf = (careOfPersons || []).find(co => co.id === formData.careOfId);
+      const selectedCareOf = (careOfPersons || []).find((co) => co.id === formData.careOfId);
       await updateCustomer(customer.id, {
         ...formData,
         name: cleanName,
         mobile: cleanMobile,
+        additionalMobiles: cleanExtra,
         careOfId: formData.careOfId,
         careOfName: selectedCareOf?.name || ''
       });
@@ -75,7 +108,7 @@ export const EditCustomerModal = ({ isOpen, onClose, customer }) => {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '620px' }}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '640px' }}>
         <div className="modal-header" style={{ background: '#0f172a', color: '#ffffff' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Building size={20} color="#60a5fa" />
@@ -106,16 +139,79 @@ export const EditCustomerModal = ({ isOpen, onClose, customer }) => {
               />
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Mobile Number *</label>
-              <input
-                type="tel"
-                className="form-control"
-                value={formData.mobile}
-                onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                required
-                disabled={isSubmitting}
-              />
+            {/* MULTI-PHONE NUMBER SECTION */}
+            <div className="form-group" style={{ gridColumn: 'span 2' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                <label className="form-label" style={{ margin: 0, fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <Phone size={14} color="#2563eb" /> Primary Mobile Number *
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAddAlternateMobile}
+                  disabled={isSubmitting}
+                  className="btn btn-sm btn-secondary"
+                  style={{
+                    fontSize: '0.72rem',
+                    padding: '0.2rem 0.55rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    color: '#2563eb',
+                    borderColor: '#bfdbfe',
+                    background: '#eff6ff',
+                    fontWeight: 700
+                  }}
+                  title="Add secondary/alternate phone number"
+                >
+                  <Plus size={12} /> Add Alternate Number
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <input
+                  type="tel"
+                  className="form-control"
+                  value={formData.mobile}
+                  onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                  required
+                  disabled={isSubmitting}
+                />
+                <span className="badge badge-blue" style={{ fontSize: '0.7rem', padding: '0.35rem 0.6rem', whiteSpace: 'nowrap' }}>
+                  Primary
+                </span>
+              </div>
+
+              {/* DYNAMIC ADDITIONAL PHONE NUMBERS */}
+              {additionalMobiles.length > 0 && (
+                <div style={{ marginTop: '0.65rem', display: 'flex', flexDirection: 'column', gap: '0.45rem', padding: '0.65rem', background: '#f8fafc', borderRadius: '6px', border: '1px dashed #cbd5e1' }}>
+                  <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <PhoneCall size={12} color="#64748b" /> Additional Contact Numbers ({additionalMobiles.length})
+                  </div>
+                  {additionalMobiles.map((mob, index) => (
+                    <div key={index} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                      <input
+                        type="tel"
+                        className="form-control form-control-sm"
+                        placeholder={`Alternate Number #${index + 1} (e.g. WhatsApp / Office / Accounts)`}
+                        value={mob}
+                        onChange={(e) => handleUpdateAlternateMobile(index, e.target.value)}
+                        disabled={isSubmitting}
+                        style={{ fontSize: '0.82rem' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAlternateMobile(index)}
+                        className="btn btn-sm btn-secondary"
+                        style={{ color: '#ef4444', borderColor: '#fca5a5', padding: '0.25rem 0.45rem' }}
+                        title="Remove this alternate number"
+                        disabled={isSubmitting}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="form-group">

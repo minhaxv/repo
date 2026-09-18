@@ -38,8 +38,30 @@ export const ERPProvider = ({ children }) => {
   // States mirroring database tables with localStorage persistence to prevent refresh data loss
   const [companyProfile, setCompanyProfile] = useState(initialCompanyProfile);
   const [companyBankAccounts, setCompanyBankAccounts] = useState([]);
-  const [activeRole, setActiveRole] = useState(USER_ROLES.ADMIN);
-  const [activeUser, setActiveUser] = useState({ name: 'Admin User', role: USER_ROLES.ADMIN });
+  const [activeUser, setActiveUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('stitch_erp_active_user');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {
+      id: 'EMP-ADM-01',
+      name: 'Minhaj V (Admin)',
+      email: 'admin@screenarts.in',
+      role: USER_ROLES.ADMIN,
+      department: 'Management',
+      designation: 'General Manager & Admin'
+    };
+  });
+  const [activeRole, setActiveRole] = useState(() => {
+    try {
+      const saved = localStorage.getItem('stitch_erp_active_user');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.role) return parsed.role;
+      }
+    } catch (e) {}
+    return USER_ROLES.ADMIN;
+  });
 
   const [customers, setCustomers] = useState(() => {
     try {
@@ -196,7 +218,18 @@ export const ERPProvider = ({ children }) => {
 
   const [followUps, setFollowUps] = useState([]);
 
-  // Automatic LocalStorage Persistence Hooks so page refresh never loses sales orders or job data
+  // Phase 1-5 Production Hardening States (SQLite Authoritative & Live Sync)
+  const [expenses, setExpenses] = useState([]);
+  const [inventoryTransactions, setInventoryTransactions] = useState([]);
+  const [reworkTickets, setReworkTickets] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [usersList, setUsersList] = useState([]);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [deliveries, setDeliveries] = useState([]);
+  const [reconciliationData, setReconciliationData] = useState([]);
+  const [backups, setBackups] = useState([]);
+
+  // Automatic LocalStorage Persistence Hooks (Safe cache only, SQLite is source of truth)
   useEffect(() => {
     if (productionProcesses && productionProcesses.length > 0) {
       try { localStorage.setItem('stitch_erp_production_processes', JSON.stringify(productionProcesses)); } catch (e) {}
@@ -344,7 +377,7 @@ export const ERPProvider = ({ children }) => {
 
   const [biometricUsers, setBiometricUsers] = useState([]);
 
-  // Fetch all persistent ERP data from local SQLite database API server
+  // Fetch all persistent ERP data from local SQLite database API server (Authoritative Source of Truth)
   const fetchAllERPData = async () => {
     try {
       const data = await api.fetchAll();
@@ -364,108 +397,153 @@ export const ERPProvider = ({ children }) => {
         if (data.payments) setPayments(data.payments);
         if (data.productionProcesses && data.productionProcesses.length > 0) setProductionProcesses(data.productionProcesses);
         if (data.productionTasks && data.productionTasks.length > 0) setProductionTasks(data.productionTasks);
+        if (data.expenses) setExpenses(data.expenses);
+        if (data.inventory) setInventory(data.inventory);
+        if (data.inventoryTransactions) setInventoryTransactions(data.inventoryTransactions);
+        if (data.reworkTickets) setReworkTickets(data.reworkTickets);
+        if (data.auditLogs) setAuditLogs(data.auditLogs);
+        if (data.users) setUsersList(data.users);
       }
     } catch (err) {
       console.warn("API fetchAllERPData warning, using local state:", err);
     }
   };
 
-  const loadMockFallbackData = () => {
-    try {
-      const savedOrders = localStorage.getItem('stitch_erp_sales_orders');
-      const savedIncentives = localStorage.getItem('stitch_erp_worker_job_incentives');
-      const savedCustomers = localStorage.getItem('stitch_erp_customers');
-      const savedProducts = localStorage.getItem('stitch_erp_products');
-      const savedWorkers = localStorage.getItem('stitch_erp_workers');
-      const savedDesigners = localStorage.getItem('stitch_erp_designers');
-      const savedEmployees = localStorage.getItem('stitch_erp_employees');
-      const savedPayments = localStorage.getItem('stitch_erp_payments');
-      const savedCareOf = localStorage.getItem('stitch_erp_care_of_persons');
-      const savedSalesPersons = localStorage.getItem('stitch_erp_sales_persons');
-      const savedVendors = localStorage.getItem('stitch_erp_vendors');
-      const savedProcesses = localStorage.getItem('stitch_erp_production_processes');
-      const savedTasks = localStorage.getItem('stitch_erp_production_tasks');
-
-      setCompanyProfile(initialCompanyProfile);
-      setCompanyBankAccounts(initialCompanyBankAccounts);
-      setCustomers(savedCustomers ? JSON.parse(savedCustomers) : initialCustomers);
-      setSalesPersons(savedSalesPersons ? JSON.parse(savedSalesPersons) : initialSalesPersons);
-      setCareOfPersons(savedCareOf ? JSON.parse(savedCareOf) : initialCareOfPersons);
-      setWorkers(savedWorkers ? JSON.parse(savedWorkers) : initialWorkers);
-      setDesigners(savedDesigners ? JSON.parse(savedDesigners) : initialDesigners);
-      setVendors(savedVendors ? JSON.parse(savedVendors) : initialVendors);
-      setProducts(savedProducts ? JSON.parse(savedProducts) : initialProducts);
-      setProductMaterialSpecs(initialProductMaterialSpecs);
-      setEmployees(savedEmployees ? JSON.parse(savedEmployees) : initialEmployees);
-      setSalesOrders(savedOrders ? JSON.parse(savedOrders) : initialSalesOrders);
-      setInventory(initialInventory);
-      setPurchaseOrders(initialPurchaseOrders);
-      setPayments(savedPayments ? JSON.parse(savedPayments) : initialPayments);
-      setFollowUps(initialFollowUps);
-      setAttendanceRecords(initialAttendance);
-      setPayrollRecords(initialPayroll);
-      setWorkerJobIncentives(savedIncentives ? JSON.parse(savedIncentives) : initialWorkerJobIncentives);
-      setProductionProcesses(savedProcesses ? JSON.parse(savedProcesses) : initialProductionProcesses);
-      setProductionTasks(savedTasks ? JSON.parse(savedTasks) : initialProductionTasks);
-    } catch (e) {
-      setSalesOrders(initialSalesOrders);
-      setWorkerJobIncentives(initialWorkerJobIncentives);
-      setProductionProcesses(initialProductionProcesses);
-      setProductionTasks(initialProductionTasks);
-    }
-  };
-
   const loginAsDemoAdmin = () => {
-    setSession({ user: { id: 'demo-admin-01', email: 'admin@screenarts.com' } });
+    const adminUser = {
+      id: 'EMP-ADM-01',
+      username: 'admin',
+      name: 'Minhaj V (Admin)',
+      email: 'admin@screenarts.in',
+      role: USER_ROLES.ADMIN,
+      department: 'Management',
+      designation: 'General Manager & Admin'
+    };
+    setSession({ user: adminUser });
     setActiveRole(USER_ROLES.ADMIN);
-    setActiveUser({ name: 'Admin User', role: USER_ROLES.ADMIN });
-    loadMockFallbackData();
+    setActiveUser(adminUser);
+    fetchAllERPData();
     setLoading(false);
   };
 
-  // Auth Session state listener
+  // Auth Initialization (Multi-User Local DB + Supabase Support)
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      loginAsDemoAdmin();
-      return;
-    }
-
-    try {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session?.user) {
-          setSession(session);
-          fetchUserProfile(session.user.id);
-          fetchAllERPData();
-        } else {
-          loginAsDemoAdmin();
+    const initAuthAndData = async () => {
+      // 1. Check local DB auth token
+      const token = localStorage.getItem('stitch_auth_token');
+      if (token) {
+        try {
+          const me = await api.fetchMe();
+          if (me && me.success && me.user) {
+            setSession({ user: me.user, token });
+            setActiveUser(me.user);
+            setActiveRole(me.user.role || USER_ROLES.ADMIN);
+            await fetchAllERPData();
+            setLoading(false);
+            return;
+          }
+        } catch (err) {
+          console.warn("Local token check error:", err);
         }
-        setLoading(false);
-      }).catch((err) => {
-        console.warn("Supabase getSession catch, initializing demo session:", err);
-        loginAsDemoAdmin();
-      });
+      }
+
+      // 2. Check Supabase if configured
+      if (isSupabaseConfigured) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            setSession(session);
+            await fetchUserProfile(session.user.id);
+            await fetchAllERPData();
+            setLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.warn("Supabase auth error:", e);
+        }
+      }
+
+      // 3. Authoritative SQLite fetch
+      try {
+        await fetchAllERPData();
+      } catch (e) {}
+
+      // Default active user fallback
+      const savedUser = localStorage.getItem('stitch_erp_active_user');
+      let userObj = {
+        id: 'EMP-ADM-01',
+        username: 'admin',
+        name: 'Minhaj V (Admin)',
+        email: 'admin@screenarts.in',
+        role: USER_ROLES.ADMIN,
+        department: 'Management',
+        designation: 'General Manager & Admin'
+      };
+      if (savedUser) {
+        try { userObj = JSON.parse(savedUser); } catch(e){}
+      }
+      setActiveUser(userObj);
+      setActiveRole(userObj.role || USER_ROLES.ADMIN);
+      setSession({ user: userObj });
+      setLoading(false);
+    };
+
+    initAuthAndData();
+  }, []);
+
+  // Server-Sent Events (SSE) Real-Time Factory Broadcast Listener
+  useEffect(() => {
+    let es;
+    try {
+      es = new EventSource('/api/events');
+      es.onopen = () => {
+        setRealtimeConnected(true);
+        console.log('[SSE Hub] Connected to live factory event broadcaster');
+      };
+      es.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type === 'CONNECTED') {
+            setRealtimeConnected(true);
+            return;
+          }
+          console.log('[SSE Hub] Broadcast event received:', payload.type, payload.data);
+          // Auto-sync authoritative state across all factory workstations without refresh
+          fetchAllERPData();
+        } catch (err) {
+          console.error('[SSE Hub] Parse error:', err);
+        }
+      };
+      es.onerror = () => {
+        setRealtimeConnected(false);
+      };
     } catch (err) {
-      console.warn("Supabase session init error, initializing demo session:", err);
-      loginAsDemoAdmin();
+      console.warn('[SSE Hub] EventSource init error:', err);
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session?.user) {
-        fetchUserProfile(session.user.id);
-        fetchAllERPData();
-      } else {
-        loadMockFallbackData();
-      }
-      setLoading(false);
-    });
-
-    return () => subscription?.unsubscribe();
+    return () => {
+      if (es) es.close();
+    };
   }, []);
+
+  const switchUser = (userObj) => {
+    if (!userObj) return;
+    setActiveUser(userObj);
+    if (userObj.role) {
+      setActiveRole(userObj.role);
+    }
+    try {
+      localStorage.setItem('stitch_erp_active_user', JSON.stringify(userObj));
+    } catch (e) {}
+  };
 
   const switchRole = async (role) => {
     setActiveRole(role);
-    setActiveUser({ name: `${role} Officer`, role });
+    const updated = { ...(activeUser || {}), role, name: activeUser?.name || `${role} Officer` };
+    setActiveUser(updated);
+    try {
+      localStorage.setItem('stitch_erp_active_user', JSON.stringify(updated));
+    } catch (e) {}
     if (session?.user) {
       await supabase
         .from('profiles')
@@ -476,24 +554,32 @@ export const ERPProvider = ({ children }) => {
 
   // Add Customer with persistent SQLite & Supabase integration
   const addCustomer = async (customerData) => {
-    const newId = `CUST-${100 + customers.length + Math.floor(Math.random() * 100) + 1}`;
+    const newId = customerData.id || `CUST-${100 + customers.length + Math.floor(Math.random() * 100) + 1}`;
     const newCode = customerData.code || `${(customerData.name || 'CUST').substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+    
+    // Normalize additionalMobiles
+    const rawAddMobiles = customerData.additionalMobiles || customerData.additional_mobiles || [];
+    const additionalMobiles = Array.isArray(rawAddMobiles) 
+      ? rawAddMobiles.map(m => String(m).trim()).filter(Boolean)
+      : (typeof rawAddMobiles === 'string' ? rawAddMobiles.split(',').map(m => m.trim()).filter(Boolean) : []);
+
     const uiCustomer = {
       id: newId,
       code: newCode,
-      name: customerData.name,
-      mobile: customerData.mobile,
-      email: customerData.email || '',
-      gstin: customerData.gstin || '',
+      name: (customerData.name || '').trim(),
+      mobile: (customerData.mobile || '').trim(),
+      additionalMobiles: additionalMobiles,
+      email: (customerData.email || '').trim(),
+      gstin: (customerData.gstin || '').trim().toUpperCase(),
       type: customerData.type || 'Walk-in',
       address: customerData.address || '',
       state: customerData.state || 'Maharashtra (27)',
       creditLimit: parseFloat(customerData.creditLimit) || 0,
-      outstanding: 0,
-      totalOrders: 0,
+      outstanding: parseFloat(customerData.outstanding) || 0,
+      totalOrders: parseInt(customerData.totalOrders, 10) || 0,
       careOfId: customerData.careOfId || '',
       careOfName: customerData.careOfName || '',
-      createdAt: new Date().toISOString().split('T')[0]
+      createdAt: customerData.createdAt || new Date().toISOString().split('T')[0]
     };
 
     // Update state immediately & store in localStorage so UI is instant and never loses state
@@ -510,6 +596,7 @@ export const ERPProvider = ({ children }) => {
           code: uiCustomer.code,
           name: uiCustomer.name,
           mobile: uiCustomer.mobile,
+          additional_mobiles: JSON.stringify(uiCustomer.additionalMobiles),
           email: uiCustomer.email,
           gstin: uiCustomer.gstin,
           type: uiCustomer.type,
@@ -712,7 +799,19 @@ export const ERPProvider = ({ children }) => {
   };
 
   const updateCustomer = async (id, updatedData) => {
+    const rawAddMobiles = updatedData.additionalMobiles !== undefined ? updatedData.additionalMobiles : updatedData.additional_mobiles;
+    let additionalMobiles = undefined;
+    if (rawAddMobiles !== undefined) {
+      additionalMobiles = Array.isArray(rawAddMobiles) 
+        ? rawAddMobiles.map(m => String(m).trim()).filter(Boolean)
+        : (typeof rawAddMobiles === 'string' ? rawAddMobiles.split(',').map(m => m.trim()).filter(Boolean) : []);
+    }
+
     const dbUpdate = { ...updatedData };
+    if (additionalMobiles !== undefined) {
+      dbUpdate.additional_mobiles = JSON.stringify(additionalMobiles);
+      delete dbUpdate.additionalMobiles;
+    }
     if (updatedData.creditLimit !== undefined) {
       dbUpdate.credit_limit = parseFloat(updatedData.creditLimit) || 0;
       delete dbUpdate.creditLimit;
@@ -743,12 +842,22 @@ export const ERPProvider = ({ children }) => {
       console.warn("Supabase customer update exception:", err);
     }
 
+    try {
+      await api.updateCustomer(id, {
+        ...updatedData,
+        additionalMobiles: additionalMobiles
+      });
+    } catch (err) {
+      console.warn("api.updateCustomer exception, using local state:", err);
+    }
+
     setCustomers((prev) => {
       const updated = prev.map((c) =>
         c.id === id
           ? {
               ...c,
               ...updatedData,
+              additionalMobiles: additionalMobiles !== undefined ? additionalMobiles : (c.additionalMobiles || []),
               creditLimit: dbUpdate.credit_limit ?? c.creditLimit ?? c.credit_limit,
               outstanding: dbUpdate.outstanding ?? c.outstanding,
               careOfId: dbUpdate.care_of_id ?? c.careOfId,
@@ -1552,6 +1661,11 @@ export const ERPProvider = ({ children }) => {
       quotationId: isQuote ? newOrderId : (orderPayload.quotationId || null),
       quotationStatus: isQuote ? (orderPayload.quotationStatus || 'Draft') : null,
       productionStatus: initialProdStatus,
+      billedByStaff: orderPayload.billedByStaff || activeUser?.name || 'Admin User',
+      billedByStaffId: orderPayload.billedByStaffId || activeUser?.id || '',
+      billedByRole: orderPayload.billedByRole || activeUser?.role || activeRole || 'Billing Staff',
+      billedByDept: orderPayload.billedByDept || activeUser?.department || 'Sales',
+      billedAt: orderPayload.billedAt || new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
       createdAt: new Date().toISOString()
     };
 
@@ -1562,8 +1676,18 @@ export const ERPProvider = ({ children }) => {
           orderNumber: newOrderId,
           grandTotal: finalOrder.grandTotal,
           subtotal: finalOrder.subtotal,
+          taxTotal: (finalOrder.cgst || 0) + (finalOrder.sgst || 0) + (finalOrder.igst || 0),
+          cgst: finalOrder.cgst || 0,
+          sgst: finalOrder.sgst || 0,
+          igst: finalOrder.igst || 0,
+          roundOff: finalOrder.roundOff || 0,
+          taxMode: finalOrder.taxMode || 'Exclusive',
           advanceAmount: advance,
-          balanceAmount: balance
+          balanceAmount: balance,
+          billedByStaff: finalOrder.billedByStaff,
+          billedByStaffId: finalOrder.billedByStaffId,
+          billedByRole: finalOrder.billedByRole,
+          billedAt: finalOrder.billedAt
         },
         items: finalOrder.items,
         advanceAmount: advance,
@@ -1583,8 +1707,8 @@ export const ERPProvider = ({ children }) => {
       customerMobile: finalOrder.customerMobile,
       actionType: isQuote ? 'CREATED' : 'CREATED',
       actionTitle: `${isQuote ? 'Quotation' : 'Sales Order'} ${newOrderId} Created`,
-      actor: activeUser?.name || 'Authorized Staff',
-      role: activeRole || 'Sales',
+      actor: finalOrder.billedByStaff || activeUser?.name || 'Authorized Staff',
+      role: finalOrder.billedByRole || activeRole || 'Sales',
       reason: isQuote ? 'New quotation prepared' : 'New sales order registered',
       newAmount: finalOrder.grandTotal,
       changesSummary: [
@@ -1923,6 +2047,31 @@ export const ERPProvider = ({ children }) => {
       lastEditedAt: new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
     };
 
+    try {
+      await api.updateSalesOrder(orderId, {
+        orderHeader: {
+          ...finalUpdatedOrder,
+          orderNumber: orderId,
+          grandTotal: finalUpdatedOrder.grandTotal,
+          subtotal: finalUpdatedOrder.subtotal,
+          taxTotal: (finalUpdatedOrder.cgst || 0) + (finalUpdatedOrder.sgst || 0) + (finalUpdatedOrder.igst || 0),
+          cgst: finalUpdatedOrder.cgst || 0,
+          sgst: finalUpdatedOrder.sgst || 0,
+          igst: finalUpdatedOrder.igst || 0,
+          roundOff: finalUpdatedOrder.roundOff || 0,
+          taxMode: finalUpdatedOrder.taxMode || 'Exclusive',
+          advanceAmount: finalUpdatedOrder.advanceAmount,
+          balanceAmount: finalUpdatedOrder.balanceAmount
+        },
+        items: finalUpdatedOrder.items,
+        editReason,
+        version: existing?.version
+      });
+      await fetchAllERPData();
+    } catch (err) {
+      console.warn("api.updateSalesOrder exception, falling back to client update:", err);
+    }
+
     if (isSupabaseConfigured) {
       try {
         const dbOrder = {
@@ -2021,6 +2170,13 @@ export const ERPProvider = ({ children }) => {
       cancelReason: cancelReason,
       editHistory: updatedHistory
     };
+
+    try {
+      await api.cancelSalesOrder(orderId, cancelReason);
+      await fetchAllERPData();
+    } catch (err) {
+      console.warn("api.cancelSalesOrder exception, falling back to client update:", err);
+    }
 
     if (isSupabaseConfigured) {
       try {
@@ -2440,6 +2596,12 @@ export const ERPProvider = ({ children }) => {
       }
     }
 
+    try {
+      await api.updateProductionStatus(orderId, itemId, newStatus);
+    } catch (err) {
+      console.warn("api.updateProductionStatus warning:", err);
+    }
+
     setSalesOrders((prev) =>
       prev.map((o) =>
         o.id === orderId
@@ -2458,6 +2620,12 @@ export const ERPProvider = ({ children }) => {
       } catch (err) {
         console.warn("Supabase updateProductionStatus exception:", err);
       }
+    }
+
+    try {
+      await api.updateProductionStatus(orderId, 'all', newStatus);
+    } catch (err) {
+      console.warn("api.updateProductionStatus warning:", err);
     }
 
     setSalesOrders((prev) =>
@@ -2731,8 +2899,124 @@ export const ERPProvider = ({ children }) => {
       );
     }
 
+    try {
+      await api.recordPayment({
+        id: payVoucher.id,
+        orderId: orderId,
+        customerName: order.customerName || 'Customer',
+        amount: amt,
+        method: method || 'UPI',
+        refNo: refNo || `REC-${orderId}`,
+        bankAccountId: bankAccountId || '',
+        bankAccountName: bankAccountName || 'Main Cash Account',
+        recordedBy: activeUser?.name || 'Authorized Staff'
+      });
+    } catch (err) {
+      console.warn("api.recordPayment exception:", err);
+    }
+
     setPayments((prev) => [payVoucher, ...prev]);
     return payVoucher;
+  };
+
+  // Persistent Expenses Helpers
+  const addExpense = async (expenseData) => {
+    try {
+      const res = await api.createExpense({
+        ...expenseData,
+        createdBy: activeUser?.name || 'Authorized Staff'
+      });
+      if (res && res.expense) {
+        setExpenses(prev => [res.expense, ...prev]);
+        return res.expense;
+      }
+    } catch (err) {
+      console.error("addExpense error:", err);
+      throw err;
+    }
+  };
+
+  const removeExpense = async (id) => {
+    try {
+      await api.deleteExpense(id);
+      setExpenses(prev => prev.filter(e => e.id !== id));
+    } catch (err) {
+      console.error("removeExpense error:", err);
+      throw err;
+    }
+  };
+
+  // Inventory Transactions Ledger Helper
+  const addInventoryTransaction = async (txData) => {
+    try {
+      const res = await api.createInventoryTransaction({
+        ...txData,
+        employeeId: activeUser?.id || 'EMP-ADM-01'
+      });
+      if (res && res.success) {
+        await fetchAllERPData();
+      }
+      return res;
+    } catch (err) {
+      console.error("addInventoryTransaction error:", err);
+      throw err;
+    }
+  };
+
+  // Persistent Payroll Commit Helper
+  const commitPayroll = async (payrollData) => {
+    try {
+      const res = await api.commitPayroll({
+        ...payrollData,
+        committedBy: activeUser?.name || 'Admin User'
+      });
+      if (res && res.success) {
+        await fetchAllERPData();
+      }
+      return res;
+    } catch (err) {
+      console.error("commitPayroll error:", err);
+      throw err;
+    }
+  };
+
+  // QC & Rework Ticket Helper
+  const addReworkTicket = async (ticketData) => {
+    try {
+      const res = await api.createReworkTicket({
+        ...ticketData,
+        qcInspector: activeUser?.name || 'QC Staff'
+      });
+      if (res && res.ticket) {
+        setReworkTickets(prev => [res.ticket, ...prev]);
+      }
+      return res;
+    } catch (err) {
+      console.error("addReworkTicket error:", err);
+      throw err;
+    }
+  };
+
+  // Local DB User Authentication
+  const loginWithCredentials = async (username, password) => {
+    try {
+      const data = await api.login(username, password);
+      if (data && data.success && data.user) {
+        setSession({ user: data.user, token: data.token });
+        setActiveUser(data.user);
+        setActiveRole(data.user.role || USER_ROLES.ADMIN);
+        await fetchAllERPData();
+        return { success: true, user: data.user };
+      }
+      return { success: false, error: 'Login failed' };
+    } catch (err) {
+      return { success: false, error: err.message || 'Invalid credentials' };
+    }
+  };
+
+  const logoutUser = () => {
+    api.logout();
+    loginAsDemoAdmin();
   };
 
   // Track WhatsApp Sent
@@ -3638,6 +3922,117 @@ export const ERPProvider = ({ children }) => {
     setProductionTasks(prev => prev.filter(t => t.id !== id));
   };
 
+  const takeProductionTask = async (taskId) => {
+    try {
+      const res = await api.takeProductionTask(taskId);
+      if (res && res.success) {
+        if (res.task) {
+          setProductionTasks(prev => {
+            const exists = prev.some(t => t.id === res.task.id);
+            if (exists) return prev.map(t => t.id === res.task.id ? res.task : t);
+            return [res.task, ...prev];
+          });
+        }
+        fetchAllERPData();
+        return res;
+      }
+      return res;
+    } catch (err) {
+      console.error("takeProductionTask error:", err);
+      throw err;
+    }
+  };
+
+  const takeJobOrderItem = async (itemData) => {
+    try {
+      const res = await api.takeJobOrderItem(itemData);
+      if (res && res.success) {
+        if (res.task) {
+          setProductionTasks(prev => {
+            const exists = prev.some(t => t.id === res.task.id);
+            if (exists) return prev.map(t => t.id === res.task.id ? res.task : t);
+            return [res.task, ...prev];
+          });
+        }
+        fetchAllERPData();
+        return res;
+      }
+      return res;
+    } catch (err) {
+      console.error("takeJobOrderItem error:", err);
+      throw err;
+    }
+  };
+
+  const reassignProductionTask = async (taskId, reassignData) => {
+    try {
+      const res = await api.reassignProductionTask(taskId, reassignData);
+      if (res && res.success) {
+        if (res.task) {
+          setProductionTasks(prev => prev.map(t => t.id === res.task.id ? res.task : t));
+        }
+        fetchAllERPData();
+        return res;
+      }
+      return res;
+    } catch (err) {
+      console.error("reassignProductionTask error:", err);
+      throw err;
+    }
+  };
+
+  const fetchOrderArtwork = async (orderId) => {
+    return await api.fetchOrderArtwork(orderId);
+  };
+
+  const uploadArtwork = async (orderId, artworkData) => {
+    const res = await api.createOrderArtwork(orderId, artworkData);
+    await fetchAllERPData();
+    return res;
+  };
+
+  const approveArtwork = async (versionId, approvalData) => {
+    const res = await api.approveArtwork(versionId, approvalData);
+    await fetchAllERPData();
+    return res;
+  };
+
+  const fetchDeliveries = async (filters = {}) => {
+    const res = await api.fetchDeliveries(filters);
+    if (res && res.success) {
+      setDeliveries(res.deliveries || []);
+    }
+    return res;
+  };
+
+  const createDelivery = async (deliveryData) => {
+    const res = await api.createDelivery(deliveryData);
+    await fetchAllERPData();
+    return res;
+  };
+
+  const fetchCustomerReconciliation = async () => {
+    const res = await api.fetchCustomerReconciliation();
+    if (res && res.success) {
+      setReconciliationData(res.reconciliation || []);
+    }
+    return res;
+  };
+
+  const fetchBackups = async () => {
+    const res = await api.fetchBackups();
+    if (res && res.success) {
+      setBackups(res.backups || []);
+    }
+    return res;
+  };
+
+  const createBackup = async () => {
+    const res = await api.createBackup();
+    await fetchBackups();
+    return res;
+  };
+
   return (
     <ERPContext.Provider
       value={{
@@ -3649,6 +4044,7 @@ export const ERPProvider = ({ children }) => {
         setCompanyBankAccounts,
         activeRole,
         activeUser,
+        switchUser,
         switchRole,
         customers,
         addCustomer,
@@ -3768,6 +4164,9 @@ export const ERPProvider = ({ children }) => {
         updateProductionTask,
         executeTaskAction,
         deleteProductionTask,
+        takeProductionTask,
+        takeJobOrderItem,
+        reassignProductionTask,
         globalSearchQuery,
         setGlobalSearchQuery,
         isSearchOpen,
@@ -3775,7 +4174,32 @@ export const ERPProvider = ({ children }) => {
         isFollowUpsOpen,
         setIsFollowUpsOpen,
         resetDemoData,
-        loginAsDemoAdmin
+        loginAsDemoAdmin,
+        expenses,
+        setExpenses,
+        addExpense,
+        removeExpense,
+        inventoryTransactions,
+        addInventoryTransaction,
+        reworkTickets,
+        addReworkTicket,
+        auditLogs,
+        usersList,
+        realtimeConnected,
+        commitPayroll,
+        loginWithCredentials,
+        logoutUser,
+        deliveries,
+        fetchDeliveries,
+        createDelivery,
+        fetchOrderArtwork,
+        uploadArtwork,
+        approveArtwork,
+        reconciliationData,
+        fetchCustomerReconciliation,
+        backups,
+        fetchBackups,
+        createBackup
       }}
     >
       {children}

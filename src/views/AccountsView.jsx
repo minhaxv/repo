@@ -35,10 +35,22 @@ import {
 import { formatINR, exportToCSV } from '../utils/reportEngine';
 
 export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
-  const { salesOrders, customers, vendors, inventory, payments } = useERP();
+  const {
+    salesOrders,
+    customers,
+    vendors,
+    inventory,
+    payments,
+    expenses,
+    addExpense,
+    removeExpense,
+    reconciliationData,
+    fetchCustomerReconciliation
+  } = useERP();
 
   // Active Section State
   const [activeTab, setActiveTab] = useState(initialTab);
+  const [isReconLoading, setIsReconLoading] = useState(false);
 
   // Journal Vouchers State
   const [journals, setJournals] = useState(initialJournalVouchers);
@@ -59,6 +71,18 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
     debitAccount: 'Raw Material Ink Expense',
     creditAccount: 'Cash Account',
     amount: ''
+  });
+
+  // Persistent Expense Modal State
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [expenseFilterCategory, setExpenseFilterCategory] = useState('ALL');
+  const [expenseForm, setExpenseForm] = useState({
+    category: 'Electricity & Utilities',
+    vendor: '',
+    amount: '',
+    paymentMethod: 'UPI',
+    expenseDate: new Date().toISOString().split('T')[0],
+    description: ''
   });
 
   // Calculate General Ledger & Statements
@@ -118,9 +142,57 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
     alert(`${voucherType} posted successfully!`);
   };
 
+  // Handle Persistent Expense Submission
+  const handleExpenseSubmit = async (e) => {
+    e.preventDefault();
+    const amt = parseFloat(expenseForm.amount) || 0;
+    if (amt <= 0) {
+      alert('Please enter a valid expense amount.');
+      return;
+    }
+
+    try {
+      if (addExpense) {
+        await addExpense({
+          category: expenseForm.category,
+          vendor: expenseForm.vendor,
+          amount: amt,
+          paymentMethod: expenseForm.paymentMethod,
+          expenseDate: expenseForm.expenseDate,
+          description: expenseForm.description
+        });
+      }
+      setIsExpenseModalOpen(false);
+      setExpenseForm({
+        category: 'Electricity & Utilities',
+        vendor: '',
+        amount: '',
+        paymentMethod: 'UPI',
+        expenseDate: new Date().toISOString().split('T')[0],
+        description: ''
+      });
+      alert('Expense recorded and posted to persistent database successfully!');
+    } catch (err) {
+      alert('Error recording expense: ' + err.message);
+    }
+  };
+
+  const handleDeleteExpense = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this expense record?')) return;
+    try {
+      if (removeExpense) {
+        await removeExpense(id);
+      }
+    } catch (err) {
+      alert('Error deleting expense: ' + err.message);
+    }
+  };
+
   // Section Tab Bar Definition
   const accountTabs = [
     { id: 'accounts-dashboard', label: 'Dashboard', icon: CreditCard },
+    { id: 'customer-reconciliation', label: 'Customer Balance Audit', icon: Scale },
+    { id: 'expense-entry', label: 'Expenses (Persistent)', icon: DollarSign },
     { id: 'accounts-daily', label: 'Daily & Day Book', icon: Clock },
     { id: 'cash-book', label: 'Cash & Bank Book', icon: Landmark },
     { id: 'general-ledger', label: 'General Ledger', icon: BookOpen },
@@ -133,6 +205,14 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
     { id: 'balance-sheet', label: 'Balance Sheet', icon: PieChart },
     { id: 'gst-e-filing', label: 'GST e-Filing', icon: FileSpreadsheet }
   ];
+
+  // Auto-fetch reconciliation data when tab is opened
+  React.useEffect(() => {
+    if (activeTab === 'customer-reconciliation' && fetchCustomerReconciliation) {
+      setIsReconLoading(true);
+      fetchCustomerReconciliation().finally(() => setIsReconLoading(false));
+    }
+  }, [activeTab]);
 
   return (
     <div className="view-container">
@@ -316,6 +396,145 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
                   <span style={{ fontWeight: 800 }}>₹0.00</span>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: PERSISTENT OPERATING EXPENSES */}
+      {(activeTab === 'expense-entry' || activeTab === 'expenses') && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Header & Quick Action */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
+                Operational Overhead & Factory Expenses
+              </h3>
+              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                Persistent SQLite records automatically linked to double-entry ledger and profit & loss
+              </span>
+            </div>
+            <button
+              onClick={() => setIsExpenseModalOpen(true)}
+              className="btn btn-primary btn-sm"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#e11d48', borderColor: '#e11d48' }}
+            >
+              <Plus size={15} /> Record Factory Expense
+            </button>
+          </div>
+
+          {/* Expense KPI Summary */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+            <div className="card" style={{ borderLeft: '4px solid #e11d48' }}>
+              <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Total Factory Expenses</span>
+              <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#9f1239', marginTop: '0.25rem' }}>
+                {formatINR((expenses || []).reduce((sum, e) => sum + (Number(e.amount) || 0), 0))}
+              </div>
+              <span style={{ fontSize: '0.72rem', color: '#e11d48', fontWeight: 600 }}>{(expenses || []).length} Recorded Bills</span>
+            </div>
+
+            <div className="card" style={{ borderLeft: '4px solid #f59e0b' }}>
+              <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Utilities & Electricity</span>
+              <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#b45309', marginTop: '0.25rem' }}>
+                {formatINR((expenses || []).filter(e => (e.category || '').toLowerCase().includes('electric') || (e.category || '').toLowerCase().includes('util')).reduce((sum, e) => sum + (Number(e.amount) || 0), 0))}
+              </div>
+              <span style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 600 }}>Factory Power & Bills</span>
+            </div>
+
+            <div className="card" style={{ borderLeft: '4px solid #3b82f6' }}>
+              <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Machine Maintenance & Spares</span>
+              <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e40af', marginTop: '0.25rem' }}>
+                {formatINR((expenses || []).filter(e => (e.category || '').toLowerCase().includes('maint') || (e.category || '').toLowerCase().includes('spare')).reduce((sum, e) => sum + (Number(e.amount) || 0), 0))}
+              </div>
+              <span style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: 600 }}>Roland / Mimaki upkeep</span>
+            </div>
+
+            <div className="card" style={{ borderLeft: '4px solid #10b981' }}>
+              <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Factory Rent & Shop</span>
+              <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#047857', marginTop: '0.25rem' }}>
+                {formatINR((expenses || []).filter(e => (e.category || '').toLowerCase().includes('rent')).reduce((sum, e) => sum + (Number(e.amount) || 0), 0))}
+              </div>
+              <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600 }}>Premises Fixed Cost</span>
+            </div>
+          </div>
+
+          {/* Expenses Table */}
+          <div className="card">
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div className="card-title">
+                <DollarSign size={18} color="#e11d48" /> Expense Ledger Records
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <select
+                  value={expenseFilterCategory}
+                  onChange={(e) => setExpenseFilterCategory(e.target.value)}
+                  className="form-control form-control-sm"
+                  style={{ width: '180px' }}
+                >
+                  <option value="ALL">All Categories</option>
+                  <option value="Electricity & Utilities">Electricity & Utilities</option>
+                  <option value="Machine Maintenance & Spares">Machine Maintenance</option>
+                  <option value="Shop Supplies & Tools">Shop Supplies</option>
+                  <option value="Factory Rent">Factory Rent</option>
+                  <option value="Office & Admin">Office & Admin</option>
+                  <option value="Printing Inks & Solvents">Inks & Solvents</option>
+                  <option value="Other Expense">Other Expense</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="table-responsive">
+              <table className="erp-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Date</th>
+                    <th>Category</th>
+                    <th>Vendor / Payee</th>
+                    <th>Description</th>
+                    <th>Method</th>
+                    <th style={{ textAlign: 'right' }}>Amount (₹)</th>
+                    <th>Recorded By</th>
+                    <th style={{ textAlign: 'center' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(expenses || []).length === 0 ? (
+                    <tr>
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                        No operating expenses recorded yet. Click "Record Factory Expense" to add.
+                      </td>
+                    </tr>
+                  ) : (
+                    (expenses || [])
+                      .filter(e => expenseFilterCategory === 'ALL' || e.category === expenseFilterCategory)
+                      .map((exp) => (
+                        <tr key={exp.id || exp.expense_id}>
+                          <td style={{ fontWeight: 700, color: '#64748b', fontSize: '0.8rem' }}>{exp.id || exp.expense_id}</td>
+                          <td style={{ fontSize: '0.85rem' }}>{exp.expense_date || exp.date || exp.expenseDate}</td>
+                          <td><span className="badge badge-rose">{exp.category}</span></td>
+                          <td style={{ fontWeight: 700, color: '#0f172a' }}>{exp.vendor || 'General Supplier'}</td>
+                          <td style={{ fontSize: '0.82rem', color: '#475569', maxWidth: '220px' }}>{exp.description || '—'}</td>
+                          <td><span className="badge badge-slate">{exp.payment_method || exp.paymentMethod || 'Cash'}</span></td>
+                          <td style={{ textAlign: 'right', fontWeight: 800, color: '#e11d48', fontSize: '0.95rem' }}>
+                            {formatINR(exp.amount)}
+                          </td>
+                          <td style={{ fontSize: '0.82rem', color: '#64748b' }}>{exp.created_by || exp.createdBy || 'Staff'}</td>
+                          <td style={{ textAlign: 'center' }}>
+                            <button
+                              onClick={() => handleDeleteExpense(exp.id || exp.expense_id)}
+                              className="btn btn-sm btn-secondary"
+                              style={{ padding: '0.2rem 0.45rem', color: '#dc2626' }}
+                              title="Delete Record"
+                            >
+                              <X size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -625,6 +844,202 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
         </div>
       )}
 
+      {/* TAB: CUSTOMER BALANCE AUDIT & RECONCILIATION */}
+      {activeTab === 'customer-reconciliation' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Header Info & Actions */}
+          <div className="card" style={{ borderLeft: '4px solid #2563eb' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Scale size={20} color="#2563eb" /> Customer Outstanding Balance Reconciliation
+                </h3>
+                <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.82rem', color: '#64748b', maxWidth: '850px', lineHeight: 1.5 }}>
+                  Authoritative reconciliation comparing historical opening balances, cumulative billed sales orders, and allocated payments against stored outstanding ledger balances. Discrepancies represent verified pre-digitization opening balances and are preserved traceably without silent overwrites.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={() => {
+                    setIsReconLoading(true);
+                    fetchCustomerReconciliation && fetchCustomerReconciliation().finally(() => setIsReconLoading(false));
+                  }}
+                  className="btn btn-secondary btn-sm"
+                  disabled={isReconLoading}
+                >
+                  <Clock size={14} /> {isReconLoading ? 'Recalculating...' : 'Refresh Audit'}
+                </button>
+                <button
+                  onClick={() => {
+                    const headers = ['Customer ID', 'Customer Name', 'Opening Balance (₹)', 'Total Invoiced (₹)', 'Total Payments (₹)', 'Calculated Balance (₹)', 'Stored Balance (₹)', 'Discrepancy / Variance (₹)', 'Status'];
+                    const rows = (reconciliationData || []).map(r => [
+                      r.customerId,
+                      r.customerName,
+                      r.openingBalance,
+                      r.totalInvoiced,
+                      r.totalPayments,
+                      r.calculatedClosingBalance,
+                      r.storedOutstanding,
+                      r.difference,
+                      r.status
+                    ]);
+                    exportToCSV('customer_balance_reconciliation.csv', headers, rows);
+                  }}
+                  className="btn btn-primary btn-sm"
+                >
+                  <Download size={14} /> Export Audit CSV
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Audit Summary Metrics */}
+          {(() => {
+            const list = reconciliationData || [];
+            const totalOpening = list.reduce((acc, r) => acc + (Number(r.openingBalance) || 0), 0);
+            const totalBilled = list.reduce((acc, r) => acc + (Number(r.totalInvoiced) || 0), 0);
+            const totalPaid = list.reduce((acc, r) => acc + (Number(r.totalPayments) || 0), 0);
+            const totalCalc = list.reduce((acc, r) => acc + (Number(r.calculatedClosingBalance) || 0), 0);
+            const totalStored = list.reduce((acc, r) => acc + (Number(r.storedOutstanding) || 0), 0);
+            const totalDiff = list.reduce((acc, r) => acc + (Number(r.difference) || 0), 0);
+
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                <div className="card" style={{ borderLeft: '4px solid #64748b' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Legacy Opening Balances</span>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#334155', marginTop: '0.2rem' }}>
+                    {formatINR(totalOpening)}
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Pre-digitization balances</span>
+                </div>
+
+                <div className="card" style={{ borderLeft: '4px solid #2563eb' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Total Billed Orders</span>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1e40af', marginTop: '0.2rem' }}>
+                    {formatINR(totalBilled)}
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: '#2563eb' }}>Cumulative order totals</span>
+                </div>
+
+                <div className="card" style={{ borderLeft: '4px solid #10b981' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Total Payments Received</span>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#047857', marginTop: '0.2rem' }}>
+                    {formatINR(totalPaid)}
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: '#059669' }}>Verified receipts & advances</span>
+                </div>
+
+                <div className="card" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Calculated Balance</span>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#6d28d9', marginTop: '0.2rem' }}>
+                    {formatINR(totalCalc)}
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: '#8b5cf6' }}>Opening + Orders - Paid</span>
+                </div>
+
+                <div className="card" style={{ borderLeft: '4px solid #f59e0b' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Stored Ledger Balance</span>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#b45309', marginTop: '0.2rem' }}>
+                    {formatINR(totalStored)}
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: '#b45309' }}>Customers table stored value</span>
+                </div>
+
+                <div className="card" style={{ borderLeft: totalDiff === 0 ? '4px solid #10b981' : '4px solid #ef4444' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Net Discrepancy</span>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: totalDiff === 0 ? '#047857' : '#b91c1c', marginTop: '0.2rem' }}>
+                    {formatINR(totalDiff)}
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: totalDiff === 0 ? '#10b981' : '#ef4444' }}>
+                    {totalDiff === 0 ? 'All reconciled' : 'Requires review'}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Detailed Reconciliation Table */}
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', textAlign: 'left' }}>
+                    <th style={{ padding: '0.75rem 1rem' }}>Customer ID</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Customer Name</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Opening Bal (₹)</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Total Invoiced (₹)</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Total Paid (₹)</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Calculated Closing (₹)</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Stored Balance (₹)</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Variance (₹)</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Audit Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(reconciliationData && reconciliationData.length > 0) ? (
+                    reconciliationData.map((row) => {
+                      const hasDiscrepancy = Math.abs(row.difference) > 0.01;
+                      return (
+                        <tr key={row.customerId} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: hasDiscrepancy ? '#fffbeb' : '#ffffff' }}>
+                          <td style={{ padding: '0.75rem 1rem', fontWeight: 600, color: '#3b82f6' }}>{row.customerId}</td>
+                          <td style={{ padding: '0.75rem 1rem', fontWeight: 600, color: '#1e293b' }}>{row.customerName}</td>
+                          <td style={{ padding: '0.75rem 1rem', textAlign: 'right', color: '#64748b' }}>{formatINR(row.openingBalance)}</td>
+                          <td style={{ padding: '0.75rem 1rem', textAlign: 'right', color: '#0284c7', fontWeight: 500 }}>{formatINR(row.totalInvoiced)}</td>
+                          <td style={{ padding: '0.75rem 1rem', textAlign: 'right', color: '#16a34a', fontWeight: 500 }}>{formatINR(row.totalPayments)}</td>
+                          <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 700, color: '#4338ca' }}>{formatINR(row.calculatedClosingBalance)}</td>
+                          <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 700, color: '#334155' }}>{formatINR(row.storedOutstanding)}</td>
+                          <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 800, color: hasDiscrepancy ? '#dc2626' : '#16a34a' }}>
+                            {hasDiscrepancy ? (row.difference > 0 ? `+${formatINR(row.difference)}` : `-${formatINR(Math.abs(row.difference))}`) : '₹0.00'}
+                          </td>
+                          <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                            {hasDiscrepancy ? (
+                              <span style={{
+                                backgroundColor: '#fef3c7',
+                                color: '#b45309',
+                                padding: '0.25rem 0.55rem',
+                                borderRadius: '9999px',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.3rem'
+                              }}>
+                                <AlertCircle size={12} /> Legacy Opening Bal
+                              </span>
+                            ) : (
+                              <span style={{
+                                backgroundColor: '#dcfce7',
+                                color: '#15803d',
+                                padding: '0.25rem 0.55rem',
+                                borderRadius: '9999px',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.3rem'
+                              }}>
+                                <Check size={12} /> Reconciled
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>
+                        {isReconLoading ? 'Calculating live customer reconciliation...' : 'No customer reconciliation data available.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* VOUCHER ENTRY MODAL */}
       {isVoucherModalOpen && (
         <div className="modal-overlay">
@@ -715,6 +1130,120 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
                 </button>
                 <button type="submit" className="btn btn-primary">
                   <Check size={16} /> Post Voucher Entry
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* RECORD PERSISTENT FACTORY EXPENSE MODAL */}
+      {isExpenseModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsExpenseModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+            <div className="modal-header">
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Plus size={18} color="#e11d48" /> Record Persistent Factory Expense
+              </h3>
+              <button onClick={() => setIsExpenseModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleExpenseSubmit}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                <div className="form-group">
+                  <label className="form-label">Expense Date *</label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={expenseForm.expenseDate}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, expenseDate: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Expense Category *</label>
+                  <select
+                    className="form-control"
+                    value={expenseForm.category}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}
+                    required
+                  >
+                    <option value="Electricity & Utilities">Electricity & Utilities</option>
+                    <option value="Machine Maintenance & Spares">Machine Maintenance & Spares</option>
+                    <option value="Shop Supplies & Tools">Shop Supplies & Tools</option>
+                    <option value="Factory Rent">Factory Rent</option>
+                    <option value="Office & Admin">Office & Admin</option>
+                    <option value="Travel & Fuel">Travel & Fuel</option>
+                    <option value="Marketing & Promotion">Marketing & Promotion</option>
+                    <option value="Printing Inks & Solvents">Printing Inks & Solvents</option>
+                    <option value="Other Expense">Other Expense</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Vendor / Payee Name *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Maharashtra State Electricity, Roland Service Engineer"
+                    className="form-control"
+                    value={expenseForm.vendor}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, vendor: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
+                  <div className="form-group">
+                    <label className="form-label">Amount (₹) *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      className="form-control"
+                      style={{ fontSize: '1.1rem', fontWeight: 800 }}
+                      value={expenseForm.amount}
+                      onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Payment Method *</label>
+                    <select
+                      className="form-control"
+                      value={expenseForm.paymentMethod}
+                      onChange={(e) => setExpenseForm({ ...expenseForm, paymentMethod: e.target.value })}
+                      required
+                    >
+                      <option value="UPI">UPI / GPay / PhonePe</option>
+                      <option value="Cash">Cash Account</option>
+                      <option value="Bank Transfer">Bank Transfer (NEFT/RTGS)</option>
+                      <option value="Cheque">Cheque</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Bill / Invoice # / Description</label>
+                  <textarea
+                    rows="2"
+                    className="form-control"
+                    placeholder="e.g. Factory bill #8910 for June-July power consumption"
+                    value={expenseForm.description}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
+                  ></textarea>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" onClick={() => setIsExpenseModalOpen(false)} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ background: '#e11d48', borderColor: '#e11d48' }}>
+                  <Check size={16} /> Save & Post to Journal
                 </button>
               </div>
             </form>

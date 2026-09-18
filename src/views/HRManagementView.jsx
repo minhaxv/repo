@@ -41,7 +41,7 @@ import {
 import { useERP } from '../context/ERPContext';
 import { CreateEmployeeModal, DEPARTMENTS } from '../components/modals/CreateEmployeeModal';
 
-export const HRManagementView = () => {
+export const HRManagementView = ({ initialTab = 'attendance' }) => {
   const {
     employees,
     attendanceRecords,
@@ -61,7 +61,7 @@ export const HRManagementView = () => {
     assignBiometricId
   } = useERP();
 
-  const [activeSubTab, setActiveSubTab] = useState('attendance'); // 'attendance', 'payroll', 'leaves', 'commissions', 'directory', 'biometric-device'
+  const [activeSubTab, setActiveSubTab] = useState(initialTab === 'hr-payroll' ? 'payroll' : initialTab); // 'attendance', 'payroll', 'leaves', 'commissions', 'directory', 'biometric-device'
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedMonth, setSelectedMonth] = useState('2026-07');
   const [searchQuery, setSearchQuery] = useState('');

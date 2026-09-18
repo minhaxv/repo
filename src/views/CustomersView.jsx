@@ -22,11 +22,32 @@ export const CustomersView = ({ onNavigate }) => {
     }
   };
 
+  // Helper to extract all contact numbers for a customer
+  const getCustomerNumbers = (c) => {
+    if (!c) return [];
+    let addMobiles = [];
+    if (c.additionalMobiles) {
+      addMobiles = Array.isArray(c.additionalMobiles) ? c.additionalMobiles : [c.additionalMobiles];
+    } else if (c.additional_mobiles) {
+      try {
+        addMobiles = typeof c.additional_mobiles === 'string' ? JSON.parse(c.additional_mobiles) : c.additional_mobiles;
+      } catch (e) {
+        addMobiles = [c.additional_mobiles];
+      }
+    }
+    return [c.mobile, ...(Array.isArray(addMobiles) ? addMobiles : [])]
+      .filter(Boolean)
+      .map((n) => String(n).toLowerCase());
+  };
+
   const filteredCustomers = (customers || []).filter((c) => {
     const q = (searchQuery || '').toLowerCase();
+    const numbers = getCustomerNumbers(c);
+    const matchesNumbers = numbers.some(n => n.includes(q));
+
     const matchesSearch =
       (c.name || '').toLowerCase().includes(q) ||
-      (c.mobile || '').includes(q) ||
+      matchesNumbers ||
       (c.code || '').toLowerCase().includes(q) ||
       (c.gstin || '').toLowerCase().includes(q);
 
@@ -158,7 +179,45 @@ export const CustomersView = ({ onNavigate }) => {
                         {c.name}
                       </button>
                     </td>
-                    <td style={{ fontWeight: 600 }}>{c.mobile || 'N/A'}</td>
+                    <td style={{ fontWeight: 600 }}>
+                      {(() => {
+                        let extraMobiles = [];
+                        if (c.additionalMobiles) {
+                          extraMobiles = Array.isArray(c.additionalMobiles) ? c.additionalMobiles : [c.additionalMobiles];
+                        } else if (c.additional_mobiles) {
+                          try {
+                            extraMobiles = typeof c.additional_mobiles === 'string' ? JSON.parse(c.additional_mobiles) : c.additional_mobiles;
+                          } catch (e) {
+                            extraMobiles = [c.additional_mobiles];
+                          }
+                        }
+                        const cleanExtra = (extraMobiles || []).filter(Boolean);
+
+                        return (
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <a href={c.mobile ? `tel:${c.mobile}` : undefined} style={{ color: '#0f172a', textDecoration: 'none' }} title="Primary Mobile">
+                                {c.mobile || 'N/A'}
+                              </a>
+                            </div>
+                            {cleanExtra.length > 0 && (
+                              <div style={{ marginTop: '0.2rem', display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                                {cleanExtra.map((em, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="badge badge-slate"
+                                    style={{ fontSize: '0.67rem', padding: '0.05rem 0.35rem', display: 'inline-flex', alignItems: 'center', gap: '2px' }}
+                                    title={`Alternate Phone #${idx + 1}`}
+                                  >
+                                    📞 {em}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </td>
                     <td>
                       <span className="badge badge-blue">{c.type || 'Customer'}</span>
                     </td>
@@ -261,9 +320,35 @@ export const CustomersView = ({ onNavigate }) => {
                   <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0f172a' }}>{historyCust.code || historyCust.id}</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>MOBILE & EMAIL</div>
-                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f172a' }}>{historyCust.mobile}</div>
-                  {historyCust.email && <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{historyCust.email}</div>}
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>CONTACT NUMBERS & EMAIL</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <span>📱 {historyCust.mobile}</span>
+                    <span className="badge badge-blue" style={{ fontSize: '0.62rem', padding: '0.05rem 0.3rem' }}>Primary</span>
+                  </div>
+                  {(() => {
+                    let extra = [];
+                    if (historyCust.additionalMobiles) {
+                      extra = Array.isArray(historyCust.additionalMobiles) ? historyCust.additionalMobiles : [historyCust.additionalMobiles];
+                    } else if (historyCust.additional_mobiles) {
+                      try {
+                        extra = typeof historyCust.additional_mobiles === 'string' ? JSON.parse(historyCust.additional_mobiles) : historyCust.additional_mobiles;
+                      } catch (e) {
+                        extra = [historyCust.additional_mobiles];
+                      }
+                    }
+                    const cleanExtra = (extra || []).filter(Boolean);
+                    if (cleanExtra.length === 0) return null;
+                    return (
+                      <div style={{ fontSize: '0.74rem', color: '#475569', marginTop: '0.2rem', display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                        {cleanExtra.map((em, idx) => (
+                          <span key={idx} className="badge badge-slate" style={{ fontSize: '0.66rem' }}>
+                            📞 {em}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  {historyCust.email && <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.2rem' }}>✉️ {historyCust.email}</div>}
                 </div>
                 <div>
                   <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>GSTIN & STATE</div>

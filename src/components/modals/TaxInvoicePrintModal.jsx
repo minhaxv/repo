@@ -135,6 +135,7 @@ export const TaxInvoicePrintModal = ({ order, isOpen, onClose }) => {
               <div style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: '#64748b', borderBottom: '1px solid #cbd5e1', paddingBottom: '0.2rem', marginBottom: '0.4rem' }}>
                 SHIPPING & STAFF DETAILS
               </div>
+              <div>Billed By: <strong style={{ color: '#1e40af' }}>{order.billedByStaff || order.salesPersonName || 'Admin User'}</strong></div>
               <div>Sales Person: <strong>{order.salesPersonName}</strong></div>
               <div>Care Of Person: <strong>{order.careOfName}</strong></div>
               <div>Delivery Mode: <strong>{order.deliveryMode}</strong></div>

@@ -7,7 +7,8 @@
     "server": "node server/index.js",
     "dev": "concurrently \"node server/index.js\" \"npx vite\"",
     "build": "npx vite build",
-    "preview": "npx vite preview"
+    "preview": "npx vite preview",
+    "test": "node tests/billingEngine.test.js && node tests/authRbac.test.js && node tests/inventoryLedger.test.js && node tests/concurrencyAndBackups.test.js"
   },
   "dependencies": {
     "@supabase/server": "^1.4.1",
@@ -17,6 +18,7 @@
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "lucide-react": "^0.344.0",
+    "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

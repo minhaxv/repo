@@ -1,0 +1,26 @@
+{
+  "extracted_at": "2026-09-18T14:24:27.259Z",
+  "schema_version": "2.1.0",
+  "database_source": "SQLite (database/erp.sqlite)",
+  "summary": {
+    "customers": 11,
+    "products": 16,
+    "materials": 6,
+    "quotations": 2,
+    "orders": 9,
+    "invoices": 9,
+    "order_items": 16,
+    "payments": 8,
+    "employees": 14,
+    "users": 15,
+    "suppliers": 4,
+    "purchases": 12,
+    "expenses": 7,
+    "production_tasks": 13,
+    "audit_logs": 4
+  },
+  "integrity_checks": {
+    "zero_mock_fallbacks": true,
+    "authoritative_store": "SQLite WAL mode"
+  }
+}

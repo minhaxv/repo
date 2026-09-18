@@ -174,6 +174,23 @@ export const SearchableSelect = ({
         }
       }
 
+      // Special check for customer additionalMobiles
+      if (type === 'customer') {
+        let addMobiles = [];
+        if (opt.additionalMobiles) {
+          addMobiles = Array.isArray(opt.additionalMobiles) ? opt.additionalMobiles : [opt.additionalMobiles];
+        } else if (opt.additional_mobiles) {
+          try {
+            addMobiles = typeof opt.additional_mobiles === 'string' ? JSON.parse(opt.additional_mobiles) : [opt.additional_mobiles];
+          } catch (e) {
+            addMobiles = [opt.additional_mobiles];
+          }
+        }
+        if (Array.isArray(addMobiles) && addMobiles.some(m => String(m).toLowerCase().includes(q))) {
+          return true;
+        }
+      }
+
       // Fallback: check label and value (only if not product preset)
       if (type !== 'product') {
         const label = getLabel(opt).toLowerCase();
@@ -436,6 +453,25 @@ export const SearchableSelect = ({
                 <Phone size={11} color="#64748b" /> {opt.mobile}
               </span>
             )}
+            {(() => {
+              let extra = [];
+              if (opt.additionalMobiles) {
+                extra = Array.isArray(opt.additionalMobiles) ? opt.additionalMobiles : [opt.additionalMobiles];
+              } else if (opt.additional_mobiles) {
+                try {
+                  extra = typeof opt.additional_mobiles === 'string' ? JSON.parse(opt.additional_mobiles) : [opt.additional_mobiles];
+                } catch (e) {
+                  extra = [opt.additional_mobiles];
+                }
+              }
+              const clean = (extra || []).filter(Boolean);
+              if (clean.length === 0) return null;
+              return (
+                <span className="badge badge-slate" style={{ fontSize: '0.66rem', padding: '0.05rem 0.3rem' }} title={`Alternate: ${clean.join(', ')}`}>
+                  +{clean.length} alt
+                </span>
+              );
+            })()}
             {opt.gstin && (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
                 <Hash size={11} color="#64748b" /> GST: <strong style={{ color: '#1e40af' }}>{opt.gstin}</strong>

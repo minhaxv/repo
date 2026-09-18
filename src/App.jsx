@@ -188,7 +188,9 @@ const MainAppContent = () => {
             {activeTab === 'employees' && <EmployeesView />}
             {activeTab === 'sales-persons' && <SalesPersonsView />}
             {activeTab === 'care-of-persons' && <CareOfManagementView />}
-            {(activeTab === 'hr-payroll' || activeTab === 'attendance') && <HRManagementView />}
+            {(activeTab === 'hr-payroll' || activeTab === 'attendance') && (
+              <HRManagementView key={activeTab} initialTab={activeTab} />
+            )}
             {activeTab === 'products' && <ProductsView />}
             {activeTab === 'machines' && <MachinesView />}
             {activeTab === 'workflows' && <WorkflowsView />}

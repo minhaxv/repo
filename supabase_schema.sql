@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS public.customers (
     code TEXT UNIQUE,
     name TEXT NOT NULL,
     mobile TEXT,
+    additional_mobiles TEXT,
     email TEXT,
     gstin TEXT,
     type TEXT DEFAULT 'Walk-in',

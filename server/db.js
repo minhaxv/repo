@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { runMigrations } from './migrations.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,6 +52,7 @@ export function initDatabase() {
       customer_code TEXT UNIQUE,
       name TEXT NOT NULL,
       mobile TEXT,
+      additional_mobiles TEXT,
       email TEXT,
       address TEXT,
       gst_number TEXT,
@@ -179,6 +181,10 @@ export function initDatabase() {
       advance_amount REAL DEFAULT 0,
       balance_amount REAL DEFAULT 0,
       delivered_by TEXT,
+      billed_by_staff TEXT,
+      billed_by_id TEXT,
+      billed_by_role TEXT,
+      billed_at TEXT,
       signature_url TEXT,
       whatsapp_sent INTEGER DEFAULT 0,
       notes TEXT,
@@ -495,9 +501,15 @@ export function initDatabase() {
 
   try { db.prepare("ALTER TABLE employees ADD COLUMN designation TEXT").run(); } catch(e) {}
   try { db.prepare("ALTER TABLE employees ADD COLUMN status TEXT DEFAULT 'Active'").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE customers ADD COLUMN additional_mobiles TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_orders ADD COLUMN billed_by_staff TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_orders ADD COLUMN billed_by_id TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_orders ADD COLUMN billed_by_role TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_orders ADD COLUMN billed_at TEXT").run(); } catch(e) {}
 }
 
-// Call schema initialization
+// Call schema initialization & migration runner
 initDatabase();
+runMigrations(db);
 
 export default db;

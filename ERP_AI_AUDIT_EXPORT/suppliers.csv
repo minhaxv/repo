@@ -1,0 +1,5 @@
+"supplier_id","supplier_code","name","category","mobile","email","address","gstin","pending_payment","avg_turnaround_days","status"
+"VEN-01","VEN-01","Apex Acrylic Cutters & Engravers","Laser & CNC Cutting","984XXXX888","","","27AAFAA9988C1Z1","14500","2","Active"
+"VEN-02","VEN-02","National Flex & Billboard Printing","Grand Format Printing","984XXXX777","","","27BBFFB8877D1Z2","22000","1","Active"
+"VEN-03","VEN-03","LaserCraft India (Metal Letters)","Brass & SS Fabrication","984XXXX666","","","27CCFFC7766E1Z3","8500","4","Active"
+"VEN-04","VEN-04","Royal Offset Printers (Bulk Packaging)","Commercial Offset","984XXXX555","","","27DDFDD6655F1Z4","0","3","Active"

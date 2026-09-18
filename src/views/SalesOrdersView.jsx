@@ -38,7 +38,9 @@ import {
   X,
   History,
   XCircle,
-  AlertTriangle
+  AlertTriangle,
+  Users,
+  ExternalLink
 } from 'lucide-react';
 
 export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null, initialType = 'Direct', initialCust = null, onNavigate = null, isQuotationsOnly = false }) => {
@@ -78,8 +80,22 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
   const [selectedOrderId, setSelectedOrderId] = useState(initialSelectId);
   const [editingOrderId, setEditingOrderId] = useState(null);
   const [activeTabFilter, setActiveTabFilter] = useState(isQuotationsMode ? 'ALL_QUOTES' : 'ALL');
+  const [staffFilter, setStaffFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSavingOrder, setIsSavingOrder] = useState(false);
+
+  // Compute unique billing staff across all orders and employees
+  const uniqueBillingStaff = React.useMemo(() => {
+    const set = new Set();
+    (salesOrders || []).forEach(o => {
+      const name = o.billedByStaff || o.salesPersonName;
+      if (name) set.add(name);
+    });
+    (employees || []).forEach(e => {
+      if (e.name) set.add(e.name);
+    });
+    return Array.from(set).sort();
+  }, [salesOrders, employees]);
 
   // Cancellation & Deletion Modal States
   const [cancellingOrder, setCancellingOrder] = useState(null);
@@ -156,6 +172,10 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
     orderType: initialType || 'Direct',
     orderDate: new Date().toISOString().split('T')[0],
     deliveryDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    billedByStaff: activeUser?.name || 'Minhaj V (Admin)',
+    billedByStaffId: activeUser?.id || 'EMP-ADM-01',
+    billedByRole: activeUser?.designation || activeUser?.role || 'Senior Sales Executive',
+    billedByDept: activeUser?.department || 'Sales',
     salesPersonId: salesPersons[0]?.id || '',
     salesPersonName: salesPersons[0]?.name || '',
     careOfId: careOfPersons[0]?.id || '',
@@ -221,12 +241,24 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
 
   const handleSelectCustomer = (cust) => {
     if (!cust) return;
+    let addMobiles = [];
+    if (cust.additionalMobiles) {
+      addMobiles = Array.isArray(cust.additionalMobiles) ? cust.additionalMobiles : [cust.additionalMobiles];
+    } else if (cust.additional_mobiles) {
+      try {
+        addMobiles = typeof cust.additional_mobiles === 'string' ? JSON.parse(cust.additional_mobiles) : cust.additional_mobiles;
+      } catch (e) {
+        addMobiles = [cust.additional_mobiles];
+      }
+    }
+
     const mappedCust = {
       ...cust,
       id: cust.id,
       code: cust.code || '',
       name: cust.name || '',
       mobile: cust.mobile || '',
+      additionalMobiles: (addMobiles || []).filter(Boolean),
       email: cust.email || '',
       gstin: cust.gstin || '',
       type: cust.type || 'Retail Customer',
@@ -279,6 +311,10 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
     setOrderHeader({
       orderDate: order.orderDate,
       deliveryDate: order.deliveryDate,
+      billedByStaff: order.billedByStaff || order.salesPersonName || activeUser?.name || 'Admin User',
+      billedByStaffId: order.billedByStaffId || order.salesPersonId || '',
+      billedByRole: order.billedByRole || '',
+      billedByDept: order.billedByDept || '',
       salesPersonId: order.salesPersonId || salesPersons[0]?.id || '',
       salesPersonName: order.salesPersonName || '',
       careOfId: order.careOfId || careOfPersons[0]?.id || '',
@@ -463,6 +499,11 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
       customerName: selectedCust.name || '',
       customerMobile: selectedCust.mobile || '',
       customerState: selectedCust.state || 'Maharashtra (27)',
+      billedByStaff: orderHeader.billedByStaff || activeUser?.name || 'Admin User',
+      billedByStaffId: orderHeader.billedByStaffId || activeUser?.id || '',
+      billedByRole: orderHeader.billedByRole || activeUser?.designation || activeUser?.role || 'Billing Staff',
+      billedByDept: orderHeader.billedByDept || activeUser?.department || 'Sales',
+      billedAt: orderHeader.billedAt || new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
       salesPersonId: orderHeader.salesPersonId || '',
       salesPersonName: sp?.name || 'House Sales',
       careOfId: orderHeader.careOfId || '',
@@ -567,10 +608,14 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
 
   // Filtered Orders List (Strict separation: Quotations vs Sales Orders)
   const filteredOrders = (salesOrders || []).filter((o) => {
+    const staffName = o.billedByStaff || o.salesPersonName || 'Admin User';
+    if (staffFilter !== 'ALL' && staffName !== staffFilter) return false;
+
     const matchesSearch =
       (o.id || '').toLowerCase().includes((searchQuery || '').toLowerCase()) ||
       (o.customerName || '').toLowerCase().includes((searchQuery || '').toLowerCase()) ||
-      (o.customerMobile || '').includes(searchQuery || '');
+      (o.customerMobile || '').includes(searchQuery || '') ||
+      staffName.toLowerCase().includes((searchQuery || '').toLowerCase());
 
     if (!matchesSearch) return false;
 
@@ -597,6 +642,64 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
   });
 
   const selectedOrder = (salesOrders || []).find((o) => o.id === selectedOrderId) || (salesOrders || [])[0] || null;
+
+  // Extract all assigned personnel for selectedOrder (Who billed, designed, printed, sales person, other etc)
+  const assignedPersonnel = React.useMemo(() => {
+    if (!selectedOrder) return null;
+
+    const orderItems = selectedOrder.items || [];
+
+    // 1. Who Billed
+    const billedBy = {
+      name: selectedOrder.billedByStaff || selectedOrder.salesPersonName || 'Admin User',
+      role: selectedOrder.billedByRole || selectedOrder.billedByDept || 'Sales & Counter Billing',
+      time: selectedOrder.billedAt || selectedOrder.orderDate || 'At Order Creation'
+    };
+
+    // 2. Who is Sales Person
+    const salesPerson = {
+      name: selectedOrder.salesPersonName || 'House Sales',
+      role: 'Sales Executive',
+      careOf: selectedOrder.careOfName || null
+    };
+
+    // 3. Who is Designed
+    const itemDesigners = [...new Set(orderItems.map(i => i.designerName).filter(Boolean))];
+    const itemDesignReq = orderItems.some(i => i.designerRequired === 'YES');
+    const designStatus = orderItems.find(i => i.designStatus)?.designStatus || (itemDesignReq ? 'In Progress' : 'Client Ready Artwork');
+    const designerName = itemDesigners.length > 0
+      ? itemDesigners.join(', ')
+      : (itemDesignReq ? 'Rahul Studio (In-house Designer)' : 'Ready Client Artwork / Prepress Proofing');
+
+    // 4. Who is Printed
+    const itemPrinters = [...new Set(orderItems.map(i => i.printerName).filter(Boolean))];
+    const printerName = itemPrinters.length > 0
+      ? itemPrinters.join(', ')
+      : 'Vikas Patil (Senior Flex & UV Operator)';
+
+    // 5. Who is Finished / Other
+    const itemFinishers = [...new Set(orderItems.map(i => i.finisherName).filter(Boolean))];
+    const finisherName = itemFinishers.length > 0
+      ? itemFinishers.join(', ')
+      : 'Sunil Vishwakarma (Fabricator) & Rahman (Lamination)';
+
+    // 6. Who is Delivered
+    const deliveredBy = selectedOrder.deliveredBy || 'Rakesh Yadav (Delivery Supervisor)';
+    const deliveryMode = selectedOrder.deliveryMode || 'Local Express Delivery';
+
+    // 7. Outsource Vendors
+    const outsourceVendors = [...new Set(orderItems.filter(i => i.outsource).map(i => i.vendorName).filter(Boolean))];
+
+    return {
+      billedBy,
+      salesPerson,
+      designedBy: { name: designerName, status: designStatus, req: itemDesignReq },
+      printedBy: { name: printerName, status: selectedOrder.productionStatus },
+      finishedBy: { name: finisherName },
+      deliveredBy: { name: deliveredBy, mode: deliveryMode },
+      outsourceVendors
+    };
+  }, [selectedOrder]);
 
   return (
     <div className="view-container">
@@ -714,6 +817,14 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                       Change
                     </button>
                   </div>
+                  <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.2rem', color: '#334155' }}>
+                    <span>📱 <strong>{selectedCust.mobile || 'No Mobile'}</strong></span>
+                    {selectedCust.additionalMobiles && selectedCust.additionalMobiles.length > 0 && (
+                      <span style={{ color: '#64748b' }}>
+                        (Alt: {selectedCust.additionalMobiles.join(', ')})
+                      </span>
+                    )}
+                  </div>
                   <div>GSTIN: <strong>{selectedCust.gstin || 'Unregistered (URP)'}</strong></div>
                   <div>Address: {selectedCust.address || 'N/A'} ({selectedCust.state || 'Maharashtra (27)'})</div>
                   <div style={{ display: 'flex', gap: '1rem', marginTop: '0.4rem', paddingTop: '0.4rem', borderTop: '1px dashed #bfdbfe' }}>
@@ -741,6 +852,38 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                   value={orderHeader.orderDate}
                   onChange={(e) => setOrderHeader({ ...orderHeader, orderDate: e.target.value })}
                 />
+              </div>
+
+              {/* Billed By Staff (Billing Employee Selector) */}
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 800, color: '#1e40af' }}>
+                  <UserCheck size={14} color="#1e40af" /> Billed By (Billing Staff)
+                </label>
+                <select
+                  className="form-select"
+                  value={orderHeader.billedByStaff || activeUser?.name || 'Admin User'}
+                  onChange={(e) => {
+                    const selectedName = e.target.value;
+                    const foundEmp = (employees || []).find(emp => emp.name === selectedName);
+                    setOrderHeader({
+                      ...orderHeader,
+                      billedByStaff: selectedName,
+                      billedByStaffId: foundEmp?.id || (selectedName.includes('Admin') ? 'EMP-ADM-01' : ''),
+                      billedByRole: foundEmp?.designation || foundEmp?.role || (selectedName.includes('Admin') ? 'Administrator' : 'Billing Staff'),
+                      billedByDept: foundEmp?.department || 'Sales'
+                    });
+                  }}
+                  style={{ borderColor: '#93c5fd', background: '#eff6ff', fontWeight: 700, color: '#1e40af' }}
+                >
+                  <option value={activeUser?.name || 'Admin User'}>
+                    ⭐ {activeUser?.name || 'Admin User'} ({activeUser?.department || activeUser?.role || 'Current User'}) [Active Login]
+                  </option>
+                  {(employees || []).filter(emp => emp.name !== activeUser?.name).map(emp => (
+                    <option key={emp.id || emp.name} value={emp.name}>
+                      👤 {emp.name} ({emp.designation || emp.department})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="form-group">
@@ -961,94 +1104,6 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                                 setItems(newItems);
                               }}
                             />
-                          )}
-
-                          {/* TWO CLEAN BOXES: PRODUCT & SPECIFICATION (Rendered upon product selection) */}
-                          {item.productName && (
-                            <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                              {/* BOX 1: PRODUCT */}
-                              <div
-                                style={{
-                                  background: '#f8fafc',
-                                  border: '1px solid #cbd5e1',
-                                  borderRadius: '6px',
-                                  padding: '0.4rem 0.6rem',
-                                  fontSize: '0.74rem'
-                                }}
-                              >
-                                <div style={{ fontWeight: 800, color: '#1e40af', marginBottom: '2px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span>📦 BOX 1: PRODUCT</span>
-                                  <span className="badge badge-blue" style={{ fontSize: '0.62rem', padding: '0.05rem 0.3rem' }}>{item.category || 'Print'}</span>
-                                </div>
-                                <div style={{ color: '#0f172a', fontWeight: 700 }}>{item.productName}</div>
-                                <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
-                                  Base Media: {item.material || 'Standard Substrate'} • Unit: {item.unit || 'Sq.Ft'} • HSN: {item.hsnCode || '9989'}
-                                </div>
-                              </div>
-
-                              {/* BOX 2: SPECIFICATION */}
-                              <div
-                                style={{
-                                  background: '#faf5ff',
-                                  border: '1px solid #e9d5ff',
-                                  borderRadius: '6px',
-                                  padding: '0.4rem 0.6rem',
-                                  fontSize: '0.74rem'
-                                }}
-                              >
-                                <div style={{ fontWeight: 800, color: '#7e22ce', marginBottom: '2px' }}>
-                                  ✂️ BOX 2: SPECIFICATION
-                                </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '2px' }}>
-                                  <div>
-                                    <label style={{ fontSize: '0.65rem', color: '#6b21a8', fontWeight: 700 }}>Color Mode</label>
-                                    <select
-                                      className="form-select form-select-sm"
-                                      style={{ fontSize: '0.7rem', padding: '0.15rem 0.35rem' }}
-                                      value={item.colorMode || '4C Full Color'}
-                                      onChange={(e) => {
-                                        const newItems = [...items];
-                                        newItems[idx].colorMode = e.target.value;
-                                        setItems(newItems);
-                                      }}
-                                    >
-                                      <option value="4C Full Color">4C Full Color (CMYK)</option>
-                                      <option value="1C Single Color">1C Single Color</option>
-                                      <option value="2C Spot Color">2C Spot Color</option>
-                                      <option value="White + CMYK">White + CMYK (UV)</option>
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label style={{ fontSize: '0.65rem', color: '#6b21a8', fontWeight: 700 }}>Sides</label>
-                                    <select
-                                      className="form-select form-select-sm"
-                                      style={{ fontSize: '0.7rem', padding: '0.15rem 0.35rem' }}
-                                      value={item.sides || 'Single Sided'}
-                                      onChange={(e) => {
-                                        const newItems = [...items];
-                                        newItems[idx].sides = e.target.value;
-                                        setItems(newItems);
-                                      }}
-                                    >
-                                      <option value="Single Sided">Single Sided</option>
-                                      <option value="Double Sided">Double Sided</option>
-                                    </select>
-                                  </div>
-                                </div>
-                                <input
-                                  type="text"
-                                  className="form-control form-control-sm"
-                                  style={{ marginTop: '4px', fontSize: '0.72rem', padding: '0.2rem 0.4rem' }}
-                                  placeholder="Finishing specs (e.g. Matte Lam + Creasing)..."
-                                  value={item.finishingSpec || ''}
-                                  onChange={(e) => {
-                                    const newItems = [...items];
-                                    newItems[idx].finishingSpec = e.target.value;
-                                    setItems(newItems);
-                                  }}
-                                />
-                              </div>
-                            </div>
                           )}
 
                           <input
@@ -1592,16 +1647,42 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                 ))}
               </div>
 
-              <div style={{ width: '320px', position: 'relative' }}>
-                <Search size={16} color="#64748b" style={{ position: 'absolute', left: '10px', top: '10px' }} />
-                <input
-                  type="text"
-                  className="form-control form-control-sm"
-                  style={{ paddingLeft: '32px' }}
-                  placeholder="Search SO#, QT#, Customer, Mobile..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+                {/* Staff Filter */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: '#f8fafc', padding: '0.2rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                  <UserCheck size={14} color="#2563eb" />
+                  <span style={{ fontSize: '0.74rem', color: '#475569', fontWeight: 700 }}>Staff:</span>
+                  <select
+                    value={staffFilter}
+                    onChange={(e) => setStaffFilter(e.target.value)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      color: '#0f172a',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="ALL">All Staff</option>
+                    {uniqueBillingStaff.map(staff => (
+                      <option key={staff} value={staff}>👤 {staff}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ width: '280px', position: 'relative' }}>
+                  <Search size={16} color="#64748b" style={{ position: 'absolute', left: '10px', top: '10px' }} />
+                  <input
+                    type="text"
+                    className="form-control form-control-sm"
+                    style={{ paddingLeft: '32px' }}
+                    placeholder="Search SO#, Customer, Staff, Mobile..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -1751,7 +1832,12 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                           <div style={{ fontWeight: 700 }}>{order.customerName}</div>
                           <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{order.customerMobile}</div>
                         </td>
-                        <td>{order.salesPersonName}</td>
+                        <td>
+                          <div style={{ fontWeight: 600, color: '#1e293b' }}>{order.salesPersonName || 'House Sales'}</div>
+                          {order.careOfName && (
+                            <div style={{ fontSize: '0.7rem', color: '#7c3aed' }}>Agent: {order.careOfName}</div>
+                          )}
+                        </td>
                         <td>
                           {isQuote ? (
                             <span className="badge badge-amber">{order.quotationStatus || 'Quotation'}</span>
@@ -1974,6 +2060,249 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
             </div>
           </div>
 
+          {/* COMPREHENSIVE STAFF & PRODUCTION RESPONSIBILITIES MATRIX (ORDER CLICKING TIME) */}
+          {assignedPersonnel && (
+            <div className="card" style={{ background: '#ffffff', border: '1px solid #cbd5e1', boxShadow: '0 2px 6px rgba(0,0,0,0.04)' }}>
+              <div className="card-header" style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.65rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #1e40af, #3b82f6)', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Users size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a' }}>
+                      Staff Responsibilities & Production Assignment Matrix
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                      Detailed personnel tracking: Billed Staff, Sales Person, Designer, Printer, Finisher & Delivery
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span className="badge badge-blue" style={{ fontSize: '0.72rem', fontWeight: 800 }}>
+                    {selectedOrder.id}
+                  </span>
+                  <span className={`badge ${selectedOrder.productionStatus === 'Cancelled' ? 'badge-rose' : 'badge-emerald'}`} style={{ fontSize: '0.72rem' }}>
+                    {selectedOrder.productionStatus}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                gap: '0.85rem',
+                marginTop: '0.85rem'
+              }}>
+                {/* 1. WHO BILLED */}
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1.5px solid #93c5fd',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between'
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: '#1d4ed8', letterSpacing: '0.5px' }}>
+                        💳 Who Billed
+                      </span>
+                      <span style={{ fontSize: '0.62rem', background: '#dbeafe', color: '#1e40af', padding: '0.1rem 0.35rem', borderRadius: '4px', fontWeight: 700 }}>
+                        Counter / Creator
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+                      {assignedPersonnel.billedBy.name}
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#475569', marginTop: '2px' }}>
+                      {assignedPersonnel.billedBy.role}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '8px', borderTop: '1px dashed #cbd5e1', paddingTop: '4px' }}>
+                    🕒 Billed on: <strong>{assignedPersonnel.billedBy.time}</strong>
+                  </div>
+                </div>
+
+                {/* 2. SALES PERSON */}
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1.5px solid #cbd5e1',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between'
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: '#475569', letterSpacing: '0.5px' }}>
+                        👤 Sales Person
+                      </span>
+                      <span style={{ fontSize: '0.62rem', background: '#f1f5f9', color: '#475569', padding: '0.1rem 0.35rem', borderRadius: '4px', fontWeight: 700 }}>
+                        Commercial Lead
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+                      {assignedPersonnel.salesPerson.name}
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#475569', marginTop: '2px' }}>
+                      {assignedPersonnel.salesPerson.role}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#7c3aed', marginTop: '8px', borderTop: '1px dashed #cbd5e1', paddingTop: '4px', fontWeight: 600 }}>
+                    🤝 Care Of Agent: <strong>{assignedPersonnel.salesPerson.careOf || 'Direct Order'}</strong>
+                  </div>
+                </div>
+
+                {/* 3. WHO DESIGNED */}
+                <div style={{
+                  background: '#fdf4ff',
+                  border: '1.5px solid #f5d0fe',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between'
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: '#a21caf', letterSpacing: '0.5px' }}>
+                        🎨 Who Designed
+                      </span>
+                      <span style={{ fontSize: '0.62rem', background: '#fae8ff', color: '#86198f', padding: '0.1rem 0.35rem', borderRadius: '4px', fontWeight: 700 }}>
+                        Prepress
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+                      {assignedPersonnel.designedBy.name}
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#86198f', marginTop: '2px' }}>
+                      Prepress & Vector Graphic Design
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#701a75', marginTop: '8px', borderTop: '1px dashed #f5d0fe', paddingTop: '4px' }}>
+                    Artwork: <strong>{assignedPersonnel.designedBy.status}</strong>
+                  </div>
+                </div>
+
+                {/* 4. WHO PRINTED */}
+                <div style={{
+                  background: '#f0f9ff',
+                  border: '1.5px solid #bae6fd',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between'
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: '#0369a1', letterSpacing: '0.5px' }}>
+                        🖨️ Who Printed
+                      </span>
+                      <span style={{ fontSize: '0.62rem', background: '#e0f2fe', color: '#0369a1', padding: '0.1rem 0.35rem', borderRadius: '4px', fontWeight: 700 }}>
+                        Machine Room
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+                      {assignedPersonnel.printedBy.name}
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#0284c7', marginTop: '2px' }}>
+                      Flex, Vinyl & UV Machine Operator
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#0369a1', marginTop: '8px', borderTop: '1px dashed #bae6fd', paddingTop: '4px' }}>
+                    Print State: <strong>{selectedOrder.productionStatus}</strong>
+                  </div>
+                </div>
+
+                {/* 5. WHO FINISHED / FABRICATION */}
+                <div style={{
+                  background: '#fffbeb',
+                  border: '1.5px solid #fde68a',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between'
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: '#b45309', letterSpacing: '0.5px' }}>
+                        ✂️ Who Finished
+                      </span>
+                      <span style={{ fontSize: '0.62rem', background: '#fef3c7', color: '#92400e', padding: '0.1rem 0.35rem', borderRadius: '4px', fontWeight: 700 }}>
+                        Post-Press
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+                      {assignedPersonnel.finishedBy.name}
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#b45309', marginTop: '2px' }}>
+                      LED Fabrication, Lamination & Binding
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#78350f', marginTop: '8px', borderTop: '1px dashed #fde68a', paddingTop: '4px' }}>
+                    Post-press inspection & packaging
+                  </div>
+                </div>
+
+                {/* 6. WHO DELIVERED */}
+                <div style={{
+                  background: '#f0fdf4',
+                  border: '1.5px solid #bbf7d0',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between'
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: '#15803d', letterSpacing: '0.5px' }}>
+                        🚚 Who Delivered
+                      </span>
+                      <span style={{ fontSize: '0.62rem', background: '#dcfce7', color: '#166534', padding: '0.1rem 0.35rem', borderRadius: '4px', fontWeight: 700 }}>
+                        Logistics
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+                      {assignedPersonnel.deliveredBy.name}
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#16a34a', marginTop: '2px' }}>
+                      Mode: <strong>{assignedPersonnel.deliveredBy.mode}</strong>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#14532d', marginTop: '8px', borderTop: '1px dashed #bbf7d0', paddingTop: '4px' }}>
+                    Delivery verification & handover
+                  </div>
+                </div>
+              </div>
+
+              {/* Outsource Jobwork Note */}
+              {assignedPersonnel.outsourceVendors.length > 0 && (
+                <div style={{
+                  marginTop: '0.75rem',
+                  padding: '0.55rem 0.75rem',
+                  background: '#faf5ff',
+                  border: '1px solid #e9d5ff',
+                  borderRadius: '6px',
+                  fontSize: '0.78rem',
+                  color: '#6b21a8',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}>
+                  <ExternalLink size={14} color="#9333ea" />
+                  <span>
+                    <strong>Outsource Vendors for this Order:</strong> {assignedPersonnel.outsourceVendors.join(', ')}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Grid details */}
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.25rem' }}>
             {/* Line Items Detail */}
@@ -2019,6 +2348,10 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                 <div className="card-title">Order Ledger & Profitability</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.88rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.35rem' }}>
+                  <span style={{ color: '#64748b' }}>Billed By Staff:</span>
+                  <strong>{selectedOrder.billedByStaff || selectedOrder.salesPersonName || 'Admin User'}</strong>
+                </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Subtotal:</span>
                   <strong>₹{Number(selectedOrder?.subtotal ?? 0).toLocaleString()}</strong>

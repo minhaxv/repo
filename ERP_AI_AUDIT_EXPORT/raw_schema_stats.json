@@ -1,0 +1,3805 @@
+{
+  "artwork_versions": {
+    "count": 0,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "order_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "item_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "version_number",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt": "1",
+        "pk": 0
+      },
+      {
+        "name": "file_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "file_url",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "thumbnail_url",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "dimensions",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "color_mode",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'CMYK'",
+        "pk": 0
+      },
+      {
+        "name": "dpi",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "300",
+        "pk": 0
+      },
+      {
+        "name": "proof_status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Pending'",
+        "pk": 0
+      },
+      {
+        "name": "uploaded_by",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "uploaded_by_user_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "uploaded_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "approved_by",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "approved_by_user_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "approved_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "approval_notes",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "rejection_reason",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "production_ready",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "attendance": {
+    "count": 0,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "date",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "staff_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "staff_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "type",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "ot_hours",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "check_in",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "check_out",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "working_hours",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "late_status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'On Time'",
+        "pk": 0
+      },
+      {
+        "name": "notes",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      }
+    ]
+  },
+  "audit_logs": {
+    "count": 4,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "user_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "employee_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "employee_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "role",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "action",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "module",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "record_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "record_number",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "details",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "biometric_devices": {
+    "count": 1,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "model",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'ZKTeco K90'",
+        "pk": 0
+      },
+      {
+        "name": "ip_address",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "port",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "4370",
+        "pk": 0
+      },
+      {
+        "name": "location",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Online'",
+        "pk": 0
+      },
+      {
+        "name": "last_sync_time",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "total_users",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      }
+    ]
+  },
+  "biometric_user_mappings": {
+    "count": 6,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "device_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "biometric_user_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "biometric_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "card_no",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "verification_type",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Fingerprint / Password'",
+        "pk": 0
+      },
+      {
+        "name": "privilege",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'User'",
+        "pk": 0
+      },
+      {
+        "name": "device_status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Active'",
+        "pk": 0
+      },
+      {
+        "name": "employee_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "mapping_status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Unmapped'",
+        "pk": 0
+      },
+      {
+        "name": "matched_by",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "care_of_persons": {
+    "count": 4,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "mobile",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "email",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "commission_rate",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "2.0",
+        "pk": 0
+      },
+      {
+        "name": "active",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "1",
+        "pk": 0
+      }
+    ]
+  },
+  "company_profile": {
+    "count": 1,
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "tagline",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "gstin",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "state",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "state_code",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "phone",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "email",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "website",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "address",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "bank_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "account_no",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "ifsc",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "branch",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "upi_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "terms_conditions",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "customers": {
+    "count": 11,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "customer_code",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "mobile",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "email",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "address",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "gst_number",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "customer_type",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Retail'",
+        "pk": 0
+      },
+      {
+        "name": "notes",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "outstanding",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "additional_mobiles",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "version",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "1",
+        "pk": 0
+      }
+    ]
+  },
+  "delivery_items": {
+    "count": 0,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "delivery_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "order_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "item_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "product_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "ordered_qty",
+        "type": "REAL",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "dispatched_qty",
+        "type": "REAL",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "remaining_qty",
+        "type": "REAL",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "unit",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Nos'",
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "delivery_notes": {
+    "count": 0,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "delivery_number",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "order_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "customer_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "customer_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "delivery_date",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "delivery_type",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Partial'",
+        "pk": 0
+      },
+      {
+        "name": "vehicle_no",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "delivery_staff",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "delivery_staff_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "recipient_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "recipient_phone",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "notes",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Delivered'",
+        "pk": 0
+      },
+      {
+        "name": "created_by",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "employees": {
+    "count": 14,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "code",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "role",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "department",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "mobile",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "email",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "base_salary",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "incentive_rate",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "commission_rate",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "joined_date",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "active",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "1",
+        "pk": 0
+      },
+      {
+        "name": "designation",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Active'",
+        "pk": 0
+      },
+      {
+        "name": "allowed_processes",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      }
+    ]
+  },
+  "expenses": {
+    "count": 7,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "category",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "amount",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "vendor_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "vendor_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "payment_method",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Cash'",
+        "pk": 0
+      },
+      {
+        "name": "expense_date",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "description",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "receipt_url",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "created_by",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "approved_by",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Approved'",
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "inventory": {
+    "count": 6,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "category",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "current_stock",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "unit",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Pcs'",
+        "pk": 0
+      },
+      {
+        "name": "reorder_level",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "10",
+        "pk": 0
+      },
+      {
+        "name": "unit_cost",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "min_reorder_level",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "10",
+        "pk": 0
+      },
+      {
+        "name": "preferred_supplier",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "last_purchase_rate",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "version",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "1",
+        "pk": 0
+      }
+    ]
+  },
+  "inventory_transactions": {
+    "count": 8,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "material_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "material_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "quantity",
+        "type": "REAL",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "unit",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "transaction_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "reference_type",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "reference_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "planned_consumption",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "actual_consumption",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "wastage_qty",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "wastage_reason",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "material_batch",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "employee_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "employee_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "machine_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "machine_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "remarks",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "job_work": {
+    "count": 16,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "job_number",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "sales_order_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "sales_order_item_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "job_type",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "description",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "quantity",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "1",
+        "pk": 0
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'New'",
+        "pk": 0
+      },
+      {
+        "name": "assigned_to",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "start_date",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "expected_date",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "completed_date",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "notes",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "material_boms": {
+    "count": 4,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "product_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "spec_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "inventory_material_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "consumption_ratio",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "1.0",
+        "pk": 0
+      },
+      {
+        "name": "consumption_unit",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Sq.Ft'",
+        "pk": 0
+      },
+      {
+        "name": "wastage_pct",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "4.0",
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "outsource_jobs": {
+    "count": 12,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "outsource_number",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "sales_order_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "sales_order_item_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "supplier_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "supplier_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "work_description",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "quantity",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "1",
+        "pk": 0
+      },
+      {
+        "name": "outsource_cost",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "expected_date",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "sent_date",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "received_date",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'SENT'",
+        "pk": 0
+      },
+      {
+        "name": "notes",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "payments": {
+    "count": 8,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "order_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "customer_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "customer_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "amount",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "method",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "ref_no",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Completed'",
+        "pk": 0
+      },
+      {
+        "name": "paid_date",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "notes",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      }
+    ]
+  },
+  "payroll": {
+    "count": 0,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "month",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "staff_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "staff_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "role",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "base_salary",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "working_days",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "30",
+        "pk": 0
+      },
+      {
+        "name": "days_present",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "earned_base_pay",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "ot_hours",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "ot_pay",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "incentive_earned",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "advance_deduction",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "late_deduction",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "net_salary",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Pending'",
+        "pk": 0
+      },
+      {
+        "name": "paid_date",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "payment_mode",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      }
+    ]
+  },
+  "product_specifications": {
+    "count": 16,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "product_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "spec_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "material_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "selling_price",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "cost_price",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "unit",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Sq.Ft'",
+        "pk": 0
+      },
+      {
+        "name": "description",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "is_default",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "gst_rate",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "18",
+        "pk": 0
+      },
+      {
+        "name": "hsn_code",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'9989'",
+        "pk": 0
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Active'",
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "production_processes": {
+    "count": 22,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "code",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "category",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Production'",
+        "pk": 0
+      },
+      {
+        "name": "description",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "default_unit",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Nos'",
+        "pk": 0
+      },
+      {
+        "name": "is_active",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "1",
+        "pk": 0
+      },
+      {
+        "name": "sort_order",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "production_task_time_logs": {
+    "count": 24,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "task_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "action",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "timestamp",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "logged_by",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "notes",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "elapsed_seconds",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "user_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "employee_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      }
+    ]
+  },
+  "production_tasks": {
+    "count": 13,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "task_date",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "employee_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "employee_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "order_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "order_number",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "customer_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "item_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "item_title",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "process_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "process_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "quantity",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "1",
+        "pk": 0
+      },
+      {
+        "name": "unit",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Nos'",
+        "pk": 0
+      },
+      {
+        "name": "start_time",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "end_time",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "total_duration_minutes",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Pending'",
+        "pk": 0
+      },
+      {
+        "name": "priority",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Normal'",
+        "pk": 0
+      },
+      {
+        "name": "remarks",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "machine_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "machine_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "department",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Production'",
+        "pk": 0
+      },
+      {
+        "name": "production_location",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "original_qty",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "1",
+        "pk": 0
+      },
+      {
+        "name": "completed_qty",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "rejected_qty",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "rework_qty",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "final_qty",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "attachment_url",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "supervisor",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "qc_status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Pending'",
+        "pk": 0
+      },
+      {
+        "name": "created_by",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "completed_by",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "completed_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "assigned_user_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "assigned_employee_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "created_by_user_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "created_by_employee_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "started_by_user_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "started_by_employee_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "started_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "paused_by_user_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "paused_by_employee_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "paused_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "pause_reason",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "resumed_by_user_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "resumed_by_employee_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "resumed_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "completed_by_user_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "completed_by_employee_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "reassigned_by_user_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "previous_employee_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "reassignment_reason",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "version",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "1",
+        "pk": 0
+      }
+    ]
+  },
+  "products": {
+    "count": 16,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "product_code",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "category",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "description",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "unit",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Sq.Ft'",
+        "pk": 0
+      },
+      {
+        "name": "default_rate",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "estimated_cost",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "gst_rate",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "18",
+        "pk": 0
+      },
+      {
+        "name": "hsn_code",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'9989'",
+        "pk": 0
+      },
+      {
+        "name": "default_vendor",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "default_material",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "is_custom",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "active",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "1",
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "purchase_orders": {
+    "count": 0,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "vendor_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "order_date",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Issued'",
+        "pk": 0
+      },
+      {
+        "name": "total_amount",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "items",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      }
+    ]
+  },
+  "rework_tickets": {
+    "count": 0,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "order_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "item_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "task_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "defect_category",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "defect_reason",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "evidence_url",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "rejected_qty",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "rework_qty",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "return_to_stage",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "assigned_to",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "qc_inspector_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "qc_inspector_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Open'",
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "resolved_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      }
+    ]
+  },
+  "sales_order_items": {
+    "count": 16,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "sales_order_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "product_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "product_name_snapshot",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "job_card_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "custom_title",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "spec_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "spec_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "material",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "description",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "width",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "height",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "qty",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "1",
+        "pk": 0
+      },
+      {
+        "name": "unit",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Sq.Ft'",
+        "pk": 0
+      },
+      {
+        "name": "selling_rate",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "estimated_cost",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "actual_cost",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "discount",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "tax_type",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'GST_18'",
+        "pk": 0
+      },
+      {
+        "name": "gst_rate",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "18",
+        "pk": 0
+      },
+      {
+        "name": "hsn_code",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'9989'",
+        "pk": 0
+      },
+      {
+        "name": "amount",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "designer_required",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'NO'",
+        "pk": 0
+      },
+      {
+        "name": "designer_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "designer_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "design_status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Pending'",
+        "pk": 0
+      },
+      {
+        "name": "artwork_status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Pending'",
+        "pk": 0
+      },
+      {
+        "name": "artwork_url",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "outsource",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "vendor_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "vendor_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "estimated_vendor_cost",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "actual_vendor_bill",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "vendor_bill_date",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "vendor_payment_status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Pending'",
+        "pk": 0
+      },
+      {
+        "name": "printer_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "printer_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "finisher_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "finisher_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "delivery_worker_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "production_status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'New'",
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "sales_orders": {
+    "count": 11,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "order_number",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "customer_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "customer_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "sales_person_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "sales_person_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "care_of_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "care_of_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "reference_no",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "order_date",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "due_date",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "production_status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'New'",
+        "pk": 0
+      },
+      {
+        "name": "payment_status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Pending'",
+        "pk": 0
+      },
+      {
+        "name": "subtotal",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "discount",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "tax_total",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "grand_total",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "advance_amount",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "balance_amount",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "delivered_by",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "signature_url",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "whatsapp_sent",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "notes",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "billed_by_staff",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "billed_by_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "billed_by_role",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "billed_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "actual_cost",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "actual_profit",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "profit_margin_pct",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "created_by_user_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "created_by_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "cgst",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "sgst",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "igst",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "round_off",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "tax_mode",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'EXCLUSIVE'",
+        "pk": 0
+      },
+      {
+        "name": "version",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "1",
+        "pk": 0
+      }
+    ]
+  },
+  "sales_persons": {
+    "count": 4,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "mobile",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "email",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "commission_rate",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "3.5",
+        "pk": 0
+      },
+      {
+        "name": "active",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "1",
+        "pk": 0
+      }
+    ]
+  },
+  "schema_migrations": {
+    "count": 9,
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "migration_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "applied_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "suppliers": {
+    "count": 4,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "supplier_code",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "category",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "mobile",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "email",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "address",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "gstin",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "pending_payment",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "avg_turnaround_days",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "2",
+        "pk": 0
+      },
+      {
+        "name": "notes",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "active",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": "1",
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "unmapped_biometric_punches": {
+    "count": 0,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "device_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "biometric_user_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "biometric_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "punch_time",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Pending HR Action'",
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "users": {
+    "count": 15,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "employee_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "username",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "email",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "password_hash",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "salt",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "role",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": "'Admin'",
+        "pk": 0
+      },
+      {
+        "name": "department",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Management'",
+        "pk": 0
+      },
+      {
+        "name": "permissions",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "'Active'",
+        "pk": 0
+      },
+      {
+        "name": "last_login",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  },
+  "worker_job_incentives": {
+    "count": 7,
+    "columns": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "name": "order_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "item_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "job_card_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "product_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "worker_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "worker_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "role_stage",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "name": "job_amount",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "job_profit",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "incentive_pct",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0.5",
+        "pk": 0
+      },
+      {
+        "name": "incentive_amount",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt": "0",
+        "pk": 0
+      },
+      {
+        "name": "completed_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  }
+}

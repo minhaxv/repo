@@ -47,13 +47,28 @@ const {
     : (salesOrders || []).slice(0, 4);
 
   const matchingCustomers = q
-    ? (customers || []).filter(
-        (c) =>
+    ? (customers || []).filter((c) => {
+        let addMobiles = [];
+        if (c.additionalMobiles) {
+          addMobiles = Array.isArray(c.additionalMobiles) ? c.additionalMobiles : [c.additionalMobiles];
+        } else if (c.additional_mobiles) {
+          try {
+            addMobiles = typeof c.additional_mobiles === 'string' ? JSON.parse(c.additional_mobiles) : [c.additional_mobiles];
+          } catch (e) {
+            addMobiles = [c.additional_mobiles];
+          }
+        }
+        const allNumbers = [c.mobile, ...(Array.isArray(addMobiles) ? addMobiles : [])]
+          .filter(Boolean)
+          .map((n) => String(n).toLowerCase());
+
+        return (
           (c.name || '').toLowerCase().includes(q) ||
-          (c.mobile || '').includes(q) ||
+          allNumbers.some((n) => n.includes(q)) ||
           (c.code || '').toLowerCase().includes(q) ||
           (c.gstin && c.gstin.toLowerCase().includes(q))
-      )
+        );
+      })
     : (customers || []).slice(0, 3);
 
   const matchingProducts = q
@@ -172,7 +187,22 @@ const {
                         {c.name} <span style={{ color: '#059669', fontSize: '0.75rem' }}>({c.type})</span>
                       </div>
                       <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        Mobile: {c.mobile || 'N/A'} | Code: {c.code || 'N/A'} | Outstanding: ₹{Number(c.outstanding ?? 0).toLocaleString()}
+                        📱 {c.mobile || 'N/A'}
+                        {(() => {
+                          let extra = [];
+                          if (c.additionalMobiles) {
+                            extra = Array.isArray(c.additionalMobiles) ? c.additionalMobiles : [c.additionalMobiles];
+                          } else if (c.additional_mobiles) {
+                            try {
+                              extra = typeof c.additional_mobiles === 'string' ? JSON.parse(c.additional_mobiles) : c.additional_mobiles;
+                            } catch (e) {
+                              extra = [c.additional_mobiles];
+                            }
+                          }
+                          const clean = (extra || []).filter(Boolean);
+                          if (clean.length === 0) return null;
+                          return ` (Alt: ${clean.join(', ')})`;
+                        })()} | Code: {c.code || 'N/A'} | Outstanding: ₹{Number(c.outstanding ?? 0).toLocaleString()}
                       </div>
                     </div>
                     <span className="badge badge-slate">{c.code}</span>

@@ -31,8 +31,10 @@ import {
   Save,
   RotateCcw,
   Plus,
-  Timer
+  Timer,
+  QrCode
 } from 'lucide-react';
+import QRCode from 'qrcode';
 
 export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTab = 'overview' }) => {
   const {
@@ -52,7 +54,13 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
     createProductionTask,
     updateProductionTask,
     executeTaskAction,
-    deleteProductionTask
+    deleteProductionTask,
+    fetchOrderArtwork,
+    uploadArtwork,
+    approveArtwork,
+    deliveries,
+    fetchDeliveries,
+    createDelivery
   } = useERP();
 
   const [activeTab, setActiveTab] = useState(initialTab || 'overview'); // 'overview' | 'production' | 'materials' | 'costing' | 'outsourcing' | 'payments' | 'files' | 'history'
@@ -117,6 +125,50 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
   const [reworkPromptTask, setReworkPromptTask] = useState(null);
   const [reworkReason, setReworkReason] = useState('');
   const [reworkQtyInput, setReworkQtyInput] = useState('');
+
+  // Artwork Versioning & Approval States
+  const [artworkList, setArtworkList] = useState([]);
+  const [isUploadingArtwork, setIsUploadingArtwork] = useState(false);
+  const [artworkForm, setArtworkForm] = useState({ fileName: '', fileUrl: '', revisionNotes: '' });
+
+  // Partial Delivery & Dispatch States
+  const [deliveryList, setDeliveryList] = useState([]);
+  const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);
+  const [dispatchForm, setDispatchForm] = useState({
+    quantity: '',
+    recipientName: '',
+    recipientContact: '',
+    transportMode: 'Hand Delivery / Pickup',
+    vehicleNumber: '',
+    notes: ''
+  });
+
+  // QR Code State
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+
+  // Sync artwork, deliveries & QR code
+  useEffect(() => {
+    const targetOrderId = job?.orderId || job?.id;
+    if (targetOrderId) {
+      const jobUrl = `${window.location.origin}/#order-${targetOrderId}`;
+      QRCode.toDataURL(jobUrl, { width: 220, margin: 1 })
+        .then(setQrDataUrl)
+        .catch(err => console.error("QR Code generation error:", err));
+
+      if (fetchOrderArtwork) {
+        fetchOrderArtwork(targetOrderId).then(res => {
+          if (res && res.artwork) setArtworkList(res.artwork);
+        }).catch(err => console.warn(err));
+      }
+
+      if (fetchDeliveries) {
+        fetchDeliveries({ orderId: targetOrderId }).then(res => {
+          if (res && res.deliveries) setDeliveryList(res.deliveries);
+        }).catch(err => console.warn(err));
+      }
+    }
+  }, [job?.orderId, job?.id]);
 
   if (!isOpen || !job) return null;
 
@@ -423,6 +475,13 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <button
+              onClick={() => setIsQrModalOpen(true)}
+              className="btn btn-sm btn-secondary"
+              style={{ background: 'rgba(255,255,255,0.15)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+            >
+              <QrCode size={14} /> QR Job Card
+            </button>
             {onPrintJobCard && (
               <button
                 onClick={() => onPrintJobCard(job)}
@@ -459,7 +518,8 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
             { id: 'costing', label: 'Costing & Margin', icon: DollarSign },
             { id: 'outsourcing', label: 'Outsourcing', icon: Building2 },
             { id: 'payments', label: 'Payments', icon: CreditCard },
-            { id: 'files', label: 'Files & Artwork', icon: ImageIcon },
+            { id: 'files', label: `Artwork Proofs (${artworkList.length})`, icon: ImageIcon },
+            { id: 'deliveries', label: `Dispatches (${deliveryList.length})`, icon: Truck },
             { id: 'history', label: 'Activity History', icon: History }
           ].map((t) => {
             const Icon = t.icon;
@@ -1771,43 +1831,436 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
             </div>
           )}
 
-          {/* TAB 7: FILES & ARTWORK */}
+          {/* TAB 7: FILES & ARTWORK VERSIONING */}
           {activeTab === 'files' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              <div>
-                <h4 style={{ margin: 0, fontWeight: 800, fontSize: '1rem', color: '#0f172a' }}>
-                  Artwork, Proofs & Production Files
-                </h4>
-                <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                  Manage customer vector assets, approval proofs, and shop floor print-ready RIP files.
-                </span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div>
+                  <h4 style={{ margin: 0, fontWeight: 800, fontSize: '1rem', color: '#0f172a' }}>
+                    Versioned Artwork & Proof Approval
+                  </h4>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    Every revision creates a traceable version. Uploading a new version resets approval to prevent printing outdated designs.
+                  </span>
+                </div>
+                <button onClick={() => setIsUploadingArtwork(!isUploadingArtwork)} className="btn btn-sm btn-primary">
+                  <Plus size={14} /> + Upload New Revision
+                </button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
-                <div style={{ border: '1px solid #cbd5e1', borderRadius: '10px', padding: '1rem', backgroundColor: '#f8fafc' }}>
-                  <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#0f172a', marginBottom: '0.4rem' }}>
-                    🖼️ Customer Vector Artwork
+              {/* Upload Revision Drawer */}
+              {isUploadingArtwork && (
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!artworkForm.fileName) return;
+                    try {
+                      await uploadArtwork(job.orderId || parentOrder.id, {
+                        orderId: job.orderId || parentOrder.id,
+                        itemId: job.itemId || currentItem?.id,
+                        fileName: artworkForm.fileName,
+                        fileUrl: artworkForm.fileUrl || `https://storage.screenarts.in/artwork/${job.orderId || parentOrder.id}/${artworkForm.fileName}`,
+                        revisionNotes: artworkForm.revisionNotes
+                      });
+                      const res = await fetchOrderArtwork(job.orderId || parentOrder.id);
+                      if (res && res.artwork) setArtworkList(res.artwork);
+                      setIsUploadingArtwork(false);
+                      setArtworkForm({ fileName: '', fileUrl: '', revisionNotes: '' });
+                      alert("New artwork version uploaded! Previous approvals reset for verification.");
+                    } catch (err) {
+                      alert("Upload error: " + err.message);
+                    }
+                  }}
+                  style={{ background: '#f8fafc', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
+                >
+                  <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#1e40af' }}>
+                    🎨 Upload Artwork Revision for Order #{job.orderId || parentOrder.id}
                   </div>
-                  {currentItem.artworkUrl ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                     <div>
-                      <a href={currentItem.artworkUrl} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontSize: '0.82rem', textDecoration: 'underline' }}>
-                        View Uploaded Artwork File
-                      </a>
+                      <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>File Name / Asset Title *</label>
+                      <input
+                        type="text"
+                        required
+                        className="form-control form-control-sm"
+                        placeholder="e.g. flex_banner_front_v2_cmyk.pdf"
+                        value={artworkForm.fileName}
+                        onChange={(e) => setArtworkForm({ ...artworkForm, fileName: e.target.value })}
+                      />
                     </div>
-                  ) : (
-                    <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>No vector file attached yet</span>
-                  )}
-                </div>
+                    <div>
+                      <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>File URL / Cloud Storage Link</label>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        placeholder="e.g. https://storage.screenarts.in/proofs/..."
+                        value={artworkForm.fileUrl}
+                        onChange={(e) => setArtworkForm({ ...artworkForm, fileUrl: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>Revision Notes / Client Change Comments</label>
+                    <textarea
+                      rows="2"
+                      className="form-control form-control-sm"
+                      placeholder="e.g. Changed phone number and corrected red color shade to Pantone 485C"
+                      value={artworkForm.revisionNotes}
+                      onChange={(e) => setArtworkForm({ ...artworkForm, revisionNotes: e.target.value })}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                    <button type="button" onClick={() => setIsUploadingArtwork(false)} className="btn btn-sm btn-secondary">
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-sm btn-primary">
+                      Save Version
+                    </button>
+                  </div>
+                </form>
+              )}
 
-                <div style={{ border: '1px solid #cbd5e1', borderRadius: '10px', padding: '1rem', backgroundColor: '#f8fafc' }}>
-                  <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#0f172a', marginBottom: '0.4rem' }}>
-                    ✅ Customer Proof Approval
+              {/* Version History List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {artworkList.length > 0 ? (
+                  artworkList.map((ver) => {
+                    const isApproved = ver.status === 'Approved';
+                    const isRejected = ver.status === 'Rejected';
+                    return (
+                      <div
+                        key={ver.id}
+                        style={{
+                          border: `1px solid ${isApproved ? '#bbf7d0' : isRejected ? '#fecaca' : '#cbd5e1'}`,
+                          borderRadius: '10px',
+                          padding: '1rem',
+                          backgroundColor: isApproved ? '#f0fdf4' : isRejected ? '#fef2f2' : '#f8fafc'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 800, padding: '0.15rem 0.5rem', borderRadius: '4px', backgroundColor: '#0f172a', color: '#ffffff' }}>
+                                Version {ver.version_number}
+                              </span>
+                              <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>{ver.file_name}</strong>
+                              <span
+                                style={{
+                                  fontSize: '0.7rem',
+                                  fontWeight: 700,
+                                  padding: '0.15rem 0.5rem',
+                                  borderRadius: '9999px',
+                                  backgroundColor: isApproved ? '#dcfce7' : isRejected ? '#fee2e2' : '#fef3c7',
+                                  color: isApproved ? '#15803d' : isRejected ? '#b91c1c' : '#b45309'
+                                }}
+                              >
+                                {ver.status}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
+                              Uploaded by: <strong>{ver.uploaded_by}</strong> • {new Date(ver.created_at).toLocaleString('en-IN')}
+                            </div>
+                            {ver.revision_notes && (
+                              <div style={{ fontSize: '0.8rem', color: '#334155', marginTop: '0.35rem', background: 'rgba(0,0,0,0.03)', padding: '0.4rem 0.6rem', borderRadius: '6px' }}>
+                                💬 <em>{ver.revision_notes}</em>
+                              </div>
+                            )}
+                            {ver.approved_by && (
+                              <div style={{ fontSize: '0.75rem', color: isApproved ? '#15803d' : '#b91c1c', marginTop: '0.25rem' }}>
+                                {isApproved ? '✅ Approved by: ' : '❌ Reviewed by: '}
+                                <strong>{ver.approved_by}</strong> • {new Date(ver.approved_at).toLocaleString('en-IN')}
+                                {ver.approval_notes && ` — "${ver.approval_notes}"`}
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            {ver.file_url && (
+                              <a
+                                href={ver.file_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="btn btn-xs btn-secondary"
+                                style={{ fontSize: '0.75rem' }}
+                              >
+                                View File
+                              </a>
+                            )}
+                            {!isApproved && (
+                              <>
+                                <button
+                                  onClick={async () => {
+                                    const notes = prompt("Enter approval remarks (e.g., Client signed off via WhatsApp):", "Client approved proof via WhatsApp");
+                                    if (notes === null) return;
+                                    try {
+                                      await approveArtwork(ver.id, { status: 'Approved', approvalNotes: notes });
+                                      const res = await fetchOrderArtwork(job.orderId || parentOrder.id);
+                                      if (res && res.artwork) setArtworkList(res.artwork);
+                                      alert("Artwork version approved for production!");
+                                    } catch (err) {
+                                      alert("Approval error: " + err.message);
+                                    }
+                                  }}
+                                  className="btn btn-xs btn-primary"
+                                  style={{ background: '#16a34a', borderColor: '#16a34a', fontSize: '0.75rem' }}
+                                >
+                                  <Check size={12} /> Approve Proof
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    const notes = prompt("Enter rejection / revision remarks:", "Text sizing revision needed");
+                                    if (notes === null) return;
+                                    try {
+                                      await approveArtwork(ver.id, { status: 'Rejected', approvalNotes: notes });
+                                      const res = await fetchOrderArtwork(job.orderId || parentOrder.id);
+                                      if (res && res.artwork) setArtworkList(res.artwork);
+                                    } catch (err) {
+                                      alert("Rejection error: " + err.message);
+                                    }
+                                  }}
+                                  className="btn btn-xs btn-secondary"
+                                  style={{ color: '#dc2626', fontSize: '0.75rem' }}
+                                >
+                                  <X size={12} /> Reject
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '10px' }}>
+                    No versioned artwork proofs registered yet. Click &quot;+ Upload New Revision&quot; to upload the customer proof.
                   </div>
-                  <div style={{ fontSize: '0.82rem', color: '#059669', fontWeight: 700 }}>
-                    Status: {currentItem.artworkStatus || 'Approved by Customer'}
-                  </div>
-                </div>
+                )}
               </div>
+            </div>
+          )}
+
+          {/* TAB: PARTIAL DELIVERIES & DISPATCHES */}
+          {activeTab === 'deliveries' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {(() => {
+                const targetItemId = job.itemId || currentItem?.id;
+                const totalOrderQty = Number(currentItem?.qty || job.qty || 1);
+                const deliveredQty = deliveryList.reduce((acc, d) => {
+                  const it = (d.items || []).find(x => x.item_id === targetItemId);
+                  return acc + (Number(it?.delivered_quantity) || 0);
+                }, 0);
+                const remainingQty = Math.max(0, totalOrderQty - deliveredQty);
+                const isFullyDelivered = remainingQty === 0;
+
+                return (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontWeight: 800, fontSize: '1rem', color: '#0f172a' }}>
+                          Delivery Dispatches & Challans
+                        </h4>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                          Track partial and complete customer handovers with over-delivery protection.
+                        </span>
+                      </div>
+                      {!isFullyDelivered && (
+                        <button onClick={() => setIsDispatchModalOpen(!isDispatchModalOpen)} className="btn btn-sm btn-primary">
+                          <Truck size={14} /> + Dispatch Delivery
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Dispatch Metric Cards */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem' }}>
+                      <div className="card">
+                        <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>ORDERED QUANTITY</span>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+                          {totalOrderQty} {currentItem?.unit || 'Nos'}
+                        </div>
+                      </div>
+                      <div className="card">
+                        <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>DELIVERED QUANTITY</span>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#16a34a' }}>
+                          {deliveredQty} {currentItem?.unit || 'Nos'}
+                        </div>
+                      </div>
+                      <div className="card">
+                        <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>REMAINING TO DELIVER</span>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: remainingQty > 0 ? '#b45309' : '#16a34a' }}>
+                          {remainingQty} {currentItem?.unit || 'Nos'}
+                        </div>
+                      </div>
+                      <div className="card">
+                        <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>DELIVERY STATUS</span>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 800, color: isFullyDelivered ? '#16a34a' : deliveredQty > 0 ? '#d97706' : '#64748b' }}>
+                          {isFullyDelivered ? 'Fulfilled (100%)' : deliveredQty > 0 ? 'Partially Delivered' : 'Pending Dispatch'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Dispatch Form Drawer */}
+                    {isDispatchModalOpen && (
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          const qty = Number(dispatchForm.quantity);
+                          if (!qty || qty <= 0) {
+                            alert("Please enter a valid dispatch quantity.");
+                            return;
+                          }
+                          if (qty > remainingQty) {
+                            alert(`Cannot dispatch ${qty}. Remaining deliverable is only ${remainingQty}.`);
+                            return;
+                          }
+                          try {
+                            await createDelivery({
+                              orderId: job.orderId || parentOrder.id,
+                              customerId: parentOrder.customerId || job.customerId,
+                              transportMode: dispatchForm.transportMode,
+                              vehicleNumber: dispatchForm.vehicleNumber,
+                              recipientName: dispatchForm.recipientName,
+                              recipientContact: dispatchForm.recipientContact,
+                              notes: dispatchForm.notes,
+                              items: [{
+                                itemId: targetItemId,
+                                productName: currentItem?.productName || job.productName,
+                                deliveredQuantity: qty,
+                                unit: currentItem?.unit || 'Nos'
+                              }]
+                            });
+                            const res = await fetchDeliveries({ orderId: job.orderId || parentOrder.id });
+                            if (res && res.deliveries) setDeliveryList(res.deliveries);
+                            setIsDispatchModalOpen(false);
+                            setDispatchForm({ quantity: '', recipientName: '', recipientContact: '', transportMode: 'Hand Delivery / Pickup', vehicleNumber: '', notes: '' });
+                            alert("Delivery Challan recorded successfully!");
+                          } catch (err) {
+                            alert("Dispatch error: " + err.message);
+                          }
+                        }}
+                        style={{ background: '#f8fafc', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
+                      >
+                        <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#1e40af' }}>
+                          🚚 Dispatch Partial / Full Delivery Challan (Max: {remainingQty} {currentItem?.unit || 'Nos'})
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
+                          <div>
+                            <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>Dispatch Quantity *</label>
+                            <input
+                              type="number"
+                              required
+                              min="1"
+                              max={remainingQty}
+                              className="form-control form-control-sm"
+                              placeholder={`1 - ${remainingQty}`}
+                              value={dispatchForm.quantity}
+                              onChange={(e) => setDispatchForm({ ...dispatchForm, quantity: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>Transport Mode</label>
+                            <select
+                              className="form-select form-select-sm"
+                              value={dispatchForm.transportMode}
+                              onChange={(e) => setDispatchForm({ ...dispatchForm, transportMode: e.target.value })}
+                            >
+                              <option value="Hand Delivery / Pickup">Hand Delivery / Counter Pickup</option>
+                              <option value="Company Vehicle">ScreenArts Delivery Van / Bike</option>
+                              <option value="Porter / Rapido">Porter / Auto Courier</option>
+                              <option value="Express Logistics">Express Cargo / Transport</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>Recipient / Receiver Name</label>
+                            <input
+                              type="text"
+                              className="form-control form-control-sm"
+                              placeholder="e.g. Mr. Sunil / Gate Security"
+                              value={dispatchForm.recipientName}
+                              onChange={(e) => setDispatchForm({ ...dispatchForm, recipientName: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>Vehicle / Tracking No</label>
+                            <input
+                              type="text"
+                              className="form-control form-control-sm"
+                              placeholder="e.g. MH-12-AB-1234"
+                              value={dispatchForm.vehicleNumber}
+                              onChange={(e) => setDispatchForm({ ...dispatchForm, vehicleNumber: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>Dispatch Remarks</label>
+                          <input
+                            type="text"
+                            className="form-control form-control-sm"
+                            placeholder="e.g. Packed in 2 corrugated rolls with foam corners"
+                            value={dispatchForm.notes}
+                            onChange={(e) => setDispatchForm({ ...dispatchForm, notes: e.target.value })}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                          <button type="button" onClick={() => setIsDispatchModalOpen(false)} className="btn btn-sm btn-secondary">
+                            Cancel
+                          </button>
+                          <button type="submit" className="btn btn-sm btn-primary">
+                            Issue Delivery Challan
+                          </button>
+                        </div>
+                      </form>
+                    )}
+
+                    {/* Delivery History List */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {deliveryList.length > 0 ? (
+                        deliveryList.map((del) => (
+                          <div
+                            key={del.id}
+                            style={{
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '10px',
+                              padding: '1rem',
+                              backgroundColor: '#ffffff'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>{del.delivery_number}</strong>
+                                  <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: '9999px', backgroundColor: '#dcfce7', color: '#15803d' }}>
+                                    {del.status}
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
+                                  Dispatched: {new Date(del.dispatched_at || del.created_at).toLocaleString('en-IN')} by <strong>{del.dispatched_by}</strong>
+                                </div>
+                                <div style={{ fontSize: '0.8rem', color: '#334155', marginTop: '0.35rem' }}>
+                                  Mode: <strong>{del.transport_mode}</strong>
+                                  {del.vehicle_number && ` • Vehicle: ${del.vehicle_number}`}
+                                  {del.recipient_name && ` • Recipient: ${del.recipient_name}`}
+                                </div>
+                                {del.items && (
+                                  <div style={{ marginTop: '0.4rem', fontSize: '0.78rem', color: '#0f172a' }}>
+                                    {del.items.map((it, idx) => (
+                                      <span key={idx} style={{ background: '#f1f5f9', padding: '0.2rem 0.5rem', borderRadius: '4px', marginRight: '0.4rem', fontWeight: 600 }}>
+                                        {it.product_name}: {it.delivered_quantity} {it.unit}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '10px' }}>
+                          No deliveries have been dispatched for this order yet.
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           )}
 
@@ -1869,6 +2322,63 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
           </button>
         </div>
       </div>
+
+      {/* QR JOB CARD MODAL */}
+      {isQrModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsQrModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px', textAlign: 'center' }}>
+            <div className="modal-header">
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <QrCode size={18} color="#2563eb" /> ScreenArts QR Job Card
+              </h3>
+              <button onClick={() => setIsQrModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '1.5rem' }}>
+              <div style={{ background: '#ffffff', padding: '1rem', borderRadius: '12px', border: '2px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
+                {qrDataUrl ? (
+                  <img src={qrDataUrl} alt="QR Job Card" style={{ width: '200px', height: '200px', display: 'block' }} />
+                ) : (
+                  <div style={{ width: '200px', height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    Generating QR...
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h4 style={{ margin: 0, fontWeight: 800, fontSize: '1.05rem', color: '#0f172a' }}>
+                  {job.jobCardId || `JC-${job.orderId || parentOrder.id}`}
+                </h4>
+                <div style={{ fontSize: '0.85rem', color: '#475569', marginTop: '0.2rem' }}>
+                  Order #{parentOrder.orderNumber || job.orderId || parentOrder.id}
+                </div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#2563eb', marginTop: '0.2rem' }}>
+                  Customer: {job.customerName || parentOrder.customerName}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.5rem', background: '#f1f5f9', padding: '0.4rem 0.75rem', borderRadius: '6px' }}>
+                  🔒 Secure internal link. Scan opens authenticated job card in ScreenArts ERP without exposing confidential data or secrets.
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ justifyContent: 'center', gap: '0.75rem' }}>
+              <button
+                onClick={() => {
+                  window.print();
+                }}
+                className="btn btn-primary"
+              >
+                <Printer size={16} /> Print QR Card
+              </button>
+              <button onClick={() => setIsQrModalOpen(false)} className="btn btn-secondary">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

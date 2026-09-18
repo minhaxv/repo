@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { supabase } from '../utils/supabase';
-import { Shield, Key, Mail, Lock, User, AlertCircle, Loader } from 'lucide-react';
+import { supabase, isSupabaseConfigured } from '../utils/supabase';
+import { useERP } from '../context/ERPContext';
+import { Shield, Key, Mail, Lock, User, AlertCircle, Loader, Users, CheckCircle2 } from 'lucide-react';
 
 export const LoginView = ({ onAuthSuccess }) => {
+  const { loginWithCredentials } = useERP();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -21,6 +23,9 @@ export const LoginView = ({ onAuthSuccess }) => {
     try {
       if (isSignUp) {
         // Sign up logic
+        if (!isSupabaseConfigured) {
+          throw new Error('User registration is managed by Administrator in local database mode.');
+        }
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email,
           password,
@@ -45,31 +50,50 @@ export const LoginView = ({ onAuthSuccess }) => {
           setIsSignUp(false);
         }
       } else {
-        // Sign in logic
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (authError) throw authError;
-
-        // Fetch user profile to ensure it exists
-        if (authData?.user) {
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', authData.user.id)
-            .maybeSingle();
-
-          // Create fallback profile if it doesn't exist
-          if (!profileData) {
-            await supabase.from('profiles').insert({
-              id: authData.user.id,
-              name: email.split('@')[0],
-              email: email,
-              role: 'Admin',
-            });
+        // Try local SQLite ERP database authentication first!
+        if (loginWithCredentials) {
+          try {
+            const res = await loginWithCredentials(email, password);
+            if (res && res.success) {
+              setSuccessMsg(`Welcome, ${res.user.name || res.user.username}!`);
+              if (onAuthSuccess) onAuthSuccess();
+              return;
+            } else if (res && !res.success && !isSupabaseConfigured) {
+              throw new Error(res.error || 'Invalid username or password.');
+            }
+          } catch (localErr) {
+            if (!isSupabaseConfigured) {
+              throw localErr;
+            }
           }
+        }
+
+        // Fallback to Supabase if configured
+        if (isSupabaseConfigured) {
+          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+
+          if (authError) throw authError;
+
+          if (authData?.user) {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', authData.user.id)
+              .maybeSingle();
+
+            if (!profileData) {
+              await supabase.from('profiles').insert({
+                id: authData.user.id,
+                name: email.split('@')[0],
+                email: email,
+                role: 'Admin',
+              });
+            }
+          }
+          if (onAuthSuccess) onAuthSuccess();
         }
       }
     } catch (err) {
@@ -315,6 +339,71 @@ export const LoginView = ({ onAuthSuccess }) => {
           >
             {isSignUp ? 'Sign In here' : 'Register here'}
           </button>
+        </div>
+
+        {/* Quick Workstation Access */}
+        <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 700, letterSpacing: '0.5px', display: 'block', marginBottom: '0.65rem', textAlign: 'center' }}>
+            ⚡ QUICK FACTORY WORKSTATION LOGIN
+          </span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem' }}>
+            <button
+              type="button"
+              onClick={() => { setEmail('admin'); setPassword('Admin@123'); }}
+              style={{ padding: '0.45rem', fontSize: '0.75rem', background: 'rgba(59,130,246,0.15)', color: '#93c5fd', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '6px', cursor: 'pointer', fontWeight: 700 }}
+            >
+              👑 Admin (Minhaj V)
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEmail('billing'); setPassword('Billing@123'); }}
+              style={{ padding: '0.45rem', fontSize: '0.75rem', background: 'rgba(16,185,129,0.15)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', cursor: 'pointer', fontWeight: 700 }}
+            >
+              💼 Billing Counter
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEmail('designer'); setPassword('Design@123'); }}
+              style={{ padding: '0.45rem', fontSize: '0.75rem', background: 'rgba(236,72,153,0.15)', color: '#f472b6', border: '1px solid rgba(236,72,153,0.3)', borderRadius: '6px', cursor: 'pointer', fontWeight: 700 }}
+            >
+              🎨 Studio Designer
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEmail('operator'); setPassword('Print@123'); }}
+              style={{ padding: '0.45rem', fontSize: '0.75rem', background: 'rgba(14,165,233,0.15)', color: '#7dd3fc', border: '1px solid rgba(14,165,233,0.3)', borderRadius: '6px', cursor: 'pointer', fontWeight: 700 }}
+            >
+              🖨️ Roland Operator
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEmail('finisher'); setPassword('Finish@123'); }}
+              style={{ padding: '0.45rem', fontSize: '0.75rem', background: 'rgba(217,119,6,0.15)', color: '#fcd34d', border: '1px solid rgba(217,119,6,0.3)', borderRadius: '6px', cursor: 'pointer', fontWeight: 700 }}
+            >
+              ✂️ Finishing Worker
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEmail('qc'); setPassword('QC@123'); }}
+              style={{ padding: '0.45rem', fontSize: '0.75rem', background: 'rgba(245,158,11,0.15)', color: '#fde047', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '6px', cursor: 'pointer', fontWeight: 700 }}
+            >
+              🔍 QC Staff
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEmail('accounts'); setPassword('Accounts@123'); }}
+              style={{ padding: '0.45rem', fontSize: '0.75rem', background: 'rgba(139,92,246,0.15)', color: '#c4b5fd', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '6px', cursor: 'pointer', fontWeight: 700 }}
+            >
+              💰 Accounts Dept
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEmail('delivery'); setPassword('Delivery@123'); }}
+              style={{ padding: '0.45rem', fontSize: '0.75rem', background: 'rgba(16,185,129,0.15)', color: '#a7f3d0', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', cursor: 'pointer', fontWeight: 700 }}
+            >
+              🚚 Delivery Staff
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -14,4 +14,9 @@ dist/
 # Allow .env.example
 !.env.example
 
+# Local SQLite backups
+database/backups/
+*.sqlite-shm
+*.sqlite-wal
+
 .vercel

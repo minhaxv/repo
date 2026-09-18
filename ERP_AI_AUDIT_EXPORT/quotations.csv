@@ -1,0 +1,3 @@
+"quotation_id","quotation_number","customer_id","customer_name","order_date","due_date","subtotal","discount","tax_total","grand_total","sales_person_name","care_of_name","billed_by_staff","billed_at","status","notes"
+"QT-2026-0102","QT-2026-0102","CUST-104","Maharashtra Tourism Dev Corp (MTDC)","2026-08-02","2026-08-10","31500","0","5670","37170","Rohit Gupta","Suresh Kumar","Rohit Gupta","","Quotation",""
+"QT-2026-0101","QT-2026-0101","CUST-107","Zeta Fashion Pvt Ltd","2026-08-01","2026-08-07","43200","0","7776","50976","Priya Patel","Sneha Rao","Priya Patel","","Quotation",""

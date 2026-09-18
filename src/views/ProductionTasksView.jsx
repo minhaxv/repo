@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useERP } from '../context/ERPContext';
 import { formatINR } from '../utils/reportEngine';
+import api from '../utils/api';
 import {
   UserCheck,
   Play,
@@ -36,7 +37,11 @@ import {
   Package,
   Box,
   Zap,
-  CheckSquare
+  CheckSquare,
+  Briefcase,
+  Shield,
+  Activity,
+  Eye
 } from 'lucide-react';
 
 export const ProductionTasksView = ({ onNavigate = null }) => {
@@ -52,8 +57,169 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
     deleteProductionTask,
     addProductionProcess,
     updateProductionProcess,
-    deleteProductionProcess
+    deleteProductionProcess,
+    activeUser,
+    takeProductionTask,
+    takeJobOrderItem,
+    reassignProductionTask
   } = useERP();
+
+  // ========================================================================
+  // ROLE DETECTION: Admin/Manager vs Normal Staff
+  // ========================================================================
+  const userPermissions = useMemo(() => {
+    if (!activeUser) return [];
+    return Array.isArray(activeUser.permissions) ? activeUser.permissions : [];
+  }, [activeUser]);
+
+  const isAdminOrManager = useMemo(() => {
+    if (!activeUser) return true; // fallback to admin
+    const role = (activeUser.role || '').toLowerCase();
+    if (role === 'admin' || role === 'super admin' || role === 'manager') return true;
+    return userPermissions.includes('production.view_all');
+  }, [activeUser, userPermissions]);
+
+  const userEmployeeId = activeUser?.employeeId || '';
+  const userName = activeUser?.name || 'Staff';
+  const userDepartment = activeUser?.department || 'Production';
+  const userRole = activeUser?.role || 'Staff';
+  const userAllowedProcesses = useMemo(() => {
+    if (!activeUser) return [];
+    return Array.isArray(activeUser.allowedProcesses) ? activeUser.allowedProcesses : [];
+  }, [activeUser]);
+
+  // Staff-specific tab state: 'my_work' | 'available' | 'completed_today'
+  const [staffTab, setStaffTab] = useState('my_work');
+
+  // Available tasks state (fetched from backend for staff)
+  const [availableWork, setAvailableWork] = useState({ tasks: [], availableItems: [], allowedProcesses: [] });
+  const [availableLoading, setAvailableLoading] = useState(false);
+  const [takeWorkLoading, setTakeWorkLoading] = useState(null); // task id being taken
+
+  // Reassign modal state
+  const [reassignModal, setReassignModal] = useState(null); // { task, ... }
+  const [reassignTarget, setReassignTarget] = useState('');
+  const [reassignReason, setReassignReason] = useState('');
+
+  // Timeline modal state
+  const [timelineModal, setTimelineModal] = useState(null);
+
+  const handleOpenTimeline = async (task) => {
+    setTimelineModal({ task, logs: [], loading: true });
+    try {
+      const res = await api.fetchTaskTimeline(task.id);
+      setTimelineModal({ task, logs: res.timeline || [], loading: false });
+    } catch (err) {
+      console.error('Failed to fetch timeline:', err);
+      setTimelineModal({ task, logs: [], loading: false, error: err.message });
+    }
+  };
+
+  // Staff-scoped computed values
+  const myTasks = useMemo(() => {
+    if (isAdminOrManager) return [];
+    return (productionTasks || []).filter(t =>
+      t.employeeId === userEmployeeId ||
+      t.assignedEmployeeId === userEmployeeId ||
+      t.assignedUserId === (activeUser?.userId || activeUser?.id)
+    );
+  }, [productionTasks, userEmployeeId, activeUser, isAdminOrManager]);
+
+  const myActiveTasks = useMemo(() =>
+    myTasks.filter(t => ['Started', 'In Progress', 'Resumed'].includes(t.status)),
+  [myTasks]);
+
+  const myPausedTasks = useMemo(() =>
+    myTasks.filter(t => t.status === 'Paused'),
+  [myTasks]);
+
+  const myPendingTasks = useMemo(() =>
+    myTasks.filter(t => t.status === 'Pending' || t.status === 'Assigned'),
+  [myTasks]);
+
+  const myCompletedToday = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return myTasks.filter(t =>
+      t.status === 'Completed' &&
+      (
+        (t.completedAt && t.completedAt.startsWith(today)) ||
+        (t.createdAt && t.createdAt.startsWith(today)) ||
+        t.taskDate === today
+      )
+    );
+  }, [myTasks]);
+
+  const myTotalMinutesToday = useMemo(() =>
+    myTasks.reduce((sum, t) => sum + Number(t.totalDurationMinutes || 0), 0),
+  [myTasks]);
+
+  // Fetch available work for staff
+  const fetchAvailableWork = useCallback(async () => {
+    if (isAdminOrManager) return;
+    setAvailableLoading(true);
+    try {
+      const data = await api.fetchAvailableProductionTasks();
+      if (data && data.success) {
+        setAvailableWork({
+          tasks: data.tasks || [],
+          availableItems: data.availableItems || [],
+          allowedProcesses: data.allowedProcesses || []
+        });
+      }
+    } catch (err) {
+      console.error('fetchAvailableWork error:', err);
+    }
+    setAvailableLoading(false);
+  }, [isAdminOrManager]);
+
+  useEffect(() => {
+    if (!isAdminOrManager && staffTab === 'available') {
+      fetchAvailableWork();
+    }
+  }, [isAdminOrManager, staffTab, fetchAvailableWork]);
+
+  // Staff: Atomic Take Work handler
+  const handleTakeWork = async (taskId) => {
+    setTakeWorkLoading(taskId);
+    try {
+      await takeProductionTask(taskId);
+      // Refresh available work list after taking
+      await fetchAvailableWork();
+    } catch (err) {
+      alert(err.message || 'Failed to claim work. It may have already been taken.');
+    }
+    setTakeWorkLoading(null);
+  };
+
+  // Staff: Atomic Take Job Order Item handler
+  const handleTakeJobItem = async (orderId, itemId, processName, startImmediately = true) => {
+    setTakeWorkLoading(`${orderId}-${itemId}-${processName}`);
+    try {
+      await takeJobOrderItem({ orderId, itemId, processName, startImmediately });
+      await fetchAvailableWork();
+    } catch (err) {
+      alert(err.message || 'Failed to claim this item. It may have already been taken.');
+    }
+    setTakeWorkLoading(null);
+  };
+
+  // Admin: Reassign handler
+  const handleReassignSubmit = async () => {
+    if (!reassignModal || !reassignTarget) return;
+    try {
+      const emp = (employees || []).find(e => e.id === reassignTarget);
+      await reassignProductionTask(reassignModal.id, {
+        newEmployeeId: reassignTarget,
+        newEmployeeName: emp?.name || reassignTarget,
+        reason: reassignReason || 'Admin reassignment'
+      });
+      setReassignModal(null);
+      setReassignTarget('');
+      setReassignReason('');
+    } catch (err) {
+      alert(err.message || 'Failed to reassign task');
+    }
+  };
 
   // Navigation sub-tab: 'board' | 'list' | 'available_items' | 'workload' | 'processes'
   const [activeTab, setActiveTab] = useState('board');
@@ -432,6 +598,520 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
 
   return (
     <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', minHeight: '88vh' }}>
+
+      {/* ========================================================================= */}
+      {/* STAFF MODE: MY PRODUCTION HUB (Login-User Scoped View) */}
+      {/* ========================================================================= */}
+      {!isAdminOrManager && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Staff Personal Header */}
+          <div style={{
+            background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
+            borderRadius: '14px',
+            padding: '1.25rem 1.5rem',
+            color: '#ffffff',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '1rem',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <div style={{
+                width: '50px',
+                height: '50px',
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1.3rem',
+                fontWeight: 900,
+                color: '#ffffff',
+                border: '3px solid rgba(255,255,255,0.2)'
+              }}>
+                {userName.slice(0, 1).toUpperCase()}
+              </div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.01em' }}>
+                  👤 {userName}
+                </h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginTop: '0.2rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.82rem', color: '#94a3b8', fontWeight: 600 }}>
+                    {userDepartment} • {userRole}
+                  </span>
+                  <span style={{
+                    fontSize: '0.7rem',
+                    fontWeight: 800,
+                    padding: '0.12rem 0.5rem',
+                    borderRadius: '20px',
+                    background: 'rgba(34, 197, 94, 0.15)',
+                    color: '#4ade80',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.3rem'
+                  }}>
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#4ade80' }} />
+                    Online
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.02em' }}>
+                MY PRODUCTION HUB
+              </h3>
+            </div>
+          </div>
+
+          {/* Staff Personal KPI Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.85rem' }}>
+            <div style={{ background: '#ffffff', padding: '0.9rem', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+              <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>MY ASSIGNED</span>
+              <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#0f172a', marginTop: '0.2rem' }}>{myTasks.length}</div>
+              <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Total tasks</span>
+            </div>
+            <div style={{ background: '#eff6ff', padding: '0.9rem', borderRadius: '10px', border: '1px solid #bfdbfe' }}>
+              <span style={{ fontSize: '0.7rem', color: '#2563eb', fontWeight: 700, textTransform: 'uppercase' }}>IN PROGRESS</span>
+              <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#2563eb', marginTop: '0.2rem' }}>{myActiveTasks.length}</div>
+              <span style={{ fontSize: '0.72rem', color: '#1d4ed8' }}>Active now</span>
+            </div>
+            <div style={{ background: '#fefce8', padding: '0.9rem', borderRadius: '10px', border: '1px solid #fef08a' }}>
+              <span style={{ fontSize: '0.7rem', color: '#ca8a04', fontWeight: 700, textTransform: 'uppercase' }}>PAUSED</span>
+              <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#ca8a04', marginTop: '0.2rem' }}>{myPausedTasks.length}</div>
+              <span style={{ fontSize: '0.72rem', color: '#854d0e' }}>On hold</span>
+            </div>
+            <div style={{ background: '#f0fdf4', padding: '0.9rem', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
+              <span style={{ fontSize: '0.7rem', color: '#16a34a', fontWeight: 700, textTransform: 'uppercase' }}>COMPLETED TODAY</span>
+              <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#16a34a', marginTop: '0.2rem' }}>{myCompletedToday.length}</div>
+              <span style={{ fontSize: '0.72rem', color: '#15803d' }}>Finished</span>
+            </div>
+            <div style={{ background: '#faf5ff', padding: '0.9rem', borderRadius: '10px', border: '1px solid #e9d5ff' }}>
+              <span style={{ fontSize: '0.7rem', color: '#9333ea', fontWeight: 700, textTransform: 'uppercase' }}>MY WORK HOURS</span>
+              <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#7e22ce', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <Timer size={18} /> {(myTotalMinutesToday / 60).toFixed(1)}h
+              </div>
+              <span style={{ fontSize: '0.72rem', color: '#6b21a8' }}>Pure working</span>
+            </div>
+          </div>
+
+          {/* Staff Sub-Tab Navigation */}
+          <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', gap: '0.5rem', background: '#ffffff', borderRadius: '8px 8px 0 0', padding: '0.25rem 0.5rem 0' }}>
+            {[
+              { id: 'my_work', label: 'My Assigned Work', icon: Briefcase, count: myActiveTasks.length + myPausedTasks.length + myPendingTasks.length },
+              { id: 'available', label: 'Available Work / Take Work', icon: Zap, count: availableWork.tasks.length + availableWork.availableItems.length },
+              { id: 'completed_today', label: 'My Completed Today', icon: CheckCircle2, count: myCompletedToday.length }
+            ].map(tab => {
+              const Icon = tab.icon;
+              const isActive = staffTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setStaffTab(tab.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.75rem 1.25rem',
+                    fontSize: '0.88rem',
+                    fontWeight: isActive ? 800 : 600,
+                    color: isActive ? '#2563eb' : '#64748b',
+                    background: 'none',
+                    border: 'none',
+                    borderBottom: isActive ? '3px solid #2563eb' : '3px solid transparent',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Icon size={17} color={isActive ? '#2563eb' : '#64748b'} />
+                  {tab.label}
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    padding: '0.1rem 0.45rem',
+                    borderRadius: '12px',
+                    background: isActive ? '#dbeafe' : '#f1f5f9',
+                    color: isActive ? '#1d4ed8' : '#64748b'
+                  }}>
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ================================================================= */}
+          {/* STAFF TAB 1: MY ASSIGNED WORK */}
+          {/* ================================================================= */}
+          {staffTab === 'my_work' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {myTasks.filter(t => t.status !== 'Completed').length === 0 ? (
+                <div style={{ background: '#ffffff', padding: '3rem 1.5rem', textAlign: 'center', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <Briefcase size={40} color="#94a3b8" style={{ margin: '0 auto 0.75rem', display: 'block' }} />
+                  <h5 style={{ margin: 0, fontWeight: 700, color: '#334155' }}>No active tasks assigned to you</h5>
+                  <p style={{ margin: '0.35rem 0 0', fontSize: '0.85rem', color: '#94a3b8' }}>
+                    Go to the <strong>"Available Work"</strong> tab to pick up new tasks.
+                  </p>
+                </div>
+              ) : (
+                myTasks.filter(t => t.status !== 'Completed').map(task => {
+                  const isStarted = ['Started', 'In Progress', 'Resumed'].includes(task.status);
+                  const isPaused = task.status === 'Paused';
+                  const isPending = task.status === 'Pending' || task.status === 'Assigned';
+                  const isRework = task.status === 'Rework';
+
+                  let cardBorder = '#e2e8f0';
+                  let cardBg = '#ffffff';
+                  if (isStarted) { cardBorder = '#3b82f6'; cardBg = '#eff6ff'; }
+                  else if (isPaused) { cardBorder = '#f59e0b'; cardBg = '#fffbeb'; }
+                  else if (isRework) { cardBorder = '#ef4444'; cardBg = '#fef2f2'; }
+
+                  return (
+                    <div key={task.id} style={{
+                      background: cardBg,
+                      border: `2px solid ${cardBorder}`,
+                      borderRadius: '12px',
+                      padding: '1rem 1.25rem',
+                      boxShadow: isStarted ? '0 4px 12px rgba(59, 130, 246, 0.12)' : '0 2px 4px rgba(0,0,0,0.04)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.6rem'
+                    }}>
+                      {/* Top: Order # + Status + Priority */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontWeight: 900, fontSize: '0.88rem', color: '#0f172a' }}>
+                            #{task.orderNumber || task.orderId}
+                          </span>
+                          <span style={{
+                            fontSize: '0.72rem', fontWeight: 800, padding: '0.15rem 0.5rem', borderRadius: '12px',
+                            background: isStarted ? '#dbeafe' : isPaused ? '#fef3c7' : isPending ? '#f1f5f9' : isRework ? '#fee2e2' : '#f1f5f9',
+                            color: isStarted ? '#1e40af' : isPaused ? '#92400e' : isPending ? '#475569' : isRework ? '#991b1b' : '#475569'
+                          }}>
+                            {isStarted && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2563eb', display: 'inline-block', marginRight: '0.3rem', verticalAlign: 'middle' }} />}
+                            {task.status}
+                          </span>
+                        </div>
+                        {task.priority && task.priority !== 'Normal' && (
+                          <span style={{
+                            fontSize: '0.68rem', fontWeight: 900, padding: '0.12rem 0.4rem', borderRadius: '4px',
+                            background: task.priority === 'Urgent' ? '#fef2f2' : '#fffbeb',
+                            color: task.priority === 'Urgent' ? '#dc2626' : '#d97706',
+                            border: `1px solid ${task.priority === 'Urgent' ? '#fecaca' : '#fde68a'}`
+                          }}>
+                            {task.priority.toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Process + Item + Customer */}
+                      <div>
+                        <span style={{
+                          display: 'inline-block', fontSize: '0.78rem', fontWeight: 800, padding: '0.18rem 0.55rem',
+                          borderRadius: '5px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd'
+                        }}>
+                          {task.processName}
+                        </span>
+                        <div style={{ marginTop: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 800, background: '#f1f5f9', color: '#334155', padding: '0.05rem 0.35rem', borderRadius: '3px', border: '1px solid #cbd5e1' }}>
+                            Item #{task.itemIndex || 1}
+                          </span>
+                          <strong style={{ fontSize: '0.88rem', color: '#0f172a' }}>{task.itemTitle || 'Printing Item'}</strong>
+                        </div>
+                        <div style={{ fontSize: '0.76rem', color: '#475569', marginTop: '0.15rem' }}>
+                          Customer: <strong>{task.customerName || 'Walk-in'}</strong> • Qty: <strong>{task.quantity} {task.unit || 'Nos'}</strong>
+                          {task.itemDimensions && ` • ${task.itemDimensions}`}
+                        </div>
+                      </div>
+
+                      {/* Timer + Machine */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: '#64748b' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#7e22ce', fontWeight: 800 }}>
+                          <Timer size={15} /> {formatDuration(task.totalDurationMinutes)}
+                          {isStarted && <span style={{ fontSize: '0.68rem', color: '#2563eb', fontWeight: 600, marginLeft: '0.3rem' }}>⏱ Running...</span>}
+                        </div>
+                        {task.machineName ? (
+                          <span style={{ color: '#475569' }}>⚙️ {task.machineName}</span>
+                        ) : (
+                          <span>Manual</span>
+                        )}
+                      </div>
+
+                      {/* Remarks */}
+                      {task.remarks && (
+                        <div style={{ fontSize: '0.74rem', color: '#64748b', fontStyle: 'italic', background: '#fdfdfd', padding: '0.3rem 0.5rem', borderRadius: '4px', border: '1px dashed #e2e8f0' }}>
+                          "{task.remarks}"
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                        gap: '0.4rem',
+                        marginTop: '0.2rem',
+                        borderTop: '1px solid #f1f5f9',
+                        paddingTop: '0.5rem',
+                        flexWrap: 'wrap'
+                      }}>
+                        {(isPending || isRework) && (
+                          <button type="button" onClick={() => handleTaskAction(task.id, 'START')}
+                            style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 800, borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                            <Play size={13} fill="#fff" /> Start Work
+                          </button>
+                        )}
+                        {isStarted && (
+                          <button type="button" onClick={() => handleTaskAction(task.id, 'PAUSE')}
+                            style={{ background: '#d97706', color: '#fff', border: 'none', padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 800, borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                            <Pause size={13} /> Pause
+                          </button>
+                        )}
+                        {isPaused && (
+                          <button type="button" onClick={() => handleTaskAction(task.id, 'RESUME')}
+                            style={{ background: '#2563eb', color: '#fff', border: 'none', padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 800, borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                            <Play size={13} fill="#fff" /> Resume
+                          </button>
+                        )}
+                        {(isStarted || isPaused) && (
+                          <button type="button" onClick={() => handleTaskAction(task.id, 'COMPLETE')}
+                            style={{ background: '#059669', color: '#fff', border: 'none', padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 800, borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                            <Check size={13} /> Done
+                          </button>
+                        )}
+                        {(isStarted) && (
+                          <button type="button" title="Report Quality Issue / Rework" onClick={() => setReworkPromptTask(task)}
+                            style={{ background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', padding: '0.35rem 0.5rem', borderRadius: '6px', cursor: 'pointer' }}>
+                            <RotateCcw size={13} />
+                          </button>
+                        )}
+                        <button type="button" title="View Activity Timeline" onClick={() => handleOpenTimeline(task)}
+                          style={{ background: '#f5f3ff', color: '#7e22ce', border: '1px solid #ddd6fe', padding: '0.35rem 0.5rem', borderRadius: '6px', cursor: 'pointer' }}>
+                          <Activity size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {/* ================================================================= */}
+          {/* STAFF TAB 2: AVAILABLE WORK / TAKE WORK */}
+          {/* ================================================================= */}
+          {staffTab === 'available' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Info banner */}
+              <div style={{
+                background: '#ecfdf5', border: '1px solid #86efac', borderRadius: '10px', padding: '0.85rem 1.25rem',
+                display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.85rem', color: '#065f46'
+              }}>
+                <Zap size={20} color="#059669" />
+                <div>
+                  <strong>Take Work</strong> — Click the green "Take Work" button to claim a task. Once taken, it will appear in <strong>My Assigned Work</strong>.
+                  {userAllowedProcesses.length > 0 && (
+                    <div style={{ fontSize: '0.78rem', marginTop: '0.2rem', color: '#047857' }}>
+                      Your qualified processes: <strong>{userAllowedProcesses.join(', ')}</strong>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {availableLoading ? (
+                <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8', fontSize: '0.9rem' }}>
+                  ⏳ Loading available work...
+                </div>
+              ) : (
+                <>
+                  {/* Unassigned existing tasks */}
+                  {availableWork.tasks.length > 0 && (
+                    <div>
+                      <h5 style={{ margin: '0 0 0.5rem', fontWeight: 800, fontSize: '0.92rem', color: '#0f172a' }}>
+                        📋 Unassigned Tasks ({availableWork.tasks.length})
+                      </h5>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                        {availableWork.tasks.map(task => (
+                          <div key={task.id} style={{
+                            background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0.85rem 1rem',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem'
+                          }}>
+                            <div style={{ flex: 1, minWidth: '200px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0f172a' }}>#{task.orderNumber || task.orderId}</span>
+                                <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.12rem 0.45rem', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1' }}>
+                                  {task.processName}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: '0.78rem', color: '#475569', marginTop: '0.2rem' }}>
+                                {task.itemTitle || 'Printing Item'} • Customer: <strong>{task.customerName || 'Walk-in'}</strong> • Qty: <strong>{task.quantity} {task.unit || 'Nos'}</strong>
+                              </div>
+                            </div>
+                            <button type="button"
+                              disabled={takeWorkLoading === task.id}
+                              onClick={() => handleTakeWork(task.id)}
+                              style={{
+                                background: takeWorkLoading === task.id ? '#94a3b8' : '#059669',
+                                color: '#fff', border: 'none', fontWeight: 800, fontSize: '0.82rem',
+                                padding: '0.5rem 1rem', borderRadius: '8px',
+                                display: 'flex', alignItems: 'center', gap: '0.35rem',
+                                boxShadow: '0 2px 6px rgba(5,150,105,0.2)', cursor: takeWorkLoading === task.id ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              <Zap size={15} fill="#fff" /> {takeWorkLoading === task.id ? 'Claiming...' : 'TAKE WORK'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Available order items to claim */}
+                  {availableWork.availableItems.length > 0 && (
+                    <div>
+                      <h5 style={{ margin: '0.5rem 0 0.5rem', fontWeight: 800, fontSize: '0.92rem', color: '#0f172a' }}>
+                        📦 Order Items Ready to Take ({availableWork.availableItems.length})
+                      </h5>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                        {availableWork.availableItems.map(item => {
+                          const loadKey = `${item.orderId}-${item.itemId}-${item.processName}`;
+                          return (
+                            <div key={item.id} style={{
+                              background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0.85rem 1rem',
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem'
+                            }}>
+                              <div style={{ flex: 1, minWidth: '200px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                  <span style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0f172a' }}>#{item.orderNumber}</span>
+                                  <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.12rem 0.45rem', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1' }}>
+                                    {item.processName}
+                                  </span>
+                                  {item.priority && item.priority !== 'Normal' && (
+                                    <span style={{
+                                      fontSize: '0.65rem', fontWeight: 900, padding: '0.1rem 0.3rem', borderRadius: '3px',
+                                      background: item.priority === 'Urgent' ? '#fef2f2' : '#fffbeb',
+                                      color: item.priority === 'Urgent' ? '#dc2626' : '#d97706'
+                                    }}>
+                                      {item.priority}
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ fontSize: '0.78rem', color: '#475569', marginTop: '0.2rem' }}>
+                                  <strong>{item.itemTitle}</strong> • {item.customerName} • Qty: <strong>{item.quantity} {item.unit || 'Nos'}</strong>
+                                  {item.dimensions && ` • ${item.dimensions}`}
+                                </div>
+                                {item.deliveryDate && (
+                                  <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.1rem' }}>
+                                    <Calendar size={11} style={{ verticalAlign: 'middle' }} /> Due: <strong>{item.deliveryDate}</strong>
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                <button type="button"
+                                  disabled={takeWorkLoading === loadKey}
+                                  onClick={() => handleTakeJobItem(item.orderId, item.itemId, item.processName, false)}
+                                  style={{
+                                    background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1',
+                                    fontWeight: 700, fontSize: '0.78rem', padding: '0.4rem 0.75rem', borderRadius: '6px',
+                                    cursor: takeWorkLoading === loadKey ? 'not-allowed' : 'pointer'
+                                  }}
+                                >
+                                  📥 Take & Queue
+                                </button>
+                                <button type="button"
+                                  disabled={takeWorkLoading === loadKey}
+                                  onClick={() => handleTakeJobItem(item.orderId, item.itemId, item.processName, true)}
+                                  style={{
+                                    background: takeWorkLoading === loadKey ? '#94a3b8' : '#059669',
+                                    color: '#fff', border: 'none', fontWeight: 800, fontSize: '0.82rem',
+                                    padding: '0.45rem 0.85rem', borderRadius: '8px',
+                                    display: 'flex', alignItems: 'center', gap: '0.3rem',
+                                    boxShadow: '0 2px 6px rgba(5,150,105,0.2)', cursor: takeWorkLoading === loadKey ? 'not-allowed' : 'pointer'
+                                  }}
+                                >
+                                  <Zap size={14} fill="#fff" /> {takeWorkLoading === loadKey ? 'Claiming...' : 'TAKE & START'}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {availableWork.tasks.length === 0 && availableWork.availableItems.length === 0 && (
+                    <div style={{ background: '#fff', padding: '3rem 1.5rem', textAlign: 'center', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                      <CheckCircle2 size={40} color="#16a34a" style={{ margin: '0 auto 0.75rem', display: 'block' }} />
+                      <h5 style={{ margin: 0, fontWeight: 700, color: '#334155' }}>No available work at the moment</h5>
+                      <p style={{ margin: '0.35rem 0 0', fontSize: '0.85rem', color: '#94a3b8' }}>
+                        All tasks have been assigned. Check back soon or refresh the page.
+                      </p>
+                      <button type="button" onClick={fetchAvailableWork} style={{
+                        marginTop: '0.75rem', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe',
+                        padding: '0.4rem 0.85rem', borderRadius: '6px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer'
+                      }}>
+                        <RotateCcw size={13} style={{ verticalAlign: 'middle', marginRight: '0.3rem' }} /> Refresh Available Work
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ================================================================= */}
+          {/* STAFF TAB 3: MY COMPLETED TODAY */}
+          {/* ================================================================= */}
+          {staffTab === 'completed_today' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {myCompletedToday.length === 0 ? (
+                <div style={{ background: '#fff', padding: '3rem 1.5rem', textAlign: 'center', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <CheckCircle2 size={40} color="#94a3b8" style={{ margin: '0 auto 0.75rem', display: 'block' }} />
+                  <h5 style={{ margin: 0, fontWeight: 700, color: '#334155' }}>No completed tasks today yet</h5>
+                  <p style={{ margin: '0.35rem 0 0', fontSize: '0.85rem', color: '#94a3b8' }}>Complete your assigned work to see them here.</p>
+                </div>
+              ) : (
+                <>
+                  <div style={{
+                    background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '0.75rem 1rem',
+                    fontSize: '0.85rem', color: '#15803d', fontWeight: 700
+                  }}>
+                    ✅ {myCompletedToday.length} task{myCompletedToday.length > 1 ? 's' : ''} completed today •
+                    Total active time: <strong>{formatDuration(myCompletedToday.reduce((s, t) => s + Number(t.totalDurationMinutes || 0), 0))}</strong>
+                  </div>
+                  {myCompletedToday.map(task => (
+                    <div key={task.id} style={{
+                      background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '0.85rem 1rem',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem'
+                    }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                          <CheckCircle2 size={16} color="#16a34a" />
+                          <span style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0f172a' }}>#{task.orderNumber || task.orderId}</span>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.12rem 0.45rem', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1' }}>
+                            {task.processName}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: '#475569', marginTop: '0.15rem' }}>
+                          {task.itemTitle || 'Printing Item'} • {task.customerName || 'Walk-in'} • Qty: {task.quantity} {task.unit || 'Nos'}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#7e22ce', fontWeight: 800, fontSize: '0.82rem' }}>
+                        <Timer size={14} /> {formatDuration(task.totalDurationMinutes)}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* ADMIN MODE: Full Employee Production & Multi-Task Hub */}
+      {/* ========================================================================= */}
+      {isAdminOrManager && (<>
       {/* Top Header Bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
@@ -1049,6 +1729,32 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
                                 <RotateCcw size={11} />
                               </button>
                             )}
+
+                            {/* Reassign (Admin / Manager) */}
+                            <button
+                              type="button"
+                              title="Reassign Task"
+                              onClick={() => {
+                                setReassignModal(task);
+                                setReassignTarget(task.employeeId || '');
+                                setReassignReason('');
+                              }}
+                              className="btn btn-sm"
+                              style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '0.25rem 0.4rem', borderRadius: '4px' }}
+                            >
+                              <UserCheck size={11} />
+                            </button>
+
+                            {/* Timeline / Audit */}
+                            <button
+                              type="button"
+                              title="Task Timeline & Audit"
+                              onClick={() => handleOpenTimeline(task)}
+                              className="btn btn-sm"
+                              style={{ background: '#f5f3ff', color: '#7e22ce', border: '1px solid #ddd6fe', padding: '0.25rem 0.4rem', borderRadius: '4px' }}
+                            >
+                              <Activity size={11} />
+                            </button>
 
                             {/* Delete */}
                             <button
@@ -1672,6 +2378,44 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
                                   <RotateCcw size={11} />
                                 </button>
                               )}
+
+                              {/* Reassign */}
+                              <button
+                                type="button"
+                                title="Reassign Task"
+                                onClick={() => {
+                                  setReassignModal(task);
+                                  setReassignTarget(task.employeeId || '');
+                                  setReassignReason('');
+                                }}
+                                className="btn btn-sm"
+                                style={{
+                                  background: '#eff6ff',
+                                  color: '#2563eb',
+                                  border: '1px solid #bfdbfe',
+                                  padding: '0.25rem 0.45rem',
+                                  borderRadius: '5px'
+                                }}
+                              >
+                                <UserCheck size={11} />
+                              </button>
+
+                              {/* Timeline / Audit */}
+                              <button
+                                type="button"
+                                title="Task Timeline & Audit"
+                                onClick={() => handleOpenTimeline(task)}
+                                className="btn btn-sm"
+                                style={{
+                                  background: '#f5f3ff',
+                                  color: '#7e22ce',
+                                  border: '1px solid #ddd6fe',
+                                  padding: '0.25rem 0.45rem',
+                                  borderRadius: '5px'
+                                }}
+                              >
+                                <Activity size={11} />
+                              </button>
 
                               {/* Delete */}
                               <button
@@ -2322,6 +3066,7 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
           </div>
         </div>
       )}
+      </>)}
 
       {/* ========================================================================= */}
       {/* TAKE / ASSIGN JOB ORDER ITEM MODAL */}
@@ -2851,6 +3596,179 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* REASSIGN TASK MODAL (ADMIN / MANAGER) */}
+      {/* ========================================================================= */}
+      {reassignModal && (
+        <div className="modal-overlay" onClick={() => setReassignModal(null)} style={{ zIndex: 99999 }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px', width: '92vw', padding: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <UserCheck size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                    Reassign Task
+                  </h3>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Transfer ownership with audit logging</span>
+                </div>
+              </div>
+              <button type="button" onClick={() => setReassignModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ background: '#f8fafc', padding: '0.85rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1.25rem', fontSize: '0.82rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <div><strong>Task:</strong> #{reassignModal.orderNumber || reassignModal.orderId} — {reassignModal.processName}</div>
+              <div><strong>Item:</strong> {reassignModal.itemTitle || 'Production Item'} ({reassignModal.quantity} {reassignModal.unit || 'Nos'})</div>
+              <div><strong>Current Assignee:</strong> <span style={{ color: '#d97706', fontWeight: 700 }}>{reassignModal.employeeName || 'Unassigned'}</span></div>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+                Select New Assignee *
+              </label>
+              <select
+                value={reassignTarget}
+                onChange={e => setReassignTarget(e.target.value)}
+                style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' }}
+              >
+                <option value="">-- Choose Employee / Worker --</option>
+                {(employees || []).filter(e => e.isActive !== false).map(e => (
+                  <option key={e.id} value={e.id}>
+                    {e.name} ({e.department || 'Production'} • {e.role || 'Staff'})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+                Reason for Reassignment (Logged to audit trail)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Workload balancing, shift transition, urgent re-prioritization"
+                value={reassignReason}
+                onChange={e => setReassignReason(e.target.value)}
+                style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <button type="button" onClick={() => setReassignModal(null)} className="btn btn-secondary btn-sm">
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!reassignTarget}
+                onClick={handleReassignSubmit}
+                className="btn btn-primary btn-sm"
+                style={{ fontWeight: 700, background: '#2563eb', padding: '0.5rem 1.25rem' }}
+              >
+                Confirm Reassign
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TASK ACTIVITY & AUDIT TIMELINE MODAL */}
+      {/* ========================================================================= */}
+      {timelineModal && (
+        <div className="modal-overlay" onClick={() => setTimelineModal(null)} style={{ zIndex: 99999 }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '580px', width: '92vw', padding: '1.5rem', maxHeight: '85vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#f3e8ff', color: '#7e22ce', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Activity size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                    Task Timeline & Audit Log
+                  </h3>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Complete lifecycle tracking and event logs</span>
+                </div>
+              </div>
+              <button type="button" onClick={() => setTimelineModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ background: '#f8fafc', padding: '0.85rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1.25rem', fontSize: '0.82rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <div><strong>Task:</strong> #{timelineModal.task?.orderNumber || timelineModal.task?.orderId} — {timelineModal.task?.processName}</div>
+              <div><strong>Item:</strong> {timelineModal.task?.itemTitle || 'Production Item'} • Qty: {timelineModal.task?.quantity}</div>
+              <div><strong>Assigned To:</strong> {timelineModal.task?.employeeName || 'Unassigned'} • Status: <span style={{ fontWeight: 800, color: '#2563eb' }}>{timelineModal.task?.status}</span></div>
+            </div>
+
+            {timelineModal.loading ? (
+              <div style={{ textAlign: 'center', padding: '2.5rem', color: '#64748b' }}>
+                <div style={{ display: 'inline-block', width: '20px', height: '20px', border: '2px solid #2563eb', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                <div style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>Loading activity logs...</div>
+              </div>
+            ) : (!timelineModal.logs || timelineModal.logs.length === 0) ? (
+              <div style={{ textAlign: 'center', padding: '2.5rem', color: '#94a3b8', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                <Clock size={32} style={{ margin: '0 auto 0.5rem', display: 'block', opacity: 0.5 }} />
+                <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#475569' }}>No Activity Recorded Yet</div>
+                <div style={{ fontSize: '0.78rem', marginTop: '0.2rem' }}>Lifecycle timestamps will appear as actions are dispatched.</div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', position: 'relative', paddingLeft: '1.5rem', borderLeft: '2px solid #e2e8f0', marginLeft: '0.75rem' }}>
+                {timelineModal.logs.map((log, idx) => {
+                  const isComplete = log.action === 'COMPLETED';
+                  const isStart = log.action === 'STARTED' || log.action === 'RESUMED' || log.action === 'ASSIGNED' || log.action === 'CLAIMED';
+                  const isPause = log.action === 'PAUSED';
+                  const isRework = log.action === 'REWORK';
+                  const isReassign = log.action === 'REASSIGNED';
+                  const dotColor = isComplete ? '#16a34a' : isRework ? '#dc2626' : isPause ? '#d97706' : isReassign ? '#7e22ce' : '#2563eb';
+
+                  return (
+                    <div key={idx} style={{ position: 'relative', fontSize: '0.82rem' }}>
+                      <div style={{
+                        position: 'absolute', left: '-1.95rem', top: '3px', width: '12px', height: '12px',
+                        borderRadius: '50%', background: dotColor,
+                        border: '2px solid #fff', boxShadow: `0 0 0 2px ${dotColor}`
+                      }} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.3rem' }}>
+                        <span style={{ fontWeight: 800, color: dotColor, fontSize: '0.85rem' }}>
+                          {log.action}
+                        </span>
+                        <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                          {log.timestamp ? new Date(log.timestamp).toLocaleString() : ''}
+                        </span>
+                      </div>
+                      {(log.logged_by || log.employee_name || log.employeeName) && (
+                        <div style={{ fontSize: '0.76rem', color: '#475569', marginTop: '0.1rem' }}>
+                          By: <strong>{log.logged_by || log.employee_name || log.employeeName}</strong>
+                        </div>
+                      )}
+                      {log.notes && (
+                        <div style={{ fontSize: '0.76rem', color: '#334155', fontStyle: 'italic', marginTop: '0.15rem', background: '#f1f5f9', padding: '0.3rem 0.5rem', borderRadius: '4px' }}>
+                          "{log.notes}"
+                        </div>
+                      )}
+                      {(log.duration_minutes > 0 || log.durationMinutes > 0) && (
+                        <div style={{ fontSize: '0.72rem', color: '#7e22ce', fontWeight: 700, marginTop: '0.15rem' }}>
+                          Duration: {log.duration_minutes || log.durationMinutes} mins
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{ marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setTimelineModal(null)} className="btn btn-secondary btn-sm">
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -13,6 +13,7 @@
 ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS code TEXT;
 ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS name TEXT;
 ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS mobile TEXT;
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS additional_mobiles TEXT;
 ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS gstin TEXT;
 ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'Walk-in';
@@ -75,6 +76,10 @@ ALTER TABLE public.sales_orders ADD COLUMN IF NOT EXISTS payment_status TEXT DEF
 ALTER TABLE public.sales_orders ADD COLUMN IF NOT EXISTS production_status TEXT DEFAULT 'New';
 ALTER TABLE public.sales_orders ADD COLUMN IF NOT EXISTS delivery_mode TEXT DEFAULT 'Counter Pickup';
 ALTER TABLE public.sales_orders ADD COLUMN IF NOT EXISTS delivered_by TEXT;
+ALTER TABLE public.sales_orders ADD COLUMN IF NOT EXISTS billed_by_staff TEXT;
+ALTER TABLE public.sales_orders ADD COLUMN IF NOT EXISTS billed_by_id TEXT;
+ALTER TABLE public.sales_orders ADD COLUMN IF NOT EXISTS billed_by_role TEXT;
+ALTER TABLE public.sales_orders ADD COLUMN IF NOT EXISTS billed_at TEXT;
 ALTER TABLE public.sales_orders ADD COLUMN IF NOT EXISTS signature_url TEXT;
 ALTER TABLE public.sales_orders ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
 

@@ -117,6 +117,17 @@ export const NAVIGATION_MODULES = [
     ]
   },
   {
+    id: 'hr-section',
+    label: 'HR & Biometrics',
+    icon: UserCheck,
+    roles: ['Admin', 'Manager', 'Accounts'],
+    subItems: [
+      { id: 'attendance', label: 'Attendance & Biometrics', icon: Clock, highlight: true, roles: ['Admin', 'Manager'] },
+      { id: 'hr-payroll', label: 'Payroll & Salaries', icon: DollarSign, highlight: true, roles: ['Admin', 'Manager', 'Accounts'] },
+      { id: 'report-employee-work', label: 'Daily Work Logs', icon: FileText, roles: ['Admin', 'Manager', 'Production'] }
+    ]
+  },
+  {
     id: 'finance',
     label: 'Finance',
     icon: CreditCard,

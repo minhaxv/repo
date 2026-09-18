@@ -79,9 +79,9 @@ export const JobCardPrintModal = ({ order, selectedItemCard, isOpen, onClose }) 
               <div style={{ fontSize: '0.78rem', color: '#475569' }}>Mob: {activeOrder.customerMobile}</div>
             </div>
             <div>
-              <span style={{ color: '#64748b', fontSize: '0.72rem', display: 'block', fontWeight: 700 }}>CARE OF PERSON</span>
-              <strong>{activeOrder.careOfName || 'N/A'}</strong>
-              <div style={{ fontSize: '0.78rem', color: '#475569' }}>Sales: {activeOrder.salesPersonName}</div>
+              <span style={{ color: '#64748b', fontSize: '0.72rem', display: 'block', fontWeight: 700 }}>BILLED BY & CARE OF</span>
+              <strong>Billed: {activeOrder.billedByStaff || activeOrder.salesPersonName || 'Admin User'}</strong>
+              <div style={{ fontSize: '0.78rem', color: '#475569' }}>Care Of: {activeOrder.careOfName || 'Direct'}</div>
             </div>
             <div>
               <span style={{ color: '#64748b', fontSize: '0.72rem', display: 'block', fontWeight: 700 }}>ITEM STATUS</span>
