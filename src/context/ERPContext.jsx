@@ -1,6 +1,31 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from '../utils/supabase';
-import { initialCompanyProfile } from '../data/mockData';
+import {
+  initialCompanyProfile,
+  initialCustomers,
+  initialSalesOrders,
+  initialProducts,
+  initialProductMaterialSpecs,
+  initialVendors,
+  initialEmployees,
+  initialDesigners,
+  initialSalesPersons,
+  initialCareOfPersons,
+  initialWorkers,
+  initialAttendance,
+  initialPayroll,
+  initialWorkerJobIncentives,
+  initialInventory,
+  initialPurchaseOrders,
+  initialPayments,
+  initialOrderAuditLogs,
+  initialMachines,
+  initialWorkflows,
+  initialProductionProcesses,
+  initialProductionTasks,
+  initialFollowUps,
+  initialCompanyBankAccounts
+} from '../data/mockData';
 import { USER_ROLES, PRODUCTION_STATUS, PRODUCTION_STAGES, STAGE_STATUS, MACHINE_STATUS } from '../types';
 import { api } from '../utils/api';
 
@@ -12,7 +37,7 @@ export const ERPProvider = ({ children }) => {
 
   // Authoritative ERP Data States (Single Source of Truth: SQLite WAL database synchronized on mount & mutations)
   const [companyProfile, setCompanyProfile] = useState(initialCompanyProfile);
-  const [companyBankAccounts, setCompanyBankAccounts] = useState([]);
+  const [companyBankAccounts, setCompanyBankAccounts] = useState(() => initialCompanyBankAccounts || []);
   const [activeUser, setActiveUser] = useState(() => {
     try {
       const saved = localStorage.getItem('stitch_erp_active_user');
@@ -38,29 +63,29 @@ export const ERPProvider = ({ children }) => {
     return USER_ROLES.ADMIN;
   });
 
-  const [customers, setCustomers] = useState([]);
-  const [salesOrders, setSalesOrders] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [productMaterialSpecs, setProductMaterialSpecs] = useState([]);
-  const [vendors, setVendors] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [designers, setDesigners] = useState([]);
-  const [salesPersons, setSalesPersons] = useState([]);
-  const [careOfPersons, setCareOfPersons] = useState([]);
-  const [workers, setWorkers] = useState([]);
-  const [attendanceRecords, setAttendanceRecords] = useState([]);
-  const [payrollRecords, setPayrollRecords] = useState([]);
-  const [workerJobIncentives, setWorkerJobIncentives] = useState([]);
-  const [inventory, setInventory] = useState([]);
-  const [purchaseOrders, setPurchaseOrders] = useState([]);
-  const [payments, setPayments] = useState([]);
-  const [orderAuditLogs, setOrderAuditLogs] = useState([]);
-  const [machines, setMachines] = useState([]);
-  const [workflows, setWorkflows] = useState([]);
+  const [customers, setCustomers] = useState(() => initialCustomers || []);
+  const [salesOrders, setSalesOrders] = useState(() => initialSalesOrders || []);
+  const [products, setProducts] = useState(() => initialProducts || []);
+  const [productMaterialSpecs, setProductMaterialSpecs] = useState(() => initialProductMaterialSpecs || []);
+  const [vendors, setVendors] = useState(() => initialVendors || []);
+  const [employees, setEmployees] = useState(() => initialEmployees || []);
+  const [designers, setDesigners] = useState(() => initialDesigners || []);
+  const [salesPersons, setSalesPersons] = useState(() => initialSalesPersons || []);
+  const [careOfPersons, setCareOfPersons] = useState(() => initialCareOfPersons || []);
+  const [workers, setWorkers] = useState(() => initialWorkers || []);
+  const [attendanceRecords, setAttendanceRecords] = useState(() => initialAttendance || []);
+  const [payrollRecords, setPayrollRecords] = useState(() => initialPayroll || []);
+  const [workerJobIncentives, setWorkerJobIncentives] = useState(() => initialWorkerJobIncentives || []);
+  const [inventory, setInventory] = useState(() => initialInventory || []);
+  const [purchaseOrders, setPurchaseOrders] = useState(() => initialPurchaseOrders || []);
+  const [payments, setPayments] = useState(() => initialPayments || []);
+  const [orderAuditLogs, setOrderAuditLogs] = useState(() => initialOrderAuditLogs || []);
+  const [machines, setMachines] = useState(() => initialMachines || []);
+  const [workflows, setWorkflows] = useState(() => initialWorkflows || []);
   const [wastageRecords, setWastageRecords] = useState([]);
-  const [productionProcesses, setProductionProcesses] = useState([]);
-  const [productionTasks, setProductionTasks] = useState([]);
-  const [followUps, setFollowUps] = useState([]);
+  const [productionProcesses, setProductionProcesses] = useState(() => initialProductionProcesses || []);
+  const [productionTasks, setProductionTasks] = useState(() => initialProductionTasks || []);
+  const [followUps, setFollowUps] = useState(() => initialFollowUps || []);
 
   // Phase 1-5 Production Hardening States (SQLite Authoritative & Live Sync)
   const [expenses, setExpenses] = useState([]);
