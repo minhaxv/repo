@@ -506,10 +506,12 @@ export function initDatabase() {
   try { db.prepare("ALTER TABLE sales_orders ADD COLUMN billed_by_id TEXT").run(); } catch(e) {}
   try { db.prepare("ALTER TABLE sales_orders ADD COLUMN billed_by_role TEXT").run(); } catch(e) {}
   try { db.prepare("ALTER TABLE sales_orders ADD COLUMN billed_at TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE employee_permissions ADD COLUMN employee_id TEXT").run(); } catch(e) {}
 }
 
 // Call schema initialization & migration runner
 initDatabase();
 runMigrations(db);
 
+export { generateNextSequence, postDoubleEntryJournal } from './migrations.js';
 export default db;

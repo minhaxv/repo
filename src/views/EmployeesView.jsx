@@ -4,7 +4,8 @@ import { CreateEmployeeModal, DEPARTMENTS } from '../components/modals/CreateEmp
 import { Users, UserPlus, Search, Edit2, Trash2, Power, Briefcase, Phone, Mail, Award, CheckCircle, ShieldCheck } from 'lucide-react';
 
 export const EmployeesView = () => {
-  const { employees, updateEmployee, deleteEmployee, toggleEmployeeStatus } = useERP();
+  const { employees, updateEmployee, deleteEmployee, toggleEmployeeStatus, activeUser, activeRole } = useERP();
+  const isAdminOrManager = (activeUser?.role === 'Admin' || activeUser?.role === 'Manager') || activeRole === 'Admin' || activeRole === 'Manager';
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDept, setSelectedDept] = useState('ALL');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -125,7 +126,7 @@ export const EmployeesView = () => {
                 <th>Department & Designation</th>
                 <th>Role</th>
                 <th>Contact Details</th>
-                <th>Salary Structure</th>
+                {isAdminOrManager && <th>Salary Structure</th>}
                 <th>Joining Date</th>
                 <th>Status</th>
                 <th style={{ textAlign: 'center' }}>Actions</th>
@@ -134,7 +135,7 @@ export const EmployeesView = () => {
             <tbody>
               {filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', padding: '2.5rem', color: '#94a3b8' }}>
+                  <td colSpan={isAdminOrManager ? "9" : "8"} style={{ textAlign: 'center', padding: '2.5rem', color: '#94a3b8' }}>
                     No employees found matching filter criteria. Click "+ Add New Employee" to register staff.
                   </td>
                 </tr>
@@ -181,21 +182,23 @@ export const EmployeesView = () => {
                         </div>
                       )}
                     </td>
-                    <td>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f172a' }}>
-                        ₹{Number(emp.basicSalary || 0).toLocaleString()}/mo
-                      </div>
-                      {emp.commissionRate > 0 && (
-                        <div style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 700 }}>
-                          ★ {emp.commissionRate}% Commission
+                    {isAdminOrManager && (
+                      <td>
+                        <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f172a' }}>
+                          ₹{Number(emp.basicSalary || emp.baseSalary || 0).toLocaleString()}/mo
                         </div>
-                      )}
-                      {emp.incentiveRate > 0 && (
-                        <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600 }}>
-                          ⚡ ₹{emp.incentiveRate} Incentive
-                        </div>
-                      )}
-                    </td>
+                        {emp.commissionRate > 0 && (
+                          <div style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 700 }}>
+                            ★ {emp.commissionRate}% Commission
+                          </div>
+                        )}
+                        {emp.incentiveRate > 0 && (
+                          <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600 }}>
+                            ⚡ ₹{emp.incentiveRate} Incentive
+                          </div>
+                        )}
+                      </td>
+                    )}
                     <td style={{ fontSize: '0.8rem', color: '#64748b' }}>{emp.joiningDate || 'N/A'}</td>
                     <td>
                       <button

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users,
   Calendar,
@@ -58,10 +58,19 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
     mapBiometricUser,
     unlinkBiometricUser,
     createAndMapEmployee,
-    assignBiometricId
+    assignBiometricId,
+    activeUser,
+    activeRole
   } = useERP();
 
-  const [activeSubTab, setActiveSubTab] = useState(initialTab === 'hr-payroll' ? 'payroll' : initialTab); // 'attendance', 'payroll', 'leaves', 'commissions', 'directory', 'biometric-device'
+  const isAdminOrManager = (activeUser?.role === 'Admin' || activeUser?.role === 'Manager') || activeRole === 'Admin' || activeRole === 'Manager';
+  const [activeSubTab, setActiveSubTab] = useState(() => (initialTab === 'commissions' && !isAdminOrManager) ? 'attendance' : (initialTab === 'hr-payroll' ? 'payroll' : initialTab)); // 'attendance', 'payroll', 'leaves', 'commissions', 'directory', 'biometric-device'
+
+  useEffect(() => {
+    if (!isAdminOrManager && activeSubTab === 'commissions') {
+      setActiveSubTab('attendance');
+    }
+  }, [isAdminOrManager, activeSubTab]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedMonth, setSelectedMonth] = useState('2026-07');
   const [searchQuery, setSearchQuery] = useState('');
@@ -575,13 +584,15 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
         >
           <Clock size={16} /> Leave Management ({leaveRequests.filter(l => l.status === 'Pending').length} Pending)
         </button>
-        <button
-          onClick={() => setActiveSubTab('commissions')}
-          className={`btn ${activeSubTab === 'commissions' ? 'btn-primary' : 'btn-secondary'}`}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}
-        >
-          <Award size={16} /> Commissions & Incentives
-        </button>
+        {isAdminOrManager && (
+          <button
+            onClick={() => setActiveSubTab('commissions')}
+            className={`btn ${activeSubTab === 'commissions' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}
+          >
+            <Award size={16} /> Commissions & Incentives
+          </button>
+        )}
         <button
           onClick={() => setActiveSubTab('directory')}
           className={`btn ${activeSubTab === 'directory' ? 'btn-primary' : 'btn-secondary'}`}
@@ -1149,7 +1160,7 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
                     <th>Department</th>
                     <th>Basic Pay</th>
                     <th>HRA & Allow.</th>
-                    <th>Incentive / Comm</th>
+                    {isAdminOrManager && <th>Incentive / Comm</th>}
                     <th>OT Pay</th>
                     <th>Gross Salary</th>
                     <th>Statutory Deductions</th>
@@ -1169,9 +1180,11 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
                       <td style={{ fontWeight: 700, color: '#1e40af' }}>{p.department}</td>
                       <td>₹{p.baseSalary.toLocaleString()}</td>
                       <td>₹{(p.hra + p.allowances).toLocaleString()}</td>
-                      <td style={{ color: '#d97706', fontWeight: 700 }}>
-                        {p.incentiveEarned > 0 ? `+₹${p.incentiveEarned.toLocaleString()}` : '₹0'}
-                      </td>
+                      {isAdminOrManager && (
+                        <td style={{ color: '#d97706', fontWeight: 700 }}>
+                          {p.incentiveEarned > 0 ? `+₹${p.incentiveEarned.toLocaleString()}` : '₹0'}
+                        </td>
+                      )}
                       <td style={{ color: '#2563eb', fontWeight: 600 }}>
                         {p.otPay > 0 ? `+₹${p.otPay.toLocaleString()} (${p.otHours}h)` : '₹0'}
                       </td>
@@ -1320,8 +1333,8 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
         </div>
       )}
 
-      {/* 4. COMMISSIONS & INCENTIVES SUB-TAB */}
-      {activeSubTab === 'commissions' && (
+      {/* 4. COMMISSIONS & INCENTIVES SUB-TAB (Admin & Manager Only) */}
+      {activeSubTab === 'commissions' && isAdminOrManager && (
         <div>
           <div className="card" style={{ marginBottom: '1.25rem' }}>
             <div className="card-header">
@@ -1908,9 +1921,11 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span>Overtime Pay:</span> <strong>₹{selectedPaySlip.otPay.toLocaleString()}</strong>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#d97706' }}>
-                        <span>Incentives & Commission:</span> <strong>₹{selectedPaySlip.incentiveEarned.toLocaleString()}</strong>
-                      </div>
+                      {isAdminOrManager && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#d97706' }}>
+                          <span>Incentives & Commission:</span> <strong>₹{selectedPaySlip.incentiveEarned.toLocaleString()}</strong>
+                        </div>
+                      )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '0.35rem', fontWeight: 800, fontSize: '0.85rem' }}>
                         <span>Gross Earnings:</span> <span>₹{selectedPaySlip.grossSalary.toLocaleString()}</span>
                       </div>

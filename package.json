@@ -8,7 +8,7 @@
     "dev": "concurrently \"node server/index.js\" \"npx vite\"",
     "build": "npx vite build",
     "preview": "npx vite preview",
-    "test": "node tests/billingEngine.test.js && node tests/authRbac.test.js && node tests/inventoryLedger.test.js && node tests/concurrencyAndBackups.test.js"
+    "test": "node tests/billingEngine.test.js && node tests/authRbac.test.js && node tests/inventoryLedger.test.js && node tests/concurrencyAndBackups.test.js && node tests/billingAttribution.test.js && node tests/financialPrivacy.test.js && node tests/employeeUserControl.test.js && node tests/masterProductionErp.test.js && node tests/systemOptimizationAudit.test.js"
   },
   "dependencies": {
     "@supabase/server": "^1.4.1",

@@ -5,7 +5,8 @@ import { SearchableSelect } from '../components/common/SearchableSelect';
 import { Truck, CheckCircle2, PenTool, Clock, ShieldAlert, Package, Phone, Search, Lock, Unlock, DollarSign } from 'lucide-react';
 
 export const DeliveryView = () => {
-  const { salesOrders, recordPayment, companyBankAccounts } = useERP();
+  const { salesOrders, recordPayment, companyBankAccounts, activeRole, activeUser } = useERP();
+  const isAdminOrManager = activeRole === 'Admin' || activeRole === 'Manager' || activeUser?.role === 'Admin' || activeUser?.role === 'Manager';
   const [activeTab, setActiveTab] = useState('READY'); // 'READY', 'DELIVERED', 'ALL'
   const [sigOrder, setSigOrder] = useState(null);
   const [collectPaymentOrder, setCollectPaymentOrder] = useState(null);
@@ -273,7 +274,7 @@ export const DeliveryView = () => {
                           {order.deliveredBy && (
                             <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>By: <strong>{order.deliveredBy}</strong></div>
                           )}
-                          {(() => {
+                          {isAdminOrManager && (() => {
                             const orderProfit = Number(order.grossProfit || (order.grandTotal ? (order.grandTotal - (order.totalActualCost || order.totalEstimatedCost || 0)) : 0)) || Math.round(Number(order.subtotal || 0) * 0.35);
                             const deliveryIncentive = Math.round(orderProfit * 0.005 * 100) / 100;
                             return (

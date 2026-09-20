@@ -7,6 +7,9 @@ export default defineConfig({
   server: {
     port: 5180,
     open: true,
+    watch: {
+      ignored: ['**/database/**', '**/*.sqlite*']
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

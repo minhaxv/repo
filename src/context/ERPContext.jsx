@@ -1,31 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from '../utils/supabase';
-import {
-  initialCompanyProfile,
-  initialCustomers,
-  initialSalesPersons,
-  initialCareOfPersons,
-  initialWorkers,
-  initialDesigners,
-  initialVendors,
-  initialProducts,
-  initialSalesOrders,
-  initialInventory,
-  initialPurchaseOrders,
-  initialPayments,
-  initialFollowUps,
-  initialCompanyBankAccounts,
-  initialAttendance,
-  initialPayroll,
-  initialProductMaterialSpecs,
-  initialEmployees,
-  initialWorkerJobIncentives,
-  initialOrderAuditLogs,
-  initialMachines,
-  initialWorkflows,
-  initialProductionProcesses,
-  initialProductionTasks
-} from '../data/mockData';
+import { initialCompanyProfile } from '../data/mockData';
 import { USER_ROLES, PRODUCTION_STATUS, PRODUCTION_STAGES, STAGE_STATUS, MACHINE_STATUS } from '../types';
 import { api } from '../utils/api';
 
@@ -35,7 +10,7 @@ export const ERPProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // States mirroring database tables with localStorage persistence to prevent refresh data loss
+  // Authoritative ERP Data States (Single Source of Truth: SQLite WAL database synchronized on mount & mutations)
   const [companyProfile, setCompanyProfile] = useState(initialCompanyProfile);
   const [companyBankAccounts, setCompanyBankAccounts] = useState([]);
   const [activeUser, setActiveUser] = useState(() => {
@@ -63,159 +38,28 @@ export const ERPProvider = ({ children }) => {
     return USER_ROLES.ADMIN;
   });
 
-  const [customers, setCustomers] = useState(() => {
-    try {
-      const saved = localStorage.getItem('stitch_erp_customers');
-      return saved ? JSON.parse(saved) : initialCustomers;
-    } catch (e) {
-      return initialCustomers;
-    }
-  });
-
-  const [salesOrders, setSalesOrders] = useState(() => {
-    try {
-      const saved = localStorage.getItem('stitch_erp_sales_orders');
-      return saved ? JSON.parse(saved) : initialSalesOrders;
-    } catch (e) {
-      return initialSalesOrders;
-    }
-  });
-
-  const [products, setProducts] = useState(() => {
-    try {
-      const saved = localStorage.getItem('stitch_erp_products');
-      return saved ? JSON.parse(saved) : initialProducts;
-    } catch (e) {
-      return initialProducts;
-    }
-  });
-
+  const [customers, setCustomers] = useState([]);
+  const [salesOrders, setSalesOrders] = useState([]);
+  const [products, setProducts] = useState([]);
   const [productMaterialSpecs, setProductMaterialSpecs] = useState([]);
-  const [vendors, setVendors] = useState(initialVendors);
-
-  const [employees, setEmployees] = useState(() => {
-    try {
-      const saved = localStorage.getItem('stitch_erp_employees');
-      return saved ? JSON.parse(saved) : initialEmployees;
-    } catch (e) {
-      return initialEmployees;
-    }
-  });
-
-  const [designers, setDesigners] = useState(() => {
-    try {
-      const saved = localStorage.getItem('stitch_erp_designers');
-      return saved ? JSON.parse(saved) : initialDesigners;
-    } catch (e) {
-      return initialDesigners;
-    }
-  });
-
-  const [salesPersons, setSalesPersons] = useState(() => {
-    try {
-      const saved = localStorage.getItem('stitch_erp_sales_persons');
-      return saved ? JSON.parse(saved) : initialSalesPersons;
-    } catch (e) {
-      return initialSalesPersons;
-    }
-  });
-
-  const [careOfPersons, setCareOfPersons] = useState(() => {
-    try {
-      const saved = localStorage.getItem('stitch_erp_care_of_persons');
-      return saved ? JSON.parse(saved) : initialCareOfPersons;
-    } catch (e) {
-      return initialCareOfPersons;
-    }
-  });
-
-  const [workers, setWorkers] = useState(() => {
-    try {
-      const saved = localStorage.getItem('stitch_erp_workers');
-      return saved ? JSON.parse(saved) : initialWorkers;
-    } catch (e) {
-      return initialWorkers;
-    }
-  });
-
-  const [attendanceRecords, setAttendanceRecords] = useState(initialAttendance);
-  const [payrollRecords, setPayrollRecords] = useState(initialPayroll);
-
-  const [workerJobIncentives, setWorkerJobIncentives] = useState(() => {
-    try {
-      const saved = localStorage.getItem('stitch_erp_worker_job_incentives');
-      return saved ? JSON.parse(saved) : initialWorkerJobIncentives;
-    } catch (e) {
-      return initialWorkerJobIncentives;
-    }
-  });
-
-  const [inventory, setInventory] = useState(initialInventory);
-  const [purchaseOrders, setPurchaseOrders] = useState(initialPurchaseOrders);
-
-  const [payments, setPayments] = useState(() => {
-    try {
-      const saved = localStorage.getItem('stitch_erp_payments');
-      return saved ? JSON.parse(saved) : initialPayments;
-    } catch (e) {
-      return initialPayments;
-    }
-  });
-
-  const [orderAuditLogs, setOrderAuditLogs] = useState(() => {
-    try {
-      const saved = localStorage.getItem('stitch_erp_order_audit_logs');
-      return saved ? JSON.parse(saved) : initialOrderAuditLogs;
-    } catch (e) {
-      return initialOrderAuditLogs;
-    }
-  });
-
-  const [machines, setMachines] = useState(() => {
-    try {
-      const saved = localStorage.getItem('stitch_erp_machines');
-      return saved ? JSON.parse(saved) : initialMachines;
-    } catch (e) {
-      return initialMachines;
-    }
-  });
-
-  const [workflows, setWorkflows] = useState(() => {
-    try {
-      const saved = localStorage.getItem('stitch_erp_workflows');
-      return saved ? JSON.parse(saved) : initialWorkflows;
-    } catch (e) {
-      return initialWorkflows;
-    }
-  });
-
-  const [wastageRecords, setWastageRecords] = useState(() => {
-    try {
-      const saved = localStorage.getItem('stitch_erp_wastage_records');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
-  });
-
-  const [productionProcesses, setProductionProcesses] = useState(() => {
-    try {
-      const saved = localStorage.getItem('stitch_erp_production_processes');
-      return saved ? JSON.parse(saved) : initialProductionProcesses;
-    } catch (e) {
-      return initialProductionProcesses;
-    }
-  });
-
-  const [productionTasks, setProductionTasks] = useState(() => {
-    try {
-      const saved = localStorage.getItem('stitch_erp_production_tasks');
-      return saved ? JSON.parse(saved) : initialProductionTasks;
-    } catch (e) {
-      return initialProductionTasks;
-    }
-  });
-
+  const [vendors, setVendors] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [designers, setDesigners] = useState([]);
+  const [salesPersons, setSalesPersons] = useState([]);
+  const [careOfPersons, setCareOfPersons] = useState([]);
+  const [workers, setWorkers] = useState([]);
+  const [attendanceRecords, setAttendanceRecords] = useState([]);
+  const [payrollRecords, setPayrollRecords] = useState([]);
+  const [workerJobIncentives, setWorkerJobIncentives] = useState([]);
+  const [inventory, setInventory] = useState([]);
+  const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [orderAuditLogs, setOrderAuditLogs] = useState([]);
+  const [machines, setMachines] = useState([]);
+  const [workflows, setWorkflows] = useState([]);
+  const [wastageRecords, setWastageRecords] = useState([]);
+  const [productionProcesses, setProductionProcesses] = useState([]);
+  const [productionTasks, setProductionTasks] = useState([]);
   const [followUps, setFollowUps] = useState([]);
 
   // Phase 1-5 Production Hardening States (SQLite Authoritative & Live Sync)
@@ -228,109 +72,6 @@ export const ERPProvider = ({ children }) => {
   const [deliveries, setDeliveries] = useState([]);
   const [reconciliationData, setReconciliationData] = useState([]);
   const [backups, setBackups] = useState([]);
-
-  // Automatic LocalStorage Persistence Hooks (Safe cache only, SQLite is source of truth)
-  useEffect(() => {
-    if (productionProcesses && productionProcesses.length > 0) {
-      try { localStorage.setItem('stitch_erp_production_processes', JSON.stringify(productionProcesses)); } catch (e) {}
-    }
-  }, [productionProcesses]);
-
-  useEffect(() => {
-    if (productionTasks && productionTasks.length > 0) {
-      try { localStorage.setItem('stitch_erp_production_tasks', JSON.stringify(productionTasks)); } catch (e) {}
-    }
-  }, [productionTasks]);
-
-  useEffect(() => {
-    if (salesOrders && salesOrders.length > 0) {
-      try { localStorage.setItem('stitch_erp_sales_orders', JSON.stringify(salesOrders)); } catch (e) {}
-    }
-  }, [salesOrders]);
-
-  useEffect(() => {
-    if (orderAuditLogs && orderAuditLogs.length > 0) {
-      try { localStorage.setItem('stitch_erp_order_audit_logs', JSON.stringify(orderAuditLogs)); } catch (e) {}
-    }
-  }, [orderAuditLogs]);
-
-  useEffect(() => {
-    if (workerJobIncentives && workerJobIncentives.length > 0) {
-      try { localStorage.setItem('stitch_erp_worker_job_incentives', JSON.stringify(workerJobIncentives)); } catch (e) {}
-    }
-  }, [workerJobIncentives]);
-
-  useEffect(() => {
-    if (customers && customers.length > 0) {
-      try { localStorage.setItem('stitch_erp_customers', JSON.stringify(customers)); } catch (e) {}
-    }
-  }, [customers]);
-
-  useEffect(() => {
-    if (products && products.length > 0) {
-      try { localStorage.setItem('stitch_erp_products', JSON.stringify(products)); } catch (e) {}
-    }
-  }, [products]);
-
-  useEffect(() => {
-    if (machines && machines.length > 0) {
-      try { localStorage.setItem('stitch_erp_machines', JSON.stringify(machines)); } catch (e) {}
-    }
-  }, [machines]);
-
-  useEffect(() => {
-    if (workflows && workflows.length > 0) {
-      try { localStorage.setItem('stitch_erp_workflows', JSON.stringify(workflows)); } catch (e) {}
-    }
-  }, [workflows]);
-
-  useEffect(() => {
-    if (wastageRecords && wastageRecords.length > 0) {
-      try { localStorage.setItem('stitch_erp_wastage_records', JSON.stringify(wastageRecords)); } catch (e) {}
-    }
-  }, [wastageRecords]);
-
-  useEffect(() => {
-    if (employees && employees.length > 0) {
-      try { localStorage.setItem('stitch_erp_employees', JSON.stringify(employees)); } catch (e) {}
-    }
-  }, [employees]);
-
-  useEffect(() => {
-    if (workers && workers.length > 0) {
-      try { localStorage.setItem('stitch_erp_workers', JSON.stringify(workers)); } catch (e) {}
-    }
-  }, [workers]);
-
-  useEffect(() => {
-    if (designers && designers.length > 0) {
-      try { localStorage.setItem('stitch_erp_designers', JSON.stringify(designers)); } catch (e) {}
-    }
-  }, [designers]);
-
-  useEffect(() => {
-    if (payments && payments.length > 0) {
-      try { localStorage.setItem('stitch_erp_payments', JSON.stringify(payments)); } catch (e) {}
-    }
-  }, [payments]);
-
-  useEffect(() => {
-    if (careOfPersons && careOfPersons.length > 0) {
-      try { localStorage.setItem('stitch_erp_care_of_persons', JSON.stringify(careOfPersons)); } catch (e) {}
-    }
-  }, [careOfPersons]);
-
-  useEffect(() => {
-    if (salesPersons && salesPersons.length > 0) {
-      try { localStorage.setItem('stitch_erp_sales_persons', JSON.stringify(salesPersons)); } catch (e) {}
-    }
-  }, [salesPersons]);
-
-  useEffect(() => {
-    if (vendors && vendors.length > 0) {
-      try { localStorage.setItem('stitch_erp_vendors', JSON.stringify(vendors)); } catch (e) {}
-    }
-  }, [vendors]);
 
   // UI state variables
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
@@ -382,14 +123,41 @@ export const ERPProvider = ({ children }) => {
     try {
       const data = await api.fetchAll();
       if (data && data.success) {
-        if (data.companyProfile && data.companyProfile.name) setCompanyProfile(data.companyProfile);
+        if (data.companyProfile && data.companyProfile.name) {
+          const rawCP = data.companyProfile;
+          const bank = rawCP.bankDetails || {};
+          setCompanyProfile({
+            ...rawCP,
+            bankDetails: {
+              bankName: bank.bankName || rawCP.bank_name || rawCP.bankName || 'HDFC Bank Ltd',
+              accountName: bank.accountName || rawCP.account_name || rawCP.accountName || rawCP.name || 'ScreenArts Digital & Signage India Pvt Ltd',
+              accountNo: bank.accountNo || rawCP.account_no || rawCP.accountNo || '50200048192837',
+              ifsc: bank.ifsc || rawCP.ifsc || 'HDFC0000123',
+              branch: bank.branch || rawCP.branch || 'Goregaon East, Mumbai',
+              upiId: bank.upiId || rawCP.upi_id || rawCP.upiId || 'screenarts@hdfcbank'
+            }
+          });
+        }
         if (data.customers) setCustomers(data.customers);
         if (data.products) setProducts(data.products);
         if (data.productMaterialSpecs) setProductMaterialSpecs(data.productMaterialSpecs);
         if (data.vendors) setVendors(data.vendors);
+        if (data.suppliers && (!data.vendors || data.vendors.length === 0)) setVendors(data.suppliers);
         if (data.salesPersons) setSalesPersons(data.salesPersons);
         if (data.careOfPersons) setCareOfPersons(data.careOfPersons);
-        if (data.employees) setEmployees(data.employees);
+        if (data.employees) {
+          setEmployees(data.employees);
+          const designStaff = data.employees.filter(e => 
+            (e.department && e.department.toLowerCase().includes('design')) || 
+            (e.role && e.role.toLowerCase().includes('design'))
+          );
+          setDesigners(designStaff.length > 0 ? designStaff : data.employees);
+          const workerStaff = data.employees.filter(e => 
+            (e.department && (e.department.toLowerCase().includes('prod') || e.department.toLowerCase().includes('print') || e.department.toLowerCase().includes('finish'))) || 
+            (e.role && (e.role.toLowerCase().includes('operat') || e.role.toLowerCase().includes('print') || e.role.toLowerCase().includes('worker')))
+          );
+          setWorkers(workerStaff.length > 0 ? workerStaff : data.employees);
+        }
         if (data.biometricDevices) setBiometricDevices(data.biometricDevices);
         if (data.biometricUsers) setBiometricUsers(data.biometricUsers);
         if (data.salesOrders) setSalesOrders(data.salesOrders);
@@ -397,11 +165,13 @@ export const ERPProvider = ({ children }) => {
         if (data.payments) setPayments(data.payments);
         if (data.productionProcesses && data.productionProcesses.length > 0) setProductionProcesses(data.productionProcesses);
         if (data.productionTasks && data.productionTasks.length > 0) setProductionTasks(data.productionTasks);
+        if (data.machines) setMachines(data.machines);
         if (data.expenses) setExpenses(data.expenses);
         if (data.inventory) setInventory(data.inventory);
         if (data.inventoryTransactions) setInventoryTransactions(data.inventoryTransactions);
         if (data.reworkTickets) setReworkTickets(data.reworkTickets);
         if (data.auditLogs) setAuditLogs(data.auditLogs);
+        if (data.deliveryNotes) setDeliveries(data.deliveryNotes);
         if (data.users) setUsersList(data.users);
       }
     } catch (err) {
@@ -463,10 +233,20 @@ export const ERPProvider = ({ children }) => {
         }
       }
 
-      // 3. Authoritative SQLite fetch
+      // 3. Fallback: Authenticate default workstation to establish signed backend token
       try {
-        await fetchAllERPData();
-      } catch (e) {}
+        const loginRes = await api.login('admin', 'Admin@123');
+        if (loginRes && loginRes.success && loginRes.user) {
+          setSession({ user: loginRes.user, token: loginRes.token });
+          setActiveUser(loginRes.user);
+          setActiveRole(loginRes.user.role || USER_ROLES.ADMIN);
+          await fetchAllERPData();
+          setLoading(false);
+          return;
+        }
+      } catch (loginErr) {
+        console.warn("Default workstation auto-login error:", loginErr);
+      }
 
       // Default active user fallback
       const savedUser = localStorage.getItem('stitch_erp_active_user');
@@ -526,15 +306,28 @@ export const ERPProvider = ({ children }) => {
     };
   }, []);
 
-  const switchUser = (userObj) => {
+  const switchUser = async (userObj) => {
     if (!userObj) return;
-    setActiveUser(userObj);
-    if (userObj.role) {
-      setActiveRole(userObj.role);
-    }
     try {
-      localStorage.setItem('stitch_erp_active_user', JSON.stringify(userObj));
-    } catch (e) {}
+      const res = await api.switchUser(userObj);
+      if (res && res.success && res.user) {
+        setActiveUser(res.user);
+        if (res.user.role) {
+          setActiveRole(res.user.role);
+        }
+        setSession({ user: res.user, token: res.token });
+        return res.user;
+      }
+    } catch (err) {
+      console.warn("api.switchUser error, applying client fallback:", err);
+      setActiveUser(userObj);
+      if (userObj.role) {
+        setActiveRole(userObj.role);
+      }
+      try {
+        localStorage.setItem('stitch_erp_active_user', JSON.stringify(userObj));
+      } catch (e) {}
+    }
   };
 
   const switchRole = async (role) => {
@@ -549,6 +342,20 @@ export const ERPProvider = ({ children }) => {
         .from('profiles')
         .update({ role: role })
         .eq('id', session.user.id);
+    }
+  };
+
+  // Update Company Profile & GST Settings
+  const updateCompanyProfile = async (profileData) => {
+    try {
+      const res = await api.updateCompanyProfile(profileData);
+      if (res && res.success) {
+        setCompanyProfile(profileData);
+        return res;
+      }
+    } catch (err) {
+      console.warn("updateCompanyProfile API warning, updating local state:", err);
+      setCompanyProfile(profileData);
     }
   };
 
@@ -1670,7 +1477,7 @@ export const ERPProvider = ({ children }) => {
     };
 
     try {
-      await api.createSalesOrder({
+      const apiRes = await api.createSalesOrder({
         orderHeader: {
           ...finalOrder,
           orderNumber: newOrderId,
@@ -1683,20 +1490,22 @@ export const ERPProvider = ({ children }) => {
           roundOff: finalOrder.roundOff || 0,
           taxMode: finalOrder.taxMode || 'Exclusive',
           advanceAmount: advance,
-          balanceAmount: balance,
-          billedByStaff: finalOrder.billedByStaff,
-          billedByStaffId: finalOrder.billedByStaffId,
-          billedByRole: finalOrder.billedByRole,
-          billedAt: finalOrder.billedAt
+          balanceAmount: balance
         },
         items: finalOrder.items,
         advanceAmount: advance,
         paymentMethod: processedOrder.paymentMethod
       });
+      if (apiRes && apiRes.billedByStaff) {
+        finalOrder.billedByStaff = apiRes.billedByStaff;
+        finalOrder.billedByStaffId = apiRes.billedById;
+        finalOrder.billedByRole = apiRes.billedByRole;
+        finalOrder.billedAt = apiRes.billedAt;
+      }
       await fetchAllERPData();
     } catch (err) {
-      console.warn("api.createSalesOrder exception, updating local state:", err);
-      setSalesOrders((prev) => [finalOrder, ...prev.filter(o => o.id !== newOrderId)]);
+      console.error("api.createSalesOrder failed:", err);
+      throw err;
     }
 
     // Log creation activity
@@ -1825,163 +1634,27 @@ export const ERPProvider = ({ children }) => {
     } catch (e) {}
   };
 
-  // Convert Quotation to Direct Sales Order with 1-Click
+  // Convert Quotation to Direct Sales Order with 1-Click (Authoritative Backend Transaction)
   const convertQuotationToSalesOrder = async (quotationId) => {
-    const quote = (salesOrders || []).find(o => o.id === quotationId);
-    if (!quote) throw new Error("Quotation not found.");
-
-    const newOrderId = getNextOrderId();
-    let initialProdStatus = PRODUCTION_STATUS.NEW;
-    if ((quote.items || []).some(i => i.outsource)) {
-      initialProdStatus = PRODUCTION_STATUS.OUTSOURCE;
-    } else if ((quote.items || []).some(i => i.designerRequired === 'YES')) {
-      initialProdStatus = PRODUCTION_STATUS.DESIGN;
-    }
-
-    const convertedOrder = {
-      ...quote,
-      id: newOrderId,
-      orderType: 'Direct',
-      convertedFromQuotation: true,
-      quotationId: quote.id,
-      quotationStatus: null,
-      productionStatus: initialProdStatus,
-      createdAt: new Date().toISOString()
-    };
-
-    // Update original quotation status in local state & database
-    await updateQuotationStatus(quote.id, 'Converted');
-
-    if (isSupabaseConfigured) {
-      try {
-        const dbOrder = {
-          id: newOrderId,
-          order_date: convertedOrder.orderDate || new Date().toISOString().split('T')[0],
-          delivery_date: convertedOrder.deliveryDate,
-          customer_id: convertedOrder.customerId,
-          customer_name: convertedOrder.customerName,
-          customer_mobile: convertedOrder.customerMobile,
-          customer_state: convertedOrder.customerState,
-          sales_person_id: convertedOrder.salesPersonId,
-          sales_person_name: convertedOrder.salesPersonName,
-          care_of_id: convertedOrder.careOfId,
-          care_of_name: convertedOrder.careOfName,
-          branch: convertedOrder.branch || 'Head Office',
-          order_source: convertedOrder.orderSource || 'Quotation Conversion',
-          reference_no: convertedOrder.referenceNo || quote.id,
-          remarks: `Converted from Quotation ${quote.id}. ${convertedOrder.remarks || ''}`,
-          subtotal: convertedOrder.subtotal,
-          cgst: convertedOrder.cgst,
-          sgst: convertedOrder.sgst,
-          igst: convertedOrder.igst,
-          round_off: convertedOrder.roundOff,
-          grand_total: convertedOrder.grandTotal,
-          total_estimated_cost: convertedOrder.totalEstimatedCost,
-          total_actual_cost: convertedOrder.totalActualCost,
-          total_internal_est_outsource_cost: convertedOrder.totalInternalEstOutsourceCost,
-          gross_profit: convertedOrder.grossProfit,
-          profit_margin_pct: convertedOrder.profitMarginPct,
-          advance_amount: convertedOrder.advanceAmount,
-          balance_amount: convertedOrder.balanceAmount,
-          payment_method: convertedOrder.paymentMethod,
-          payment_status: convertedOrder.paymentStatus,
-          production_status: initialProdStatus,
-          delivery_mode: convertedOrder.deliveryMode || 'Local Express Delivery',
-          delivered_by: convertedOrder.deliveredBy || '',
-          signature_url: convertedOrder.signatureUrl || '',
-          order_type: 'Direct',
-          converted_from_quotation: true,
-          quotation_id: quote.id,
-          created_at: convertedOrder.createdAt
-        };
-
-        await supabase.from('sales_orders').insert(dbOrder);
-
-        const dbItems = (convertedOrder.items || []).map((i, idx) => ({
-          id: `ITEM-${newOrderId.split('-').pop()}-${idx + 1}`,
-          order_id: newOrderId,
-          product_name: i.productName,
-          category: i.category || 'Custom Print',
-          description: i.description || '',
-          width: i.width || 0,
-          height: i.height || 0,
-          unit: i.unit || 'Sq.Ft',
-          qty: i.qty || 1,
-          total_sq_ft: i.totalSqFt || 0,
-          material: i.material || 'Standard Substrate',
-          designer_required: i.designerRequired || 'NO',
-          designer_id: i.designerId || null,
-          designer_name: i.designerName || '',
-          artwork_status: i.artworkStatus || 'Pending',
-          artwork_url: i.artworkUrl || '',
-          outsource: !!i.outsource,
-          vendor_id: i.vendorId || null,
-          vendor_name: i.vendorName || '',
-          estimated_vendor_cost: i.estimatedVendorCost || 0,
-          actual_vendor_bill: i.actualVendorBill || 0,
-          vendor_bill_date: i.vendorBillDate || null,
-          vendor_payment_status: i.vendorPaymentStatus || 'Pending',
-          estimated_cost: i.estimatedCost || 0,
-          actual_cost: i.actualCost || 0,
-          selling_rate: i.sellingRate || 0,
-          discount: i.discount || 0,
-          tax_type: i.taxType || 'ETR',
-          gst_rate: i.gstRate || 18,
-          amount: i.amount || 0,
-          production_status: initialProdStatus,
-          job_card_id: `JC-${newOrderId.split('-').pop()}-${idx + 1}`,
-          internal_est_outsource_cost: i.internalEstOutsourceCost || 0
-        }));
-
-        await supabase.from('sales_order_items').insert(dbItems);
-      } catch (err) {
-        console.warn("Supabase quotation conversion insert exception:", err);
+    try {
+      const resp = await api.convertQuotation(quotationId);
+      if (resp && resp.order) {
+        setSalesOrders((prev) => {
+          const updated = prev.map((o) => (o.id === quotationId ? { ...o, quotationStatus: 'Converted', convertedOrderId: resp.orderId } : o));
+          return [resp.order, ...updated.filter((o) => o.id !== resp.order.id)];
+        });
+        api.fetchAll().then((fresh) => {
+          if (fresh.salesOrders) setSalesOrders(fresh.salesOrders);
+          if (fresh.customers) setCustomers(fresh.customers);
+          if (fresh.productionTasks) setProductionTasks(fresh.productionTasks);
+        }).catch(() => {});
+        return resp.order;
       }
+      throw new Error(resp?.error || 'Failed to convert quotation');
+    } catch (apiErr) {
+      console.error("convertQuotationToSalesOrder error:", apiErr);
+      throw apiErr;
     }
-
-    setSalesOrders((prev) => [convertedOrder, ...prev]);
-
-    // Update Customer Outstanding & Total Orders History
-    if (convertedOrder.customerId) {
-      setCustomers((prev) =>
-        prev.map((c) => {
-          if (c.id === convertedOrder.customerId) {
-            const newTotalOrders = (Number(c.totalOrders ?? c.total_orders) || 0) + 1;
-            const newOutstanding = (Number(c.outstanding ?? c.outstandingAmount) || 0) + (convertedOrder.balanceAmount || 0);
-            return {
-              ...c,
-              totalOrders: newTotalOrders,
-              total_orders: newTotalOrders,
-              outstanding: newOutstanding,
-              outstandingAmount: newOutstanding
-            };
-          }
-          return c;
-        })
-      );
-    }
-
-    // Log Activity
-    logOrderActivity({
-      orderId: newOrderId,
-      orderNumber: newOrderId,
-      customerName: convertedOrder.customerName,
-      customerMobile: convertedOrder.customerMobile,
-      actionType: 'CONVERTED',
-      actionTitle: `Quotation ${quote.id} Converted to Direct Sales Order ${newOrderId}`,
-      actor: activeUser?.name || 'Authorized Staff',
-      role: activeRole || 'Sales',
-      reason: `Quotation converted by user`,
-      newAmount: convertedOrder.grandTotal,
-      changesSummary: [
-        `Converted Quotation ${quote.id} to active Sales Order ${newOrderId}`,
-        `Grand Total: ₹${Number(convertedOrder.grandTotal || 0).toLocaleString()}`,
-        `Job Card generated in Production Queue`
-      ],
-      snapshot: convertedOrder
-    });
-
-    return convertedOrder;
   };
 
   // Edit / Revise Sales Order
@@ -3016,7 +2689,10 @@ export const ERPProvider = ({ children }) => {
 
   const logoutUser = () => {
     api.logout();
-    loginAsDemoAdmin();
+    setSession(null);
+    setActiveUser(null);
+    localStorage.removeItem('stitch_auth_token');
+    localStorage.removeItem('stitch_erp_active_user');
   };
 
   // Track WhatsApp Sent
@@ -3034,323 +2710,10 @@ export const ERPProvider = ({ children }) => {
   };
 
 
-  // Reset demo data: clear all database tables and insert initial mock records
+  // Reset demo data: Disabled in production to safeguard authoritative business records
   const resetDemoData = async () => {
-    try {
-      setLoading(true);
-      
-      // Clear localStorage persistence cache
-      localStorage.removeItem('stitch_erp_sales_orders');
-      localStorage.removeItem('stitch_erp_worker_job_incentives');
-      localStorage.removeItem('stitch_erp_customers');
-      localStorage.removeItem('stitch_erp_products');
-      localStorage.removeItem('stitch_erp_employees');
-      localStorage.removeItem('stitch_erp_workers');
-      localStorage.removeItem('stitch_erp_designers');
-      localStorage.removeItem('stitch_erp_payments');
-
-      // Delete all records in dependent tables first
-      await supabase.from('payroll').delete().neq('id', 'dummy');
-      await supabase.from('attendance').delete().neq('id', 'dummy');
-      await supabase.from('follow_ups').delete().neq('id', 'dummy');
-      await supabase.from('payments').delete().neq('id', 'dummy');
-      await supabase.from('supplier_bills').delete().neq('id', 'dummy');
-      await supabase.from('supplier_payments').delete().neq('id', 'dummy');
-      await supabase.from('purchase_orders').delete().neq('id', 'dummy');
-      await supabase.from('inventory').delete().neq('id', 'dummy');
-      await supabase.from('sales_order_items').delete().neq('id', 'dummy');
-      await supabase.from('sales_orders').delete().neq('id', 'dummy');
-      await supabase.from('products').delete().neq('id', 'dummy');
-      await supabase.from('vendors').delete().neq('id', 'dummy');
-      await supabase.from('designers').delete().neq('id', 'dummy');
-      await supabase.from('workers').delete().neq('id', 'dummy');
-      await supabase.from('care_of_persons').delete().neq('id', 'dummy');
-      await supabase.from('sales_persons').delete().neq('id', 'dummy');
-      await supabase.from('customers').delete().neq('id', 'dummy');
-      await supabase.from('bank_accounts').delete().neq('id', 'dummy');
-      await supabase.from('company_profile').delete().neq('id', 0);
-
-      // Re-populate with demo data
-      // 1. Company Profile
-      await supabase.from('company_profile').insert({
-        id: 1,
-        name: initialCompanyProfile.name,
-        tagline: initialCompanyProfile.tagline,
-        gstin: initialCompanyProfile.gstin,
-        state: initialCompanyProfile.state,
-        state_code: initialCompanyProfile.stateCode,
-        phone: initialCompanyProfile.phone,
-        email: initialCompanyProfile.email,
-        website: initialCompanyProfile.website,
-        address: initialCompanyProfile.address,
-        bank_name: initialCompanyProfile.bankDetails.bankName,
-        account_name: initialCompanyProfile.bankDetails.accountName,
-        account_no: initialCompanyProfile.bankDetails.accountNo,
-        ifsc: initialCompanyProfile.bankDetails.ifsc,
-        branch: initialCompanyProfile.bankDetails.branch,
-        upi_id: initialCompanyProfile.bankDetails.upiId,
-        terms: initialCompanyProfile.terms
-      });
-
-      // 2. Bank Accounts
-      await supabase.from('bank_accounts').insert(initialCompanyBankAccounts.map(b => ({
-        id: b.id,
-        bank_name: b.bankName,
-        account_no: b.accountNo,
-        ifsc: b.ifsc,
-        branch: b.branch,
-        upi_id: b.upiId
-      })));
-
-      // 3. Customers
-      await supabase.from('customers').insert(initialCustomers.map(c => ({
-        id: c.id,
-        code: c.code,
-        name: c.name,
-        mobile: c.mobile,
-        email: c.email,
-        gstin: c.gstin,
-        type: c.type,
-        address: c.address,
-        state: c.state,
-        credit_limit: c.creditLimit,
-        outstanding: c.outstanding,
-        total_orders: c.totalOrders,
-        created_at: c.createdAt
-      })));
-
-      // 4. Sales Persons
-      await supabase.from('sales_persons').insert(initialSalesPersons.map(s => ({
-        id: s.id,
-        name: s.name,
-        mobile: s.mobile,
-        target: s.target,
-        achieved: s.achieved,
-        commission_rate: s.commissionRate
-      })));
-
-      // 5. Care Of Persons
-      await supabase.from('care_of_persons').insert(initialCareOfPersons.map(c => ({
-        id: c.id,
-        name: c.name,
-        mobile: c.mobile,
-        email: c.email,
-        role: c.role,
-        referral_commission_pct: c.referralCommissionPct,
-        total_referred_sales: c.totalReferredSales,
-        active_orders: c.activeOrders,
-        notes: c.notes
-      })));
-
-      // 6. Workers
-      await supabase.from('workers').insert(initialWorkers.map(w => ({
-        id: w.id,
-        name: w.name,
-        role: w.role,
-        mobile: w.mobile,
-        incentive_per_sq_ft: w.incentivePerSqFt,
-        incentive_per_job: w.incentivePerJob,
-        jobs_completed_this_month: w.jobsCompletedThisMonth,
-        sq_ft_handled_this_month: w.sqFtHandledThisMonth
-      })));
-
-      // 7. Designers
-      await supabase.from('designers').insert(initialDesigners.map(d => ({
-        id: d.id,
-        name: d.name,
-        mobile: d.mobile,
-        active_jobs: d.activeJobs,
-        pending_approvals: d.pendingApprovals,
-        completed_month: d.completedMonth
-      })));
-
-      // 8. Vendors
-      await supabase.from('vendors').insert(initialVendors.map(v => ({
-        id: v.id,
-        name: v.name,
-        category: v.category,
-        mobile: v.mobile,
-        gstin: v.gstin,
-        pending_payment: v.pendingPayment,
-        avg_turnaround_days: v.avgTurnaroundDays
-      })));
-
-      // 9. Products
-      await supabase.from('products').insert(initialProducts.map(p => ({
-        id: p.id,
-        name: p.name,
-        unit: p.unit,
-        default_rate: p.defaultRate,
-        estimated_cost: p.estimatedCost,
-        gst_rate: p.gstRate,
-        hsn_code: p.hsnCode,
-        category: p.category,
-        default_vendor: p.defaultVendor,
-        default_material: p.defaultMaterial,
-        is_custom: p.isCustom || false
-      })));
-
-      // 10. Orders and Items
-      for (const o of initialSalesOrders) {
-        await supabase.from('sales_orders').insert({
-          id: o.id,
-          order_date: o.orderDate,
-          delivery_date: o.deliveryDate,
-          customer_id: o.customerId,
-          customer_name: o.customerName,
-          customer_mobile: o.customerMobile,
-          customer_state: o.customerState,
-          sales_person_id: o.salesPersonId,
-          sales_person_name: o.salesPersonName,
-          care_of_id: o.careOfId,
-          care_of_name: o.careOfName,
-          branch: o.branch,
-          order_source: o.orderSource,
-          reference_no: o.referenceNo,
-          remarks: o.remarks,
-          subtotal: o.subtotal,
-          cgst: o.cgst,
-          sgst: o.sgst,
-          igst: o.igst,
-          round_off: o.roundOff,
-          grand_total: o.grandTotal,
-          total_estimated_cost: o.totalEstimatedCost,
-          total_actual_cost: o.totalActualCost,
-          gross_profit: o.grossProfit,
-          profit_margin_pct: o.profitMarginPct,
-          advance_amount: o.advanceAmount,
-          balance_amount: o.balanceAmount,
-          payment_method: o.paymentMethod,
-          payment_status: o.paymentStatus,
-          production_status: o.productionStatus,
-          delivery_mode: o.deliveryMode,
-          delivered_by: o.deliveredBy,
-          signature_url: o.signatureUrl,
-          created_at: o.createdAt
-        });
-
-        await supabase.from('sales_order_items').insert(o.items.map(i => ({
-          id: i.id,
-          order_id: o.id,
-          product_name: i.productName,
-          category: i.category,
-          description: i.description,
-          width: i.width,
-          height: i.height,
-          unit: i.unit,
-          qty: i.qty,
-          total_sq_ft: i.totalSqFt,
-          material: i.material,
-          designer_required: i.designerRequired,
-          designer_id: i.designerId || null,
-          designer_name: i.designerName,
-          artwork_status: i.artworkStatus,
-          artwork_url: i.artworkUrl,
-          outsource: i.outsource,
-          vendor_id: i.vendorId || null,
-          vendor_name: i.vendorName,
-          estimated_vendor_cost: i.estimatedVendorCost,
-          actual_vendor_bill: i.actualVendorBill,
-          vendor_bill_date: i.vendorBillDate,
-          vendor_payment_status: i.vendorPaymentStatus,
-          estimated_cost: i.estimatedCost,
-          actual_cost: i.actualCost,
-          selling_rate: i.sellingRate,
-          discount: i.discount,
-          tax_type: i.taxType,
-          gst_rate: i.gstRate,
-          amount: i.amount,
-          production_status: i.productionStatus || o.productionStatus,
-          job_card_id: i.jobCardId
-        })));
-      }
-
-      // 11. Inventory
-      await supabase.from('inventory').insert(initialInventory.map(i => ({
-        id: i.id,
-        name: i.name,
-        category: i.category,
-        current_stock: i.currentStock,
-        unit: i.unit,
-        reorder_level: i.reorderLevel,
-        unit_cost: i.unitCost
-      })));
-
-      // 12. Purchase Orders
-      await supabase.from('purchase_orders').insert(initialPurchaseOrders.map(p => ({
-        id: p.id,
-        vendor_name: p.vendorName,
-        order_date: p.orderDate,
-        items: p.items,
-        amount: p.amount,
-        status: p.status
-      })));
-
-      // 13. Payments
-      await supabase.from('payments').insert(initialPayments.map(p => ({
-        id: p.id,
-        date: p.date,
-        order_id: p.orderId,
-        customer_name: p.customerName,
-        amount: p.amount,
-        method: p.method,
-        ref_no: p.refNo,
-        status: p.status
-      })));
-
-      // 14. Follow ups
-      await supabase.from('follow_ups').insert(initialFollowUps.map(f => ({
-        id: f.id,
-        type: f.type,
-        order_id: f.orderId,
-        customer_name: f.customerName,
-        amount: f.amount,
-        due_date: f.dueDate,
-        care_of: f.careOf,
-        status: f.status
-      })));
-
-      // 15. Attendance
-      await supabase.from('attendance').insert(initialAttendance.map(a => ({
-        id: a.id,
-        date: a.date,
-        staff_id: a.staffId,
-        staff_name: a.staffName,
-        type: a.type,
-        status: a.status,
-        ot_hours: a.otHours,
-        notes: a.notes
-      })));
-
-      // 16. Payroll
-      await supabase.from('payroll').insert(initialPayroll.map(p => ({
-        id: p.id,
-        month: p.month,
-        staff_id: p.staffId,
-        staff_name: p.staffName,
-        role: p.role,
-        base_salary: p.baseSalary,
-        working_days: p.workingDays,
-        days_present: p.daysPresent,
-        earned_base_pay: p.earnedBasePay,
-        ot_hours: p.otHours,
-        ot_pay: p.otPay,
-        incentive_earned: p.incentiveEarned,
-        advance_deduction: p.advanceDeduction,
-        late_deduction: p.lateDeduction,
-        net_salary: p.netSalary,
-        status: p.status,
-        paid_date: p.paidDate,
-        payment_mode: p.paymentMode
-      })));
-
-      // Reload dataset
-      await fetchAllERPData();
-    } catch (err) {
-      console.error("Error resetting database demo data:", err);
-    } finally {
-      setLoading(false);
-    }
+    console.warn("[PRODUCTION GUARD] Database reset is disabled to safeguard authoritative business data.");
+    return { success: false, message: "Demo data reset disabled in production mode." };
   };
 
 
@@ -4040,6 +3403,7 @@ export const ERPProvider = ({ children }) => {
         loading,
         companyProfile,
         setCompanyProfile,
+        updateCompanyProfile,
         companyBankAccounts,
         setCompanyBankAccounts,
         activeRole,

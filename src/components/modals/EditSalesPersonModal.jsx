@@ -3,7 +3,8 @@ import { useERP } from '../../context/ERPContext';
 import { TrendingUp, Check } from 'lucide-react';
 
 export const EditSalesPersonModal = ({ isOpen, onClose, salesPerson }) => {
-  const { updateSalesPerson } = useERP();
+  const { updateSalesPerson, activeRole, activeUser } = useERP();
+  const isAdminOrManager = activeRole === 'Admin' || activeRole === 'Manager' || activeUser?.role === 'Admin' || activeUser?.role === 'Manager';
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -112,18 +113,20 @@ export const EditSalesPersonModal = ({ isOpen, onClose, salesPerson }) => {
                 />
               </div>
 
-              <div className="form-group">
-                <label className="form-label" style={{ fontWeight: 700, color: '#2563eb' }}>Commission Rate (%)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  className="form-control"
-                  style={{ fontWeight: 800, color: '#2563eb' }}
-                  value={formData.commissionRate}
-                  onChange={(e) => setFormData({ ...formData, commissionRate: e.target.value })}
-                  disabled={isSubmitting}
-                />
-              </div>
+              {isAdminOrManager && (
+                <div className="form-group">
+                  <label className="form-label" style={{ fontWeight: 700, color: '#2563eb' }}>Commission Rate (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    className="form-control"
+                    style={{ fontWeight: 800, color: '#2563eb' }}
+                    value={formData.commissionRate}
+                    onChange={(e) => setFormData({ ...formData, commissionRate: e.target.value })}
+                    disabled={isSubmitting}
+                  />
+                </div>
+              )}
             </div>
           </div>
 

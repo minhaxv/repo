@@ -27,7 +27,8 @@ import { EmailScheduleModal } from '../components/modals/EmailScheduleModal';
 import { EmployeeWorkReportView } from './EmployeeWorkReportView';
 
 export const ReportsView = ({ initialReportKey = 'SALES' }) => {
-  const { companyProfile, salesOrders, customers, salesPersons, careOfPersons, workers, vendors, products, inventory, designers, payments } = useERP();
+  const { companyProfile, salesOrders, customers, salesPersons, careOfPersons, workers, vendors, products, inventory, designers, payments, activeUser, activeRole } = useERP();
+  const isAdminOrManager = (activeUser?.role === 'Admin' || activeUser?.role === 'Manager') || activeRole === 'Admin' || activeRole === 'Manager';
 
   // Map sidebar report key to category and sub-report
   const getCategoryFromKey = (key) => {
@@ -66,8 +67,25 @@ export const ReportsView = ({ initialReportKey = 'SALES' }) => {
   const initialResolved = getCategoryFromKey(initialReportKey);
 
   // Active Category & Sub-Report State
-  const [activeCategory, setActiveCategory] = useState(initialResolved.category);
-  const [activeSubReport, setActiveSubReport] = useState(initialResolved.subReport);
+  const [activeCategory, setActiveCategory] = useState(() => {
+    if (!isAdminOrManager && (initialResolved.category === 'PNL' || initialResolved.category === 'PROFIT' || initialResolved.category === 'INCENTIVES')) {
+      return 'SALES';
+    }
+    return initialResolved.category;
+  });
+  const [activeSubReport, setActiveSubReport] = useState(() => {
+    if (!isAdminOrManager && (initialResolved.category === 'PNL' || initialResolved.category === 'PROFIT' || initialResolved.category === 'INCENTIVES')) {
+      return 'DAILY';
+    }
+    return initialResolved.subReport;
+  });
+
+  React.useEffect(() => {
+    if (!isAdminOrManager && (activeCategory === 'PNL' || activeCategory === 'PROFIT' || activeCategory === 'INCENTIVES')) {
+      setActiveCategory('SALES');
+      setActiveSubReport('DAILY');
+    }
+  }, [isAdminOrManager, activeCategory]);
 
   // Filter Bar State
   const [filters, setFilters] = useState({
@@ -122,14 +140,16 @@ export const ReportsView = ({ initialReportKey = 'SALES' }) => {
 
   // Categories Definition
   const reportCategories = [
-    { id: 'INCENTIVES', label: 'Incentive Reports', icon: Award, count: 3 },
-    { id: 'PNL', label: 'Profit & Loss (P&L)', icon: DollarSign, count: 1 },
+    ...(isAdminOrManager ? [
+      { id: 'INCENTIVES', label: 'Incentive Reports', icon: Award, count: 3 },
+      { id: 'PNL', label: 'Profit & Loss (P&L)', icon: DollarSign, count: 1 }
+    ] : []),
     { id: 'PRODUCT_SALES', label: 'Product-Based Report', icon: Package, count: 1 },
     { id: 'CUSTOMER_DEBT', label: 'Customer-Based Report', icon: Users, count: 1 },
     { id: 'SALES', label: 'Sales Reports', icon: TrendingUp, count: 19 },
     { id: 'CUSTOMER', label: 'Customer Directory', icon: Users, count: 10 },
     { id: 'PRODUCT', label: 'Product Master', icon: Package, count: 9 },
-    { id: 'PROFIT', label: 'Profit Analysis', icon: DollarSign, count: 11 },
+    ...(isAdminOrManager ? [{ id: 'PROFIT', label: 'Profit Analysis', icon: DollarSign, count: 11 }] : []),
     { id: 'OUTSOURCE', label: 'Outsource Reports', icon: Building2, count: 8 },
     { id: 'PRODUCTION', label: 'Production Reports', icon: Factory, count: 8 },
     { id: 'DESIGN', label: 'Design Reports', icon: Palette, count: 5 },
@@ -834,8 +854,25 @@ export const ReportsView = ({ initialReportKey = 'SALES' }) => {
       rows = salesPersons;
     }
 
+    if (!isAdminOrManager) {
+      const forbiddenColKeys = [
+        'grossProfit', 'profitMarginPct', 'marginPct', 'estimatedCost', 'actualCost',
+        'outsourceCost', 'commissionRate', 'payable', 'earnedIncentive', 'totalIncentive',
+        'totalEstimatedCost', 'totalActualCost', 'incentivePerSqFt', 'incentivePerJob', 'jobProfit'
+      ];
+      cols = cols.filter(c => !forbiddenColKeys.includes(c.key) && 
+        !(c.label || '').toLowerCase().includes('profit') && 
+        !(c.label || '').toLowerCase().includes('margin') && 
+        !(c.label || '').toLowerCase().includes('commission') && 
+        !(c.label || '').toLowerCase().includes('incentive')
+      );
+      if (totals) {
+        forbiddenColKeys.forEach(k => delete totals[k]);
+      }
+    }
+
     return { cols, rows, totals };
-  }, [activeCategory, activeSubReport, filteredOrders, customers, products, vendors, designers, payments, inventory, salesPersons]);
+  }, [activeCategory, activeSubReport, filteredOrders, customers, products, vendors, designers, payments, inventory, salesPersons, isAdminOrManager]);
 
   // Paginated Rows
   const paginatedRows = useMemo(() => {

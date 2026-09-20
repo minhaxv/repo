@@ -40,6 +40,8 @@ export const DesignersView = () => {
     calculateJobProfitAndIncentive
   } = useERP();
 
+  const isAdminOrManager = activeRole === 'Admin' || activeRole === 'Manager' || activeUser?.role === 'Admin' || activeUser?.role === 'Manager';
+
   // Active Queue Tab
   const [activeTab, setActiveTab] = useState('UNASSIGNED'); // UNASSIGNED | MY_JOBS | WAITING_CUSTOMER | COMPLETED | ALL
 
@@ -161,7 +163,11 @@ export const DesignersView = () => {
     } else {
       await updateDesignJobStatus(job.orderId, job.item.id, 'COMPLETE');
     }
-    alert(`✅ Job ${job.orderId} (${job.item.productName}) Design Completed!\n\n🚀 Automatically transferred into PRINTING stage and 0.5% Designer Profit Incentive credited!`);
+    if (isAdminOrManager) {
+      alert(`✅ Job ${job.orderId} (${job.item.productName}) Design Completed!\n\n🚀 Automatically transferred into PRINTING stage and 0.5% Designer Profit Incentive credited!`);
+    } else {
+      alert(`✅ Job ${job.orderId} (${job.item.productName}) Design Completed!\n\n🚀 Automatically transferred into PRINTING stage.`);
+    }
   };
 
   const handleModalSubmit = async (e) => {
@@ -589,9 +595,11 @@ export const DesignersView = () => {
                               <div style={{ fontSize: '0.72rem', color: '#475569' }}>
                                 {job.item.material || 'Standard Substrate'} | {job.item.width && job.item.height ? `${job.item.width}x${job.item.height} ${job.item.unit}` : 'Custom Size'}
                               </div>
-                              <div style={{ fontSize: '0.7rem', color: '#059669', background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '0.15rem 0.35rem', borderRadius: '4px', marginTop: '3px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
-                                ⚡ Designer 0.5% Profit Incentive: ₹{incentiveAmount.toFixed(2)} (Job Profit: ₹{itemProfit.toLocaleString()})
-                              </div>
+                              {isAdminOrManager && (
+                                <div style={{ fontSize: '0.7rem', color: '#059669', background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '0.15rem 0.35rem', borderRadius: '4px', marginTop: '3px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+                                  ⚡ Designer 0.5% Profit Incentive: ₹{incentiveAmount.toFixed(2)} (Job Profit: ₹{itemProfit.toLocaleString()})
+                                </div>
+                              )}
                               {job.orderRemarks && (
                                 <div style={{ fontSize: '0.7rem', color: '#d97706', fontStyle: 'italic', marginTop: '2px' }}>
                                   Notes: "{job.orderRemarks}"

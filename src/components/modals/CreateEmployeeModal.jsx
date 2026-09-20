@@ -43,7 +43,8 @@ export const SALARY_TYPES = [
 ];
 
 export const CreateEmployeeModal = ({ isOpen, onClose, onEmployeeCreated, editingEmployee = null, onEmployeeUpdated, defaultDepartment = 'Sales' }) => {
-  const { employees, addEmployee, updateEmployee } = useERP();
+  const { employees, addEmployee, updateEmployee, activeRole, activeUser } = useERP();
+  const isAdminOrManager = activeRole === 'Admin' || activeRole === 'Manager' || activeUser?.role === 'Admin' || activeUser?.role === 'Manager';
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -272,51 +273,55 @@ export const CreateEmployeeModal = ({ isOpen, onClose, onEmployeeCreated, editin
                 </select>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Salary Structure</label>
-                <select
-                  className="form-select"
-                  value={formData.salaryType}
-                  onChange={(e) => setFormData({ ...formData, salaryType: e.target.value })}
-                >
-                  {SALARY_TYPES.map((st) => (
-                    <option key={st} value={st}>{st}</option>
-                  ))}
-                </select>
-              </div>
+              {isAdminOrManager && (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Salary Structure</label>
+                    <select
+                      className="form-select"
+                      value={formData.salaryType}
+                      onChange={(e) => setFormData({ ...formData, salaryType: e.target.value })}
+                    >
+                      {SALARY_TYPES.map((st) => (
+                        <option key={st} value={st}>{st}</option>
+                      ))}
+                    </select>
+                  </div>
 
-              <div className="form-group">
-                <label className="form-label">Basic Salary (₹/month)</label>
-                <input
-                  type="number"
-                  className="form-control"
-                  value={formData.basicSalary}
-                  onChange={(e) => setFormData({ ...formData, basicSalary: e.target.value })}
-                />
-              </div>
+                  <div className="form-group">
+                    <label className="form-label">Basic Salary (₹/month)</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={formData.basicSalary}
+                      onChange={(e) => setFormData({ ...formData, basicSalary: e.target.value })}
+                    />
+                  </div>
 
-              <div className="form-group">
-                <label className="form-label">Commission %</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  className="form-control"
-                  placeholder="e.g. 3.5"
-                  value={formData.commissionRate}
-                  onChange={(e) => setFormData({ ...formData, commissionRate: e.target.value })}
-                />
-              </div>
+                  <div className="form-group">
+                    <label className="form-label">Commission %</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      className="form-control"
+                      placeholder="e.g. 3.5"
+                      value={formData.commissionRate}
+                      onChange={(e) => setFormData({ ...formData, commissionRate: e.target.value })}
+                    />
+                  </div>
 
-              <div className="form-group">
-                <label className="form-label">Incentive (₹/job or sqft)</label>
-                <input
-                  type="number"
-                  className="form-control"
-                  placeholder="e.g. 50"
-                  value={formData.incentiveRate}
-                  onChange={(e) => setFormData({ ...formData, incentiveRate: e.target.value })}
-                />
-              </div>
+                  <div className="form-group">
+                    <label className="form-label">Incentive (₹/job or sqft)</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      placeholder="e.g. 50"
+                      value={formData.incentiveRate}
+                      onChange={(e) => setFormData({ ...formData, incentiveRate: e.target.value })}
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="form-group">
                 <label className="form-label">Joining Date</label>

@@ -8,7 +8,6 @@ import { MobileBottomNav } from './components/layout/MobileBottomNav';
 
 import { DashboardView } from './views/DashboardView';
 import { SalesOrdersView } from './views/SalesOrdersView';
-import { JobOrdersView } from './views/JobOrdersView';
 import { CustomersView } from './views/CustomersView';
 import { EmployeesView } from './views/EmployeesView';
 import { SalesPersonsView } from './views/SalesPersonsView';
@@ -43,7 +42,7 @@ const ACCOUNTS_SUB_ITEMS = [
   'general-ledger', 'journal-entries', 'party-ledger', 'party-statement', 'party-pending',
   'outstanding-receivables', 'outstanding-payables', 'future-transactions', 'cheque-clearance',
   'bank-statement', 'bank-reconciliation', 'cash-flow', 'income-statement', 'trial-balance',
-  'balance-sheet', 'gst-e-filing', 'tax-summary', 'payment-receipt', 'payment-entry',
+  'balance-sheet', 'gst-e-filing', 'gst-summary', 'tax-summary', 'payment-receipt', 'payment-entry',
   'expense-entry', 'income-entry', 'contra-entry', 'debit-note', 'credit-note'
 ];
 
@@ -183,7 +182,9 @@ const MainAppContent = () => {
                 onNavigate={handleNavigate}
               />
             )}
-            {activeTab === 'job-orders' && <JobOrdersView onNavigate={handleNavigate} />}
+            {(activeTab === 'job-orders' || activeTab === 'job-cards') && (
+              <ProductionView key="job-cards-list" initialStageFilter="ALL" initialViewType="list" onNavigate={handleNavigate} />
+            )}
             {activeTab === 'customers' && <CustomersView onNavigate={handleNavigate} />}
             {activeTab === 'employees' && <EmployeesView />}
             {activeTab === 'sales-persons' && <SalesPersonsView />}
@@ -191,21 +192,26 @@ const MainAppContent = () => {
             {(activeTab === 'hr-payroll' || activeTab === 'attendance') && (
               <HRManagementView key={activeTab} initialTab={activeTab} />
             )}
+            {activeTab === 'biometrics' && (
+              <HRManagementView key="biometric-device" initialTab="biometric-device" />
+            )}
             {activeTab === 'products' && <ProductsView />}
-            {activeTab === 'machines' && <MachinesView />}
+            {(activeTab === 'machines' || activeTab === 'machines-admin') && <MachinesView />}
             {activeTab === 'workflows' && <WorkflowsView />}
             {activeTab === 'wastage' && <WastageView />}
             {activeTab === 'designers' && <DesignersView />}
             {activeTab === 'production' && <ProductionView initialStageFilter="ALL" onNavigate={handleNavigate} />}
+            {activeTab === 'my-work' && <ProductionTasksView key="my-work" initialStaffTab="my_work" onNavigate={handleNavigate} />}
+            {activeTab === 'available-work' && <ProductionTasksView key="available-work" initialStaffTab="available" onNavigate={handleNavigate} />}
             {activeTab === 'employee-tasks' && <ProductionTasksView onNavigate={handleNavigate} />}
             {activeTab === 'printing-dept' && <ProductionView initialStageFilter="Printing" onNavigate={handleNavigate} />}
             {activeTab === 'finishing-dept' && <ProductionView initialStageFilter="Finishing" onNavigate={handleNavigate} />}
             {activeTab === 'qc-dept' && <ProductionView initialStageFilter="Quality Check" onNavigate={handleNavigate} />}
-            {activeTab === 'vendors' && <OutsourceVendorsView />}
+            {(activeTab === 'vendors' || activeTab === 'outsource-jobs' || activeTab === 'suppliers') && <OutsourceVendorsView />}
             {activeTab === 'payments' && <PaymentsView />}
             {activeTab === 'purchase' && <PurchaseView />}
-            {(activeTab === 'inventory' || activeTab === 'materials-spec' || activeTab === 'materials-master') && <InventoryView />}
-            {activeTab === 'delivery' && <DeliveryView />}
+            {(activeTab === 'inventory' || activeTab === 'materials-spec' || activeTab === 'materials-master' || activeTab === 'stock-ledger') && <InventoryView />}
+            {(activeTab === 'delivery' || activeTab.startsWith('delivery-')) && <DeliveryView />}
             {activeTab === 'gst-invoicing' && <GSTInvoicingView />}
             {(activeTab === 'sales-order-audit' || activeTab === 'report-order-audit') && (
               <SalesOrderAuditView onNavigate={handleNavigate} />
@@ -215,8 +221,8 @@ const MainAppContent = () => {
               <ReportsView key={activeTab} initialReportKey={activeTab} />
             )}
             {ACCOUNTS_SUB_ITEMS.includes(activeTab) && <AccountsView key={activeTab} initialTab={activeTab} />}
-            {activeTab === 'user-management' && <UserManagementView />}
-            {activeTab === 'settings' && <SettingsView />}
+            {(activeTab === 'user-management' || activeTab === 'roles-permissions') && <UserManagementView initialTab={activeTab === 'roles-permissions' ? 'roles' : 'users'} />}
+            {(activeTab === 'settings' || activeTab === 'system-health') && <SettingsView initialTab={activeTab === 'system-health' ? 'health' : 'profile'} />}
           </ErrorBoundary>
         </main>
       </div>

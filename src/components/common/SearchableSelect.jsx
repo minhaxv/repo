@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { useERP } from '../../context/ERPContext';
 import {
   Search,
   ChevronDown,
@@ -50,11 +51,23 @@ export const SearchableSelect = ({
   maxMenuHeight = 340,
   autoFocusSearch = true,
   noResultsText = 'No matching records found.',
-  badge
+  badge,
+  onSearch,
+  isSearching = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+
+  // Debounced server search effect
+  useEffect(() => {
+    if (!isOpen || typeof onSearch !== 'function') return;
+    const handler = setTimeout(() => {
+      onSearch(searchQuery);
+    }, 200);
+    return () => clearTimeout(handler);
+  }, [searchQuery, isOpen, onSearch]);
+
   const [dropdownPosition, setDropdownPosition] = useState({
     top: 0,
     bottom: 'auto',
@@ -62,6 +75,15 @@ export const SearchableSelect = ({
     width: 380,
     openUpward: false
   });
+
+  let isAdminOrManager = false;
+  try {
+    const erp = useERP?.();
+    const role = erp?.activeRole || erp?.activeUser?.role;
+    isAdminOrManager = role === 'Admin' || role === 'Manager';
+  } catch {
+    // outside ERP context
+  }
 
   const containerRef = useRef(null);
   const popoverRef = useRef(null);
@@ -513,7 +535,9 @@ export const SearchableSelect = ({
 
     // CARE OF / REFERRAL PARTNER PRESET
     if (type === 'careOf') {
-      const commPct = Number(opt.referralCommissionPct ?? opt.referral_commission_pct ?? 5);
+      const rawComm = opt.referralCommissionPct ?? opt.referral_commission_pct;
+      const showComm = isAdminOrManager && rawComm != null && rawComm !== '';
+      const commPct = Number(rawComm ?? 0);
       const commType = opt.commissionType ?? opt.commission_type ?? 'profit';
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' }}>
@@ -521,9 +545,11 @@ export const SearchableSelect = ({
             <span style={{ fontWeight: 800, color: isSelected ? '#1e40af' : '#0f172a', fontSize: '0.88rem' }}>
               {opt.name}
             </span>
-            <span className="badge badge-purple" style={{ fontSize: '0.68rem', fontWeight: 800 }}>
-              {commPct}% {commType === 'sales' ? 'Sales' : 'Profit'} Comm
-            </span>
+            {showComm && (
+              <span className="badge badge-purple" style={{ fontSize: '0.68rem', fontWeight: 800 }}>
+                {commPct}% {commType === 'sales' ? 'Sales' : 'Profit'} Comm
+              </span>
+            )}
           </div>
           <div style={{ fontSize: '0.74rem', color: '#64748b', display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
             <span>{opt.role || 'Referred Agent'}</span>

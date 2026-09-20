@@ -20,3 +20,4 @@ database/backups/
 *.sqlite-wal
 
 .vercel
+scratch/

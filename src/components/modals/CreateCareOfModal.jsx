@@ -3,7 +3,8 @@ import { X, UserCheck, Phone, Mail, Award, Percent, FileText, Check } from 'luci
 import { useERP } from '../../context/ERPContext';
 
 export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
-  const { addCareOfPerson, careOfPersons } = useERP();
+  const { addCareOfPerson, careOfPersons, activeRole, activeUser } = useERP();
+  const isAdminOrManager = activeRole === 'Admin' || activeRole === 'Manager' || activeUser?.role === 'Admin' || activeUser?.role === 'Manager';
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -91,11 +92,11 @@ export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <UserCheck size={20} color="#bfdbfe" />
             <div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0, color: '#fff' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#fff' }}>
                 Create Care Of Person (Referred Agent)
               </h3>
               <span style={{ fontSize: '0.75rem', color: '#bfdbfe' }}>
-                Add client liaison or referral partner to track sales commissions
+                {isAdminOrManager ? 'Add client liaison or referral partner to track sales commissions' : 'Add client liaison or referral partner'}
               </span>
             </div>
           </div>
@@ -176,44 +177,48 @@ export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
                 </select>
               </div>
 
-              <div className="form-group">
-                <label className="form-label" style={{ fontWeight: 700 }}>
-                  Referral Commission (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="50"
-                  value={formData.referralCommissionPct}
-                  onChange={(e) => setFormData({ ...formData, referralCommissionPct: parseFloat(e.target.value) || 0 })}
-                  className="form-control"
-                  style={{ fontWeight: 800, color: '#7c3aed' }}
-                  disabled={isSubmitting}
-                />
-              </div>
+              {isAdminOrManager && (
+                <div className="form-group">
+                  <label className="form-label" style={{ fontWeight: 700 }}>
+                    Referral Commission (%)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="50"
+                    value={formData.referralCommissionPct}
+                    onChange={(e) => setFormData({ ...formData, referralCommissionPct: parseFloat(e.target.value) || 0 })}
+                    className="form-control"
+                    style={{ fontWeight: 800, color: '#7c3aed' }}
+                    disabled={isSubmitting}
+                  />
+                </div>
+              )}
             </div>
 
-            <div className="form-group">
-              <label className="form-label" style={{ fontWeight: 700, color: '#7c3aed' }}>
-                Commission Calculation Basis
-              </label>
-              <select
-                value={formData.commissionType}
-                onChange={(e) => setFormData({ ...formData, commissionType: e.target.value })}
-                className="form-select"
-                style={{ fontWeight: 700 }}
-                disabled={isSubmitting}
-              >
-                <option value="profit">Net Profit Based (% of Order Gross Profit)</option>
-                <option value="sales">Sales Total Based (% of Order Subtotal)</option>
-              </select>
-              <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
-                {formData.commissionType === 'profit'
-                  ? 'Calculated on net profit after raw material and outsource costs.'
-                  : 'Calculated directly on total sales bill amount.'}
-              </span>
-            </div>
+            {isAdminOrManager && (
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 700, color: '#7c3aed' }}>
+                  Commission Calculation Basis
+                </label>
+                <select
+                  value={formData.commissionType}
+                  onChange={(e) => setFormData({ ...formData, commissionType: e.target.value })}
+                  className="form-select"
+                  style={{ fontWeight: 700 }}
+                  disabled={isSubmitting}
+                >
+                  <option value="profit">Net Profit Based (% of Order Gross Profit)</option>
+                  <option value="sales">Sales Total Based (% of Order Subtotal)</option>
+                </select>
+                <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
+                  {formData.commissionType === 'profit'
+                    ? 'Calculated on net profit after raw material and outsource costs.'
+                    : 'Calculated directly on total sales bill amount.'}
+                </span>
+              </div>
+            )}
 
             <div className="form-group">
               <label className="form-label" style={{ fontWeight: 700 }}>

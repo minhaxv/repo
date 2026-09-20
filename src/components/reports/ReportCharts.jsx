@@ -1,6 +1,7 @@
 import React from 'react';
 import { TrendingUp, PieChart as PieIcon, BarChart2 } from 'lucide-react';
 import { formatINR } from '../../utils/reportEngine';
+import { useERP } from '../../context/ERPContext';
 
 // Bar Chart Widget (Revenue & Profit by Category / Entity)
 export const BarChartWidget = ({ title, items = [] }) => {
@@ -87,6 +88,9 @@ export const DonutChartWidget = ({ title, items = [] }) => {
 
 // Trend Line Widget (Sales vs Cost Graph)
 export const TrendLineWidget = ({ title, months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'], salesData = [120000, 185000, 210000, 245000, 290000, 310000, 385000], profitData = [65000, 95000, 110000, 130000, 155000, 168000, 210000] }) => {
+  const { activeUser, activeRole } = useERP();
+  const isAdminOrManager = (activeUser?.role === 'Admin' || activeUser?.role === 'Manager') || activeRole === 'Admin' || activeRole === 'Manager';
+
   const maxVal = Math.max(...salesData, 1);
   const height = 140;
 
@@ -98,7 +102,7 @@ export const TrendLineWidget = ({ title, months = ['Jan', 'Feb', 'Mar', 'Apr', '
         </h4>
         <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', fontWeight: 700 }}>
           <span style={{ color: '#2563eb' }}>● Sales Revenue</span>
-          <span style={{ color: '#10b981' }}>● Gross Profit</span>
+          {isAdminOrManager && <span style={{ color: '#10b981' }}>● Gross Profit</span>}
         </div>
       </div>
 
@@ -123,17 +127,19 @@ export const TrendLineWidget = ({ title, months = ['Jan', 'Feb', 'Mar', 'Apr', '
                     transition: 'height 0.5s'
                   }}
                 ></div>
-                {/* Profit Bar */}
-                <div
-                  title={`Profit: ${formatINR(pVal)}`}
-                  style={{
-                    width: '12px',
-                    height: `${pPct}%`,
-                    background: 'linear-gradient(180deg, #34d399, #059669)',
-                    borderRadius: '4px 4px 0 0',
-                    transition: 'height 0.5s'
-                  }}
-                ></div>
+                {/* Profit Bar (Admin & Manager Only) */}
+                {isAdminOrManager && (
+                  <div
+                    title={`Profit: ${formatINR(pVal)}`}
+                    style={{
+                      width: '12px',
+                      height: `${pPct}%`,
+                      background: 'linear-gradient(180deg, #34d399, #059669)',
+                      borderRadius: '4px 4px 0 0',
+                      transition: 'height 0.5s'
+                    }}
+                  ></div>
+                )}
               </div>
               <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b' }}>{m}</span>
             </div>

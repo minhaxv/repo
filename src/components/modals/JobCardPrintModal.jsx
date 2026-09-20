@@ -80,7 +80,7 @@ export const JobCardPrintModal = ({ order, selectedItemCard, isOpen, onClose }) 
             </div>
             <div>
               <span style={{ color: '#64748b', fontSize: '0.72rem', display: 'block', fontWeight: 700 }}>BILLED BY & CARE OF</span>
-              <strong>Billed: {activeOrder.billedByStaff || activeOrder.salesPersonName || 'Admin User'}</strong>
+              <strong>Billed: {activeOrder.billedByStaff || 'N/A'}</strong>
               <div style={{ fontSize: '0.78rem', color: '#475569' }}>Care Of: {activeOrder.careOfName || 'Direct'}</div>
             </div>
             <div>

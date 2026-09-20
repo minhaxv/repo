@@ -31,7 +31,8 @@ import {
 import { formatINR } from '../utils/reportEngine';
 
 export const DashboardView = ({ onNavigate }) => {
-  const { salesOrders, customers, payments, machines, employees, products, vendors } = useERP();
+  const { salesOrders, customers, payments, machines, employees, products, vendors, activeUser, activeRole } = useERP();
+  const isAdminOrManager = (activeUser?.role === 'Admin' || activeUser?.role === 'Manager') || activeRole === 'Admin' || activeRole === 'Manager';
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -265,17 +266,19 @@ export const DashboardView = ({ onNavigate }) => {
           <span style={{ fontSize: '0.68rem', color: '#dc2626' }}>Customer Dues</span>
         </div>
 
-        {/* Metric 8: Today's Profit */}
-        <div className="card" style={{ padding: '0.85rem', borderLeft: '4px solid #16a34a' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Today's Profit</span>
-            <DollarSign size={14} color="#16a34a" />
+        {/* Metric 8: Today's Profit (Admin & Manager Only) */}
+        {isAdminOrManager && (
+          <div className="card" style={{ padding: '0.85rem', borderLeft: '4px solid #16a34a' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>Today's Profit</span>
+              <DollarSign size={14} color="#16a34a" />
+            </div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669', margin: '0.2rem 0' }}>
+              {formatINR(todayProfitVal)}
+            </div>
+            <span style={{ fontSize: '0.68rem', color: '#059669', fontWeight: 700 }}>Gross Margin</span>
           </div>
-          <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669', margin: '0.2rem 0' }}>
-            {formatINR(todayProfitVal)}
-          </div>
-          <span style={{ fontSize: '0.68rem', color: '#059669', fontWeight: 700 }}>Gross Margin</span>
-        </div>
+        )}
       </div>
 
       {/* Production Board Live Mini Widget */}

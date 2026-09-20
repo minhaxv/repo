@@ -3,9 +3,10 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import db from './db.js';
-import { sseHandler, publishEvent } from './events.js';
-import { loginUser, authenticateToken, requireRole, requirePermission, hasPermission, logAuditEvent } from './auth.js';
+import db, { generateNextSequence, postDoubleEntryJournal } from './db.js';
+import { sseHandler, publishEvent, getActiveConnectionCount } from './events.js';
+import { loginUser, generateToken, authenticateToken, requireRole, requirePermission, hasPermission, logAuditEvent, getEffectivePermissions, getEffectiveProcesses } from './auth.js';
+import { hashPassword } from './migrations.js';
 import { calculateOrderTotals, calculateLineItem } from './billingEngine.js';
 import { consumeInventoryForItem, recordInventoryTransaction, TRANSACTION_TYPES } from './inventoryEngine.js';
 import {
@@ -375,6 +376,41 @@ function formatBiometricUser(u) {
 }
 
 // ============================================================================
+// 0A. SYSTEM HEALTH CHECK & OBSERVABILITY (API, SQLite WAL, SSE Bus, Migrations)
+// ============================================================================
+app.get('/api/health', (req, res) => {
+  try {
+    const dbCheck = db.prepare('PRAGMA quick_check').get();
+    const isDbHealthy = dbCheck && (dbCheck.quick_check === 'ok' || Object.values(dbCheck)[0] === 'ok');
+    const activeClients = getActiveConnectionCount ? getActiveConnectionCount() : 0;
+    let latestMigration = 'none';
+    try {
+      const mRow = db.prepare('SELECT migration_name FROM schema_migrations ORDER BY id DESC LIMIT 1').get();
+      if (mRow) latestMigration = mRow.migration_name;
+    } catch (e) {}
+
+    res.json({
+      success: true,
+      status: 'healthy',
+      version: 'v2.6.0',
+      timestamp: new Date().toISOString(),
+      uptimeSeconds: Math.floor(process.uptime()),
+      database: {
+        status: isDbHealthy ? 'connected' : 'error',
+        integrity: isDbHealthy ? 'ok' : 'degraded',
+        latestMigration
+      },
+      realtime: {
+        status: 'active',
+        activeConnections: activeClients
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, status: 'unhealthy', error: err.message });
+  }
+});
+
+// ============================================================================
 // 0. REAL-TIME SERVER-SENT EVENTS (SSE) STREAM
 // ============================================================================
 app.get('/api/events', sseHandler);
@@ -390,7 +426,7 @@ app.post('/api/auth/login', (req, res) => {
     }
     const result = loginUser(db, username, password);
     if (!result.success) {
-      return res.status(401).json({ success: false, error: { code: 'AUTH_FAILED', message: result.message } });
+      return res.status(result.statusCode || 401).json({ success: false, error: { code: 'AUTH_FAILED', message: result.message } });
     }
     res.json(result);
   } catch (err) {
@@ -402,13 +438,204 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
   res.json({ success: true, user: req.user });
 });
 
+app.post('/api/auth/switch-user', (req, res) => {
+  try {
+    const { userId, employeeId, username } = req.body;
+    if (!userId && !employeeId && !username) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: 'Target user ID, employee ID, or username is required' }
+      });
+    }
+
+    const user = db.prepare(`
+      SELECT u.*, e.name as employee_name, e.code as employee_code, e.department as emp_dept, e.role as emp_role, e.allowed_processes
+      FROM users u
+      LEFT JOIN employees e ON u.employee_id = e.id
+      WHERE u.id = ? OR u.employee_id = ? OR LOWER(u.username) = LOWER(?) OR e.id = ?
+    `).get(userId || '', employeeId || '', username || '', employeeId || '');
+
+    if (!user) {
+      // If user row not in users table, lookup employees table and provision session
+      const emp = db.prepare('SELECT * FROM employees WHERE id = ? OR name = ?').get(employeeId || userId || '', username || '');
+      if (emp) {
+        const payload = {
+          userId: `USR-${emp.id}`,
+          id: `USR-${emp.id}`,
+          employeeId: emp.id,
+          username: (emp.code || emp.name).toLowerCase().replace(/[^a-z0-9]/g, ''),
+          email: emp.email || `${emp.id.toLowerCase()}@screenarts.in`,
+          name: emp.name,
+          role: emp.role || 'Staff',
+          department: emp.department || 'Sales',
+          permissions: ['VIEW', 'CREATE', 'EDIT', 'PRINT'],
+          allowedProcesses: []
+        };
+        const token = generateToken(payload);
+        return res.json({ success: true, token, user: payload });
+      }
+      return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'User account not found' } });
+    }
+
+    if (user.status !== 'Active') {
+      return res.status(403).json({ success: false, error: { code: 'USER_INACTIVE', message: 'User account is inactive' } });
+    }
+
+    let allowedProcesses = [];
+    try {
+      if (user.allowed_processes) {
+        allowedProcesses = JSON.parse(user.allowed_processes);
+      }
+    } catch (e) {}
+
+    const payload = {
+      userId: user.id,
+      id: user.id,
+      employeeId: user.employee_id,
+      username: user.username,
+      email: user.email,
+      name: user.employee_name || user.username,
+      role: user.role,
+      department: user.emp_dept || user.department,
+      permissions: user.permissions ? JSON.parse(user.permissions) : [],
+      allowedProcesses
+    };
+
+    const token = generateToken(payload);
+    return res.json({ success: true, token, user: payload });
+  } catch (err) {
+    console.error('POST /api/auth/switch-user error:', err);
+    res.status(500).json({ success: false, error: { message: err.message } });
+  }
+});
+
+// Scalable Server-Side Customer Search
+app.get('/api/customers/search', authenticateToken, (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
+
+    if (!q) {
+      const rows = db.prepare(`
+        SELECT id, customer_code, name, mobile, email, address, gst_number, customer_type, outstanding, credit_limit
+        FROM customers
+        ORDER BY name ASC
+        LIMIT ?
+      `).all(limit);
+      return res.json({ success: true, customers: rows });
+    }
+
+    const pattern = `%${q}%`;
+    const rows = db.prepare(`
+      SELECT id, customer_code, name, mobile, email, address, gst_number, customer_type, outstanding, credit_limit
+      FROM customers
+      WHERE name LIKE ?
+         OR mobile LIKE ?
+         OR gst_number LIKE ?
+         OR customer_code LIKE ?
+         OR email LIKE ?
+      ORDER BY 
+        CASE WHEN name LIKE ? THEN 1 ELSE 2 END,
+        name ASC
+      LIMIT ?
+    `).all(pattern, pattern, pattern, pattern, pattern, `${q}%`, limit);
+
+    res.json({ success: true, customers: rows });
+  } catch (err) {
+    console.error('GET /api/customers/search error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Scalable Server-Side Product Search with Role-Based Cost Masking
+app.get('/api/products/search', authenticateToken, (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    const category = (req.query.category || '').trim();
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 30, 1), 100);
+    const canViewFinancials = req.user && (req.user.role === 'Admin' || req.user.role === 'Manager');
+
+    let querySql = `
+      SELECT id, product_code, name, category, description, unit, default_rate, estimated_cost, gst_rate, hsn_code, default_vendor, default_material, is_custom, active
+      FROM products
+      WHERE active = 1
+    `;
+    const params = [];
+
+    if (category) {
+      querySql += ` AND category = ?`;
+      params.push(category);
+    }
+
+    if (q) {
+      const pattern = `%${q}%`;
+      querySql += ` AND (name LIKE ? OR product_code LIKE ? OR category LIKE ? OR default_material LIKE ?)`;
+      params.push(pattern, pattern, pattern, pattern);
+    }
+
+    querySql += ` ORDER BY name ASC LIMIT ?`;
+    params.push(limit);
+
+    const rows = db.prepare(querySql).all(...params);
+
+    const sanitized = rows.map(p => {
+      const item = {
+        id: p.id,
+        code: p.product_code,
+        productCode: p.product_code,
+        name: p.name,
+        category: p.category,
+        description: p.description,
+        unit: p.unit,
+        defaultRate: Number(p.default_rate || 0),
+        sellingRate: Number(p.default_rate || 0),
+        gstRate: Number(p.gst_rate || 18),
+        hsnCode: p.hsn_code,
+        defaultVendor: p.default_vendor,
+        defaultMaterial: p.default_material,
+        isCustom: Boolean(p.is_custom)
+      };
+      if (canViewFinancials) {
+        item.estimatedCost = Number(p.estimated_cost || 0);
+        item.costPrice = Number(p.estimated_cost || 0);
+      }
+      return item;
+    });
+
+    res.json({ success: true, products: sanitized });
+  } catch (err) {
+    console.error('GET /api/products/search error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 1. GET ALL ERP DATA AT ONCE
 app.get('/api/all', authenticateToken, (req, res) => {
   try {
     const user = req.user;
-    const hasSalaryAccess = user && (user.role === 'Admin' || user.role === 'Manager' || user.role === 'Accounts' || hasPermission(user, 'VIEW_ACCOUNTS'));
+    const canViewFinancials = user && (user.role === 'Admin' || user.role === 'Manager');
+    const hasSalaryAccess = canViewFinancials;
 
-    const companyProfile = db.prepare('SELECT * FROM company_profile WHERE id = 1').get() || {};
+    const rawCompanyProfile = db.prepare('SELECT * FROM company_profile WHERE id = 1').get() || {};
+    const companyProfile = {
+      ...rawCompanyProfile,
+      stateCode: rawCompanyProfile.state_code || rawCompanyProfile.stateCode || '27',
+      bankName: rawCompanyProfile.bank_name || 'HDFC Bank Ltd',
+      accountName: rawCompanyProfile.account_name || rawCompanyProfile.name || 'ScreenArts Digital & Signage India Pvt Ltd',
+      accountNo: rawCompanyProfile.account_no || '50200048192837',
+      ifsc: rawCompanyProfile.ifsc || 'HDFC0000123',
+      branch: rawCompanyProfile.branch || 'Goregaon East, Mumbai',
+      upiId: rawCompanyProfile.upi_id || 'screenarts@hdfcbank',
+      bankDetails: {
+        bankName: rawCompanyProfile.bank_name || 'HDFC Bank Ltd',
+        accountName: rawCompanyProfile.account_name || rawCompanyProfile.name || 'ScreenArts Digital & Signage India Pvt Ltd',
+        accountNo: rawCompanyProfile.account_no || '50200048192837',
+        ifsc: rawCompanyProfile.ifsc || 'HDFC0000123',
+        branch: rawCompanyProfile.branch || 'Goregaon East, Mumbai',
+        upiId: rawCompanyProfile.upi_id || 'screenarts@hdfcbank'
+      },
+      terms: rawCompanyProfile.terms_conditions || rawCompanyProfile.terms || ''
+    };
     const customers = db.prepare('SELECT * FROM customers ORDER BY created_at DESC').all();
     const products = db.prepare('SELECT * FROM products ORDER BY name ASC').all();
     const productMaterialSpecs = db.prepare('SELECT * FROM product_specifications').all();
@@ -447,8 +674,8 @@ app.get('/api/all', authenticateToken, (req, res) => {
         qty: Number(i.qty),
         unit: i.unit,
         sellingRate: Number(i.selling_rate),
-        estimatedCost: Number(i.estimated_cost),
-        actualCost: Number(i.actual_cost),
+        estimatedCost: canViewFinancials ? Number(i.estimated_cost) : null,
+        actualCost: canViewFinancials ? Number(i.actual_cost) : null,
         discount: Number(i.discount),
         taxType: i.tax_type,
         gstRate: Number(i.gst_rate),
@@ -463,8 +690,8 @@ app.get('/api/all', authenticateToken, (req, res) => {
         outsource: Boolean(i.outsource),
         vendorId: i.vendor_id,
         vendorName: i.vendor_name,
-        estimatedVendorCost: Number(i.estimated_vendor_cost),
-        actualVendorBill: Number(i.actual_vendor_bill),
+        estimatedVendorCost: canViewFinancials ? Number(i.estimated_vendor_cost) : null,
+        actualVendorBill: canViewFinancials ? Number(i.actual_vendor_bill) : null,
         printerId: i.printer_id,
         printerName: i.printer_name,
         finisherId: i.finisher_id,
@@ -497,11 +724,20 @@ app.get('/api/all', authenticateToken, (req, res) => {
         grandTotal: Number(o.grand_total),
         advanceAmount: Number(o.advance_amount),
         balanceAmount: Number(o.balance_amount),
+        grossProfit: canViewFinancials ? Number(o.gross_profit || 0) : null,
+        profitMarginPct: canViewFinancials ? Number(o.profit_margin_pct || 0) : null,
+        actualCost: canViewFinancials ? Number(o.actual_cost || 0) : null,
+        actualProfit: canViewFinancials ? Number(o.actual_profit || 0) : null,
         deliveredBy: o.delivered_by,
-        billedByStaff: o.billed_by_staff || o.sales_person_name || 'Admin User',
-        billedByStaffId: o.billed_by_id || o.sales_person_id || '',
-        billedByRole: o.billed_by_role || 'Sales / Billing Staff',
-        billedAt: o.billed_at || o.order_date || '',
+        billedByStaff: o.billed_by_staff || null,
+        billedByStaffId: o.billed_by_id || null,
+        billedByRole: o.billed_by_role || null,
+        billedAt: o.billed_at || null,
+        orderType: o.order_type || 'Direct',
+        quotationStatus: o.quotation_status || null,
+        convertedFromQuotation: Boolean(o.converted_from_quotation_id),
+        quotationId: o.converted_from_quotation_id || null,
+        convertedOrderId: o.converted_order_id || null,
         signatureUrl: o.signature_url,
         whatsappSent: Boolean(o.whatsapp_sent),
         notes: o.notes,
@@ -515,9 +751,33 @@ app.get('/api/all', authenticateToken, (req, res) => {
     const workerJobIncentives = db.prepare('SELECT * FROM worker_job_incentives ORDER BY completed_at DESC').all();
     const payments = db.prepare('SELECT * FROM payments ORDER BY paid_date DESC').all();
 
-    // Multi-Task Employee Production & Work Logs
+    // Multi-Task Employee Production & Work Logs (Scoped by role permissions)
     const rawProcesses = db.prepare('SELECT * FROM production_processes ORDER BY sort_order ASC, name ASC').all();
-    const rawTasks = db.prepare('SELECT * FROM production_tasks ORDER BY task_date DESC, created_at DESC').all();
+    const isManagerOrAdmin = hasPermission(user, 'production.view_all') || user.role === 'Admin' || user.role === 'Manager';
+    
+    let rawTasks;
+    if (isManagerOrAdmin) {
+      rawTasks = db.prepare('SELECT * FROM production_tasks ORDER BY task_date DESC, created_at DESC').all();
+    } else {
+      const userEmpId = user.employeeId || '';
+      rawTasks = db.prepare(`
+        SELECT * FROM production_tasks
+        WHERE (assigned_employee_id = ? OR employee_id = ? OR assigned_user_id = ?)
+           OR ((assigned_employee_id IS NULL OR assigned_employee_id = '') AND (status = 'Pending' OR status = 'AVAILABLE'))
+        ORDER BY task_date DESC, created_at DESC
+      `).all(userEmpId, userEmpId, user.userId || user.id);
+
+      const userProcList = Array.isArray(user.allowedProcesses) ? user.allowedProcesses : [];
+      if (userProcList.length > 0) {
+        rawTasks = rawTasks.filter(t => {
+          if (t.assigned_employee_id === userEmpId || t.employee_id === userEmpId || t.assigned_user_id === (user.userId || user.id)) {
+            return true;
+          }
+          return userProcList.includes(t.process_name);
+        });
+      }
+    }
+
     const rawTimeLogs = db.prepare('SELECT * FROM production_task_time_logs ORDER BY timestamp ASC').all();
 
     const formattedTasks = rawTasks.map(t => ({
@@ -566,6 +826,9 @@ app.get('/api/all', authenticateToken, (req, res) => {
       }))
     }));
 
+    // Query Machines Master from SQLite
+    const machinesList = db.prepare('SELECT * FROM machines ORDER BY is_active DESC, name ASC').all();
+
     res.json({
       success: true,
       companyProfile,
@@ -584,26 +847,52 @@ app.get('/api/all', authenticateToken, (req, res) => {
           gstin: c.gst_number,
           additionalMobiles: Array.isArray(addMobiles) ? addMobiles : [],
           outstandingAmount: Number(c.outstanding),
+          creditLimit: Number(c.credit_limit || 50000),
           version: c.version || 1
         };
       }),
-      products: products.map(p => ({ ...p, code: p.product_code, defaultRate: Number(p.default_rate), estimatedCost: Number(p.estimated_cost), gstRate: Number(p.gst_rate), isCustom: Boolean(p.is_custom) })),
-      productMaterialSpecs: productMaterialSpecs.map(s => ({ ...s, productId: s.product_id, specName: s.spec_name, materialName: s.material_name, sellingPrice: Number(s.selling_price), costPrice: Number(s.cost_price), isDefault: Boolean(s.is_default) })),
+      products: products.map(p => ({
+        ...p,
+        code: p.product_code,
+        defaultRate: Number(p.default_rate),
+        estimatedCost: canViewFinancials ? Number(p.estimated_cost) : null,
+        gstRate: Number(p.gst_rate),
+        isCustom: Boolean(p.is_custom)
+      })),
+      productMaterialSpecs: productMaterialSpecs.map(s => ({
+        ...s,
+        productId: s.product_id,
+        specName: s.spec_name,
+        materialName: s.material_name,
+        sellingPrice: Number(s.selling_price),
+        costPrice: canViewFinancials ? Number(s.cost_price) : null,
+        isDefault: Boolean(s.is_default)
+      })),
       vendors: suppliers.map(s => ({ ...s, code: s.supplier_code, pendingPayment: Number(s.pending_payment), avgTurnaroundDays: Number(s.avg_turnaround_days) })),
-      salesPersons: salesPersons.map(sp => ({ ...sp, commissionRate: Number(sp.commission_rate) })),
-      careOfPersons: careOfPersons.map(co => ({ ...co, commissionRate: Number(co.commission_rate) })),
+      salesPersons: salesPersons.map(sp => ({
+        ...sp,
+        commissionRate: canViewFinancials ? Number(sp.commission_rate) : null,
+        commission_rate: canViewFinancials ? Number(sp.commission_rate) : null
+      })),
+      careOfPersons: careOfPersons.map(co => ({
+        ...co,
+        commissionRate: canViewFinancials ? Number(co.commission_rate) : null,
+        commission_rate: canViewFinancials ? Number(co.commission_rate) : null,
+        referralCommissionPct: canViewFinancials ? Number(co.referral_commission_pct ?? co.commission_rate) : null,
+        referral_commission_pct: canViewFinancials ? Number(co.referral_commission_pct ?? co.commission_rate) : null
+      })),
       employees: employees.map(e => ({
         ...e,
-        baseSalary: hasSalaryAccess ? Number(e.base_salary) : null,
-        incentiveRate: hasSalaryAccess ? Number(e.incentive_rate) : null,
-        commissionRate: hasSalaryAccess ? Number(e.commission_rate) : null
+        baseSalary: canViewFinancials ? Number(e.base_salary) : null,
+        incentiveRate: canViewFinancials ? Number(e.incentive_rate) : null,
+        commissionRate: canViewFinancials ? Number(e.commission_rate) : null
       })),
       biometricDevices: biometricDevices.map(d => ({ id: d.id, name: d.name, model: d.model, ipAddress: d.ip_address, port: d.port, location: d.location, status: d.status, lastSyncTime: d.last_sync_time, totalUsers: d.total_users })),
       biometricUsers: rawBioUsers.map(formatBiometricUser),
       salesOrders: formattedOrders,
       jobWork,
       outsourceJobs,
-      workerJobIncentives: workerJobIncentives.map(inc => ({
+      workerJobIncentives: canViewFinancials ? workerJobIncentives.map(inc => ({
         id: inc.id,
         orderId: inc.order_id,
         itemId: inc.item_id,
@@ -617,10 +906,27 @@ app.get('/api/all', authenticateToken, (req, res) => {
         incentivePct: Number(inc.incentive_pct),
         incentiveAmount: Number(inc.incentive_amount),
         completedAt: inc.completed_at
-      })),
+      })) : [],
       payments: payments.map(p => ({ ...p, orderId: p.order_id, customerId: p.customer_id, customerName: p.customer_name, paidDate: p.paid_date, refNo: p.ref_no })),
       productionProcesses: rawProcesses.map(p => ({ ...p, isActive: Boolean(p.is_active), sortOrder: Number(p.sort_order || 0) })),
       productionTasks: formattedTasks,
+      machines: machinesList.map(m => ({
+        id: m.id,
+        code: m.code,
+        name: m.name,
+        model: m.model,
+        type: m.process_category,
+        processCategory: m.process_category,
+        hourlyCost: Number(m.hourly_rate || 0),
+        hourlyRate: Number(m.hourly_rate || 0),
+        status: m.status,
+        location: m.location,
+        assignedOperatorId: m.assigned_operator_id,
+        assignedOperatorName: m.assigned_operator_name,
+        runtimeHours: Number(m.runtime_hours || 0),
+        totalHoursRun: Number(m.runtime_hours || 0),
+        lastMaintenanceDate: m.last_maintenance_date
+      })),
       expenses: db.prepare('SELECT * FROM expenses ORDER BY expense_date DESC').all(),
       inventory: db.prepare('SELECT * FROM inventory ORDER BY name ASC').all(),
       inventoryTransactions: db.prepare('SELECT * FROM inventory_transactions ORDER BY created_at DESC LIMIT 100').all(),
@@ -636,6 +942,57 @@ app.get('/api/all', authenticateToken, (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// Update Company Profile
+app.put('/api/company-profile', authenticateToken, requireRole(['Admin', 'Manager']), (req, res) => {
+  try {
+    const p = req.body || {};
+    const bank = p.bankDetails || {};
+    db.prepare(`
+      UPDATE company_profile
+      SET name = ?,
+          tagline = ?,
+          gstin = ?,
+          state = ?,
+          state_code = ?,
+          phone = ?,
+          email = ?,
+          website = ?,
+          address = ?,
+          bank_name = ?,
+          account_no = ?,
+          ifsc = ?,
+          branch = ?,
+          upi_id = ?,
+          terms_conditions = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = 1
+    `).run(
+      p.name || '',
+      p.tagline || '',
+      p.gstin || '',
+      p.state || '',
+      p.stateCode || p.state_code || '27',
+      p.phone || '',
+      p.email || '',
+      p.website || '',
+      p.address || '',
+      bank.bankName || p.bankName || p.bank_name || '',
+      bank.accountNo || p.accountNo || p.account_no || '',
+      bank.ifsc || p.ifsc || '',
+      bank.branch || p.branch || '',
+      bank.upiId || p.upiId || p.upi_id || '',
+      p.terms || p.terms_conditions || ''
+    );
+
+    const updated = db.prepare('SELECT * FROM company_profile WHERE id = 1').get();
+    res.json({ success: true, message: 'Company profile updated successfully', companyProfile: updated });
+  } catch (err) {
+    console.error('PUT /api/company-profile error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 
 // 2. CREATE PRODUCT + SPECS
 app.post('/api/products', (req, res) => {
@@ -747,6 +1104,103 @@ app.delete('/api/products/:id', (req, res) => {
   }
 });
 
+// 2.3 SERVER-SIDE SEARCH FOR PRODUCTS
+app.get('/api/products/search', authenticateToken, (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    const limit = Math.min(parseInt(req.query.limit, 10) || 25, 100);
+    const user = req.user;
+    const canViewCost = user && (user.role === 'Admin' || user.role === 'Manager');
+
+    let rows;
+    if (!q) {
+      rows = db.prepare('SELECT * FROM products WHERE active = 1 ORDER BY name ASC LIMIT ?').all(limit);
+    } else {
+      const pattern = `%${q}%`;
+      rows = db.prepare(`
+        SELECT * FROM products
+        WHERE active = 1 AND (name LIKE ? OR product_code LIKE ? OR category LIKE ? OR default_material LIKE ?)
+        ORDER BY 
+          CASE WHEN name LIKE ? THEN 1 ELSE 2 END,
+          name ASC
+        LIMIT ?
+      `).all(pattern, pattern, pattern, pattern, `${q}%`, limit);
+    }
+
+    const specsStmt = db.prepare('SELECT * FROM product_specifications WHERE product_id = ? AND status = "Active"');
+    const sanitized = rows.map(p => {
+      const specs = specsStmt.all(p.id).map(s => ({
+        id: s.id,
+        productId: s.product_id,
+        specName: s.spec_name,
+        materialName: s.material_name,
+        sellingPrice: Number(s.selling_price || 0),
+        costPrice: canViewCost ? Number(s.cost_price || 0) : null,
+        unit: s.unit,
+        description: s.description,
+        isDefault: s.is_default === 1,
+        gstRate: Number(s.gst_rate || 18),
+        hsnCode: s.hsn_code || '9989'
+      }));
+      return {
+        id: p.id,
+        productCode: p.product_code,
+        name: p.name,
+        category: p.category,
+        description: p.description,
+        unit: p.unit,
+        defaultRate: Number(p.default_rate || 0),
+        estimatedCost: canViewCost ? Number(p.estimated_cost || 0) : null,
+        gstRate: Number(p.gst_rate || 18),
+        hsnCode: p.hsn_code || '9989',
+        defaultVendor: p.default_vendor,
+        defaultMaterial: p.default_material,
+        isCustom: p.is_custom === 1,
+        specs
+      };
+    });
+
+    res.json({ success: true, products: sanitized });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2.4 SERVER-SIDE SEARCH FOR CUSTOMERS
+app.get('/api/customers/search', authenticateToken, (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    const limit = Math.min(parseInt(req.query.limit, 10) || 25, 100);
+    if (!q) {
+      const recents = db.prepare(`
+        SELECT id, customer_code, name, mobile, additional_mobiles, email, address, gst_number, customer_type, outstanding
+        FROM customers
+        ORDER BY created_at DESC
+        LIMIT ?
+      `).all(limit);
+      return res.json({ success: true, customers: recents });
+    }
+    const pattern = `%${q}%`;
+    const rows = db.prepare(`
+      SELECT id, customer_code, name, mobile, additional_mobiles, email, address, gst_number, customer_type, outstanding
+      FROM customers
+      WHERE name LIKE ? OR mobile LIKE ? OR customer_code LIKE ? OR gst_number LIKE ? OR email LIKE ?
+      ORDER BY 
+        CASE 
+          WHEN name LIKE ? THEN 1
+          WHEN mobile LIKE ? THEN 2
+          WHEN customer_code LIKE ? THEN 3
+          ELSE 4 
+        END,
+        name ASC
+      LIMIT ?
+    `).all(pattern, pattern, pattern, pattern, pattern, `${q}%`, `${q}%`, `${q}%`, limit);
+    res.json({ success: true, customers: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 3. CREATE CUSTOMER
 app.post('/api/customers', (req, res) => {
   try {
@@ -795,7 +1249,7 @@ app.put('/api/customers/:id', (req, res) => {
   }
 });
 
-// 4. ATOMIC SALES ORDER CREATION (Order + Items + JobWork + Multiple Outsource Jobs + Advance Payment)
+// 4. ATOMIC SALES ORDER CREATION (Order + Items + JobWork + Multiple Outsource Jobs + Production Tasks + Double-Entry Accounting)
 app.post('/api/sales-orders', authenticateToken, (req, res) => {
   try {
     const orderData = req.body;
@@ -806,7 +1260,8 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
       return res.status(400).json({ success: false, error: "Order details and at least 1 line item are required" });
     }
 
-    const orderId = orderHeader.id || `SO-${Date.now()}`;
+    const isQuote = (orderHeader.orderType === 'Quotation') || (orderHeader.id && orderHeader.id.startsWith('QT-'));
+    const orderId = orderHeader.id || (isQuote ? generateNextSequence(db, 'QT') : generateNextSequence(db, 'SO'));
     const orderNumber = orderHeader.orderNumber || orderId;
 
     // Validate Customer FK existence
@@ -824,6 +1279,50 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
       paymentMethod: paymentMethod || orderHeader.paymentMethod
     }, items, customerRecord);
 
+    if (!user || (!user.userId && !user.id)) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Authentication required to create sales orders. Please sign in.' }
+      });
+    }
+
+    // Credit limit check on credit orders
+    if (validCustomerId && totals.balanceAmount > 0 && !orderHeader.creditLimitOverride && !isQuote) {
+      const cust = db.prepare('SELECT outstanding, credit_limit FROM customers WHERE id = ?').get(validCustomerId);
+      const creditLimit = Number(cust?.credit_limit ?? 50000);
+      const projectedBalance = Number(cust?.outstanding || 0) + totals.balanceAmount;
+      if (projectedBalance > creditLimit) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: 'CREDIT_LIMIT_EXCEEDED',
+            message: `Customer credit limit of ₹${creditLimit.toLocaleString()} exceeded. Projected outstanding: ₹${projectedBalance.toLocaleString()}. Approval required to override.`,
+            currentOutstanding: cust?.outstanding || 0,
+            creditLimit,
+            projectedBalance
+          }
+        });
+      }
+    }
+
+    // Authoritatively resolve the verified billing staff identity from the database session
+    const authUserId = user.userId || user.id;
+    const authAccount = db.prepare(`
+      SELECT u.id as user_id, u.username, u.role as user_role, u.employee_id,
+             e.id as emp_id, e.name as emp_name, e.role as emp_role, e.department as emp_dept
+      FROM users u
+      LEFT JOIN employees e ON u.employee_id = e.id
+      WHERE u.id = ? OR u.employee_id = ?
+    `).get(authUserId, user.employeeId || authUserId);
+
+    // Derived strictly from verified database records. Client-submitted billed_by fields are strictly ignored.
+    const verifiedBilledById = authAccount?.emp_id || user.employeeId || authAccount?.employee_id || null;
+    const verifiedBilledByStaff = authAccount?.emp_name || user.name || authAccount?.username || 'Staff';
+    const verifiedBilledByRole = authAccount?.emp_role || authAccount?.user_role || user.role || 'Sales';
+    const verifiedBilledAt = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+    const verifiedCreatedByUserId = authAccount?.user_id || authUserId;
+    const verifiedCreatedByName = authAccount?.emp_name || user.name || authAccount?.username;
+
     const createOrderTx = db.transaction(() => {
       // 1. Insert Sales Order
       db.prepare(`
@@ -832,8 +1331,9 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
           care_of_id, care_of_name, reference_no, order_date, due_date, production_status,
           payment_status, subtotal, discount, tax_total, cgst, sgst, igst, round_off,
           tax_mode, grand_total, advance_amount, balance_amount, notes, billed_by_staff,
-          billed_by_id, billed_by_role, billed_at, created_by_user_id, created_by_name, version
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+          billed_by_id, billed_by_role, billed_at, created_by_user_id, created_by_name,
+          order_type, quotation_status, version
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
       `).run(
         orderId,
         orderNumber,
@@ -846,7 +1346,7 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
         orderHeader.referenceNo || '',
         orderHeader.orderDate || new Date().toISOString().split('T')[0],
         orderHeader.deliveryDate || '',
-        orderHeader.productionStatus || 'New',
+        isQuote ? 'Quotation' : (orderHeader.productionStatus || 'New'),
         totals.paymentStatus,
         totals.subtotal,
         totals.discount,
@@ -860,12 +1360,14 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
         totals.advanceAmount,
         totals.balanceAmount,
         orderHeader.notes || '',
-        user.name || orderHeader.billedByStaff || 'Staff',
-        user.userId || user.id || '',
-        user.role || 'Sales',
-        orderHeader.billedAt || new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
-        user.userId || user.id || null,
-        user.name || null
+        verifiedBilledByStaff,
+        verifiedBilledById,
+        verifiedBilledByRole,
+        verifiedBilledAt,
+        verifiedCreatedByUserId,
+        verifiedCreatedByName,
+        isQuote ? 'Quotation' : 'Direct',
+        isQuote ? (orderHeader.quotationStatus || 'Draft') : null
       );
 
       // 2. Insert Items, Job Work, and Outsource Jobs
@@ -890,10 +1392,17 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
+      const insertTask = db.prepare(`
+        INSERT INTO production_tasks (
+          id, task_date, employee_id, employee_name, order_id, order_number, customer_name,
+          item_id, item_title, process_name, quantity, unit, status, priority, department, created_by
+        ) VALUES (?, ?, 'UNASSIGNED', 'Unassigned Worker', ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Normal', 'Production', ?)
+      `);
+
       for (let idx = 0; idx < totals.items.length; idx++) {
         const it = totals.items[idx];
-        const itemId = it.id || `ITEM-${orderId}-${idx + 1}`;
-        const jobCardId = it.jobCardId || `JC-${orderId}-${idx + 1}`;
+        const itemId = `SOI-${orderId}-${idx + 1}-${Math.random().toString(36).substr(2, 4)}`;
+        const jobCardId = `JC-${orderId}-${idx + 1}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
 
         insertItem.run(
           itemId, orderId, it.productId || '', it.productName || 'Printing Item', jobCardId,
@@ -927,13 +1436,33 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
             it.vendorName || 'Outsource Vendor', `${it.productName} (${it.material || 'Custom Outsource'})`,
             Number(it.qty || 1), Number(it.estimatedVendorCost || 0), orderHeader.deliveryDate || '', orderHeader.orderDate, 'SENT'
           );
+        } else if (!isQuote) {
+          // Auto-spawn initial production tasks for confirmed orders
+          if (it.designerRequired === 'YES') {
+            insertTask.run(
+              `TSK-DSN-${jobCardId}`, orderHeader.orderDate || new Date().toISOString().split('T')[0],
+              orderId, orderNumber, orderHeader.customerName || '', itemId, it.productName,
+              'Designing', Number(it.qty || 1), it.unit || 'Sq.Ft', verifiedBilledByStaff
+            );
+          }
+          const primaryProcess = it.material?.toLowerCase()?.includes('flex') ? 'Flex Printing' : 'Digital Printing';
+          insertTask.run(
+            `TSK-PRN-${jobCardId}`, orderHeader.orderDate || new Date().toISOString().split('T')[0],
+            orderId, orderNumber, orderHeader.customerName || '', itemId, it.productName,
+            primaryProcess, Number(it.qty || 1), it.unit || 'Sq.Ft', verifiedBilledByStaff
+          );
+          insertTask.run(
+            `TSK-FIN-${jobCardId}`, orderHeader.orderDate || new Date().toISOString().split('T')[0],
+            orderId, orderNumber, orderHeader.customerName || '', itemId, it.productName,
+            'Finishing', Number(it.qty || 1), it.unit || 'Sq.Ft', verifiedBilledByStaff
+          );
         }
       }
 
       // 3. Advance Payment Receipt
       if (totals.advanceAmount > 0) {
         db.prepare(`
-          INSERT INTO payments (id, order_id, customer_id, customer_name, amount, method, ref_no, status, paid_date, notes)
+          INSERT OR REPLACE INTO payments (id, order_id, customer_id, customer_name, amount, method, ref_no, status, paid_date, notes)
           VALUES (?, ?, ?, ?, ?, ?, ?, 'Completed', CURRENT_TIMESTAMP, ?)
         `).run(
           `PAY-${orderId}-ADV`, orderId, validCustomerId, orderHeader.customerName || '',
@@ -942,15 +1471,60 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
         );
       }
 
-      // 4. Update Customer balance in master
-      if (validCustomerId) {
-        db.prepare(`
-          UPDATE customers
-          SET outstanding = outstanding + ?,
-              version = COALESCE(version, 1) + 1,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).run(totals.balanceAmount, validCustomerId);
+      // 4. Update Customer balance & Post Double-Entry Journal for Confirmed Sales Orders
+      if (!isQuote) {
+        if (validCustomerId) {
+          db.prepare(`
+            UPDATE customers
+            SET outstanding = outstanding + ?,
+                version = COALESCE(version, 1) + 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).run(totals.balanceAmount, validCustomerId);
+        }
+
+        // Post Sales Invoice Journal Voucher
+        postDoubleEntryJournal(db, {
+          voucherType: 'Sales Invoice',
+          date: orderHeader.orderDate || new Date().toISOString().split('T')[0],
+          refNo: orderNumber,
+          referenceType: 'SALES_ORDER',
+          referenceId: orderId,
+          narration: `Tax invoice for order ${orderNumber} billed to ${orderHeader.customerName || 'Customer'}`,
+          createdByUserId: verifiedCreatedByUserId,
+          createdByName: verifiedBilledByStaff,
+          entries: [
+            { accountName: `Accounts Receivable (${orderHeader.customerName || 'Customer'})`, accountGroup: 'Assets', entryType: 'DEBIT', amount: totals.grandTotal, customerId: validCustomerId, orderId },
+            { accountName: 'Sales Revenue Account', accountGroup: 'Revenue', entryType: 'CREDIT', amount: totals.subtotal, customerId: validCustomerId, orderId },
+            ...(totals.igst > 0 ? [{ accountName: 'Output IGST (18%)', accountGroup: 'Liabilities', entryType: 'CREDIT', amount: totals.igst, customerId: validCustomerId, orderId }] : []),
+            ...(totals.cgst > 0 ? [{ accountName: 'Output CGST (9%)', accountGroup: 'Liabilities', entryType: 'CREDIT', amount: totals.cgst, customerId: validCustomerId, orderId }] : []),
+            ...(totals.sgst > 0 ? [{ accountName: 'Output SGST (9%)', accountGroup: 'Liabilities', entryType: 'CREDIT', amount: totals.sgst, customerId: validCustomerId, orderId }] : []),
+            ...(totals.roundOff !== 0 ? [{ accountName: 'Round-Off Account', accountGroup: 'Expenses', entryType: totals.roundOff < 0 ? 'DEBIT' : 'CREDIT', amount: Math.abs(totals.roundOff), customerId: validCustomerId, orderId }] : [])
+          ]
+        });
+
+        // Advance Payment Journal Voucher
+        if (totals.advanceAmount > 0) {
+          const pmtMethod = (paymentMethod || 'Cash').toLowerCase();
+          const debitAccount = pmtMethod.includes('bank') || pmtMethod.includes('upi') || pmtMethod.includes('cheque')
+            ? 'HDFC Bank Account'
+            : 'Cash Account';
+
+          postDoubleEntryJournal(db, {
+            voucherType: 'Payment Receipt',
+            date: orderHeader.orderDate || new Date().toISOString().split('T')[0],
+            refNo: `ADV-${orderNumber}`,
+            referenceType: 'PAYMENT',
+            referenceId: `PAY-${orderId}-ADV`,
+            narration: `Advance payment for order ${orderNumber} received from ${orderHeader.customerName || 'Customer'}`,
+            createdByUserId: verifiedCreatedByUserId,
+            createdByName: verifiedBilledByStaff,
+            entries: [
+              { accountName: debitAccount, accountGroup: 'Assets', entryType: 'DEBIT', amount: totals.advanceAmount, customerId: validCustomerId, orderId },
+              { accountName: `Accounts Receivable (${orderHeader.customerName || 'Customer'})`, accountGroup: 'Assets', entryType: 'CREDIT', amount: totals.advanceAmount, customerId: validCustomerId, orderId }
+            ]
+          });
+        }
       }
     });
 
@@ -959,7 +1533,7 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
     // Log audit event
     logAuditEvent(db, {
       user,
-      action: 'ORDER_CREATED',
+      action: isQuote ? 'QUOTATION_CREATED' : 'ORDER_CREATED',
       module: 'SALES',
       recordId: orderId,
       recordNumber: orderNumber,
@@ -978,15 +1552,26 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
       orderNumber,
       customerName: orderHeader.customerName,
       grandTotal: totals.grandTotal,
-      billedByStaff: user.name || 'Staff'
+      billedByStaff: verifiedBilledByStaff,
+      billedById: verifiedBilledById
     });
 
-    res.json({ success: true, orderId, orderNumber, totals });
+    res.json({
+      success: true,
+      orderId,
+      orderNumber,
+      totals,
+      billedByStaff: verifiedBilledByStaff,
+      billedById: verifiedBilledById,
+      billedByRole: verifiedBilledByRole,
+      billedAt: verifiedBilledAt
+    });
   } catch (err) {
     console.error("POST /api/sales-orders Error:", err.stack || err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 // 4B. NON-DESTRUCTIVE SALES ORDER UPDATE (With Concurrency Control)
 app.put('/api/sales-orders/:id', authenticateToken, (req, res) => {
@@ -1143,6 +1728,269 @@ app.post('/api/sales-orders/:id/cancel', authenticateToken, requireRole(['Admin'
     res.json({ success: true, message: 'Order cancelled successfully' });
   } catch (err) {
     console.error("POST /api/sales-orders/:id/cancel Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4D. ATOMIC QUOTATION TO SALES ORDER CONVERSION (Enforces credit limit, generates sequential SO, prevents double-conversion)
+app.post('/api/quotations/:id/convert', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user;
+    const nowIso = new Date().toISOString();
+
+    const convertTx = db.transaction(() => {
+      // 1. Fetch quotation
+      const quote = db.prepare(`
+        SELECT * FROM sales_orders 
+        WHERE id = ? AND (order_type = 'Quotation' OR id LIKE 'QT-%' OR order_number LIKE 'QT-%')
+      `).get(id);
+
+      if (!quote) {
+        throw new Error('QUOTATION_NOT_FOUND');
+      }
+
+      if (quote.quotation_status === 'Converted' || quote.converted_order_id) {
+        throw new Error('QUOTATION_ALREADY_CONVERTED');
+      }
+
+      // 2. Fetch customer & credit limit check
+      const customer = quote.customer_id ? db.prepare('SELECT * FROM customers WHERE id = ?').get(quote.customer_id) : null;
+      if (customer && customer.credit_limit > 0) {
+        const currentOutstanding = Number(customer.outstanding || 0);
+        const orderTotal = Number(quote.grand_total || 0);
+        const advanceAmount = Number(quote.advance_amount || 0);
+        const netOrderCredit = Math.max(0, orderTotal - advanceAmount);
+        if (currentOutstanding + netOrderCredit > customer.credit_limit) {
+          if (!hasPermission(user, 'sales.approve_credit') && user.role !== 'Admin' && user.role !== 'Manager') {
+            throw new Error(`CREDIT_LIMIT_EXCEEDED: Customer credit limit is ₹${customer.credit_limit.toLocaleString('en-IN')}. Current outstanding (₹${currentOutstanding.toLocaleString('en-IN')}) + new order (₹${netOrderCredit.toLocaleString('en-IN')}) exceeds limit.`);
+          }
+        }
+      }
+
+      // 3. Generate sequential order ID and invoice sequence
+      const newOrderId = generateNextSequence(db, 'SO');
+      const invoiceNumber = generateNextSequence(db, 'INV');
+
+      // 4. Fetch quotation items
+      const items = db.prepare('SELECT * FROM sales_order_items WHERE sales_order_id = ?').all(id);
+      let initialProdStatus = 'New';
+      if (items.some(i => i.outsource)) {
+        initialProdStatus = 'Outsource';
+      } else if (items.some(i => i.designer_required === 'YES')) {
+        initialProdStatus = 'Design';
+      }
+
+      // 5. Insert new sales order
+      db.prepare(`
+        INSERT INTO sales_orders (
+          id, order_number, customer_id, customer_name, sales_person_id, sales_person_name,
+          care_of_id, care_of_name, reference_no, order_date, due_date, production_status,
+          payment_status, subtotal, discount, tax_total, cgst, sgst, igst, round_off,
+          tax_mode, grand_total, advance_amount, balance_amount, notes, billed_by_staff,
+          billed_by_id, billed_by_role, billed_at, created_by_user_id, created_by_name,
+          order_type, quotation_status, converted_from_quotation_id, version
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, CURRENT_TIMESTAMP, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          'Direct', NULL, ?, 1
+        )
+      `).run(
+        newOrderId,
+        newOrderId,
+        quote.customer_id,
+        quote.customer_name,
+        quote.sales_person_id || '',
+        quote.sales_person_name || '',
+        quote.care_of_id || '',
+        quote.care_of_name || '',
+        quote.id,
+        quote.due_date || '',
+        initialProdStatus,
+        quote.payment_status || 'Unpaid',
+        quote.subtotal || 0,
+        quote.discount || 0,
+        quote.tax_total || 0,
+        quote.cgst || 0,
+        quote.sgst || 0,
+        quote.igst || 0,
+        quote.round_off || 0,
+        quote.tax_mode || 'EXCLUSIVE',
+        quote.grand_total || 0,
+        quote.advance_amount || 0,
+        quote.balance_amount || quote.grand_total || 0,
+        `Converted from Quotation ${quote.id}. ${quote.notes || ''}`,
+        user.name || user.username || 'Staff',
+        user.employeeId || user.id,
+        user.role || 'Staff',
+        nowIso,
+        user.userId || user.id,
+        user.name || user.username || 'Staff',
+        quote.id
+      );
+
+      // 6. Copy line items and spawn production tasks
+      const insertItem = db.prepare(`
+        INSERT INTO sales_order_items (
+          id, sales_order_id, product_id, product_name_snapshot, job_card_id, custom_title,
+          spec_id, spec_name, material, description, width, height, qty, unit, selling_rate,
+          estimated_cost, actual_cost, discount, tax_type, gst_rate, hsn_code, amount,
+          designer_required, designer_id, designer_name, design_status, artwork_status,
+          artwork_url, outsource, vendor_id, vendor_name, estimated_vendor_cost, printer_id,
+          printer_name, finisher_id, finisher_name, production_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const item of items) {
+        const newItemId = `SOI-${newOrderId}-${Math.random().toString(36).substr(2, 6)}`;
+        const jobCardId = `JC-${newOrderId}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+
+        insertItem.run(
+          newItemId, newOrderId, item.product_id, item.product_name_snapshot, jobCardId, item.custom_title || '',
+          item.spec_id || '', item.spec_name || '', item.material || '', item.description || '', item.width || 1, item.height || 1,
+          item.qty || 1, item.unit || 'Sq.Ft', item.selling_rate || 0, item.estimated_cost || 0, 0, item.discount || 0,
+          item.tax_type || 'GST', item.gst_rate || 18, item.hsn_code || '4911', item.amount || 0,
+          item.designer_required || 'NO', item.designer_id || '', item.designer_name || '', item.design_status || 'Pending',
+          item.artwork_status || 'Pending', item.artwork_url || '', item.outsource || 0, item.vendor_id || '', item.vendor_name || '',
+          item.estimated_vendor_cost || 0, item.printer_id || '', item.printer_name || '', item.finisher_id || '', item.finisher_name || '',
+          'Pending'
+        );
+
+        // Auto-spawn initial production tasks
+        const defaultProcesses = ['Designing', 'Printing', 'Finishing'];
+        for (const proc of defaultProcesses) {
+          const taskId = `TSK-${newOrderId}-${proc.substring(0, 3).toUpperCase()}-${Math.random().toString(36).substr(2, 4)}`;
+          db.prepare(`
+            INSERT INTO production_tasks (
+              id, task_date, employee_id, employee_name, order_id, order_number, customer_name,
+              item_id, item_title, process_name, quantity, unit, status, priority, department, created_by
+            ) VALUES (?, ?, 'UNASSIGNED', 'Unassigned Worker', ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Normal', 'Production', ?)
+          `).run(
+            taskId,
+            new Date().toISOString().split('T')[0],
+            newOrderId,
+            newOrderId,
+            quote.customer_name || '',
+            newItemId,
+            item.product_name_snapshot || 'Print Item',
+            proc,
+            item.qty || 1,
+            item.unit || 'Sq.Ft',
+            user.name || 'System'
+          );
+        }
+      }
+
+      // 7. Update customer outstanding balance
+      if (quote.customer_id) {
+        const netOrderCredit = Math.max(0, Number(quote.grand_total || 0) - Number(quote.advance_amount || 0));
+        db.prepare('UPDATE customers SET outstanding = outstanding + ? WHERE id = ?')
+          .run(netOrderCredit, quote.customer_id);
+      }
+
+      // 8. Post Double-Entry Journal Vouchers
+      const customerName = quote.customer_name || 'Customer';
+      const grandTotal = Number(quote.grand_total || 0);
+      const subtotal = Number(quote.subtotal || grandTotal);
+      const cgst = Number(quote.cgst || 0);
+      const sgst = Number(quote.sgst || 0);
+      const igst = Number(quote.igst || 0);
+      const roundOff = Number(quote.round_off || 0);
+      const advanceAmount = Number(quote.advance_amount || 0);
+
+      postDoubleEntryJournal(db, {
+        voucherType: 'Sales Invoice',
+        date: new Date().toISOString().split('T')[0],
+        refNo: invoiceNumber,
+        referenceType: 'SALES_ORDER',
+        referenceId: newOrderId,
+        narration: `Tax invoice for order ${newOrderId} (Converted from Quotation ${quote.id}) billed to ${customerName}`,
+        createdByUserId: user.userId || user.id,
+        createdByName: user.name || 'System',
+        entries: [
+          { accountName: `Accounts Receivable (${customerName})`, accountGroup: 'Assets', entryType: 'DEBIT', amount: grandTotal, customerId: quote.customer_id, orderId: newOrderId },
+          { accountName: 'Sales Revenue Account', accountGroup: 'Revenue', entryType: 'CREDIT', amount: subtotal, customerId: quote.customer_id, orderId: newOrderId },
+          ...(igst > 0 ? [{ accountName: 'Output IGST (18%)', accountGroup: 'Liabilities', entryType: 'CREDIT', amount: igst, customerId: quote.customer_id, orderId: newOrderId }] : []),
+          ...(cgst > 0 ? [{ accountName: 'Output CGST (9%)', accountGroup: 'Liabilities', entryType: 'CREDIT', amount: cgst, customerId: quote.customer_id, orderId: newOrderId }] : []),
+          ...(sgst > 0 ? [{ accountName: 'Output SGST (9%)', accountGroup: 'Liabilities', entryType: 'CREDIT', amount: sgst, customerId: quote.customer_id, orderId: newOrderId }] : []),
+          ...(roundOff !== 0 ? [{ accountName: 'Round-Off Account', accountGroup: 'Expenses', entryType: roundOff < 0 ? 'DEBIT' : 'CREDIT', amount: Math.abs(roundOff), customerId: quote.customer_id, orderId: newOrderId }] : [])
+        ]
+      });
+
+      if (advanceAmount > 0) {
+        postDoubleEntryJournal(db, {
+          voucherType: 'Payment Receipt',
+          date: new Date().toISOString().split('T')[0],
+          refNo: `REC-${newOrderId}`,
+          referenceType: 'PAYMENT',
+          referenceId: `PAY-${newOrderId}-ADV`,
+          narration: `Advance payment for order ${newOrderId} received from ${customerName}`,
+          createdByUserId: user.userId || user.id,
+          createdByName: user.name || 'System',
+          entries: [
+            { accountName: 'Cash Account', accountGroup: 'Assets', entryType: 'DEBIT', amount: advanceAmount, customerId: quote.customer_id, orderId: newOrderId },
+            { accountName: `Accounts Receivable (${customerName})`, accountGroup: 'Assets', entryType: 'CREDIT', amount: advanceAmount, customerId: quote.customer_id, orderId: newOrderId }
+          ]
+        });
+      }
+
+      // 9. Mark Quotation as Converted with tracking
+      db.prepare(`
+        UPDATE sales_orders SET
+          quotation_status = 'Converted',
+          converted_order_id = ?,
+          converted_at = CURRENT_TIMESTAMP,
+          converted_by = ?
+        WHERE id = ?
+      `).run(newOrderId, user.name || user.username || 'Staff', quote.id);
+
+      // 10. Immutable Audit Log
+      const auditId = `AUD-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+      db.prepare(`
+        INSERT INTO audit_logs (id, user_id, employee_id, employee_name, role, action, module, record_id, details)
+        VALUES (?, ?, ?, ?, ?, 'QUOTATION_CONVERTED', 'Sales', ?, ?)
+      `).run(
+        auditId, user.userId || user.id, user.employeeId, user.name || 'Staff', user.role || 'Staff',
+        quote.id, `Converted Quotation ${quote.id} to Sales Order ${newOrderId}`
+      );
+
+      return { newOrderId, invoiceNumber };
+    });
+
+    let result;
+    try {
+      result = convertTx();
+    } catch (txErr) {
+      if (txErr.message === 'QUOTATION_NOT_FOUND') {
+        return res.status(404).json({ success: false, error: 'Quotation not found.' });
+      }
+      if (txErr.message === 'QUOTATION_ALREADY_CONVERTED') {
+        return res.status(400).json({ success: false, error: 'Quotation has already been converted to a Sales Order.' });
+      }
+      if (txErr.message.startsWith('CREDIT_LIMIT_EXCEEDED')) {
+        return res.status(403).json({ success: false, error: txErr.message });
+      }
+      throw txErr;
+    }
+
+    const createdOrder = db.prepare('SELECT * FROM sales_orders WHERE id = ?').get(result.newOrderId);
+    const createdItems = db.prepare('SELECT * FROM sales_order_items WHERE sales_order_id = ?').all(result.newOrderId);
+    createdOrder.items = createdItems;
+
+    publishEvent('QUOTATION_CONVERTED', { quotationId: id, orderId: result.newOrderId });
+    publishEvent('ORDER_CREATED', { orderId: result.newOrderId, customerName: createdOrder.customer_name });
+
+    res.json({
+      success: true,
+      message: `Quotation converted successfully to ${result.newOrderId}`,
+      orderId: result.newOrderId,
+      order: createdOrder
+    });
+  } catch (err) {
+    console.error("POST /api/quotations/:id/convert Error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -1507,25 +2355,13 @@ app.get('/api/backup/list', authenticateToken, requireRole(['Admin']), (req, res
   }
 });
 
-
-    // Broadcast Real-Time Production Status Change
-    publishEvent('ORDER_STATUS_CHANGED', {
-      orderId,
-      itemId,
-      status,
-      actor
-    });
-
-    res.json({ success: true, status });
-  } catch (err) {
-    console.error("PUT production-status Error:", err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// 6. RECORD WORKER INCENTIVE (0.5% Profit Incentive)
-app.post('/api/worker-incentives', (req, res) => {
+// 6. RECORD WORKER INCENTIVE (Admin & Manager Only)
+app.post('/api/worker-incentives', authenticateToken, (req, res) => {
   try {
+    if (req.user?.role !== 'Admin' && req.user?.role !== 'Manager') {
+      return res.status(403).json({ success: false, error: 'Forbidden: Recording worker incentives is restricted to Admin and Manager roles.' });
+    }
+
     const inc = req.body;
     const incId = inc.id || `INC-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
 
@@ -1793,10 +2629,14 @@ app.get('/api/production-tasks/available', authenticateToken, (req, res) => {
     `;
     const taskParams = [];
 
-    if (!isManagerOrAdmin && allowedList.length > 0) {
-      const placeholders = allowedList.map(() => '?').join(',');
-      taskQuery += ` AND process_name IN (${placeholders})`;
-      taskParams.push(...allowedList);
+    if (!isManagerOrAdmin) {
+      if (allowedList.length > 0) {
+        const placeholders = allowedList.map(() => '?').join(',');
+        taskQuery += ` AND process_name IN (${placeholders})`;
+        taskParams.push(...allowedList);
+      } else {
+        taskQuery += ` AND 1=0`;
+      }
     }
 
     taskQuery += ' ORDER BY created_at DESC';
@@ -1835,7 +2675,7 @@ app.get('/api/production-tasks/available', authenticateToken, (req, res) => {
         const key = `${it.order_id}:::${it.item_id}:::${proc}`;
         if (!existingTaskKeys.has(key)) {
           // If staff is restricted, check if proc is in their allowedList
-          if (isManagerOrAdmin || allowedList.length === 0 || allowedList.includes(proc)) {
+          if (isManagerOrAdmin || (allowedList.length > 0 && allowedList.includes(proc))) {
             const dims = (it.width && it.height) ? `${it.width}x${it.height} ${it.unit || 'in'}` : '';
             availableItems.push({
               id: `AVAIL-${it.order_id}-${it.item_id}-${proc.replace(/\s+/g, '')}`,
@@ -1893,12 +2733,8 @@ app.post('/api/production-tasks/:id/take', authenticateToken, (req, res) => {
         throw new Error('TASK_NOT_FOUND');
       }
 
-      // Strict race condition check: if already taken by someone else!
-      if (task.employee_id && task.employee_id !== employeeId) {
-        throw new Error('TASK_ALREADY_TAKEN');
-      }
-
-      db.prepare(`
+      // Strict atomic conditional update at database level (Requirement 14 & 98)
+      const updateResult = db.prepare(`
         UPDATE production_tasks SET
           employee_id = ?,
           employee_name = ?,
@@ -1907,7 +2743,13 @@ app.post('/api/production-tasks/:id/take', authenticateToken, (req, res) => {
           status = 'Assigned',
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
+          AND (assigned_employee_id IS NULL OR assigned_employee_id = '' OR assigned_employee_id = 'UNASSIGNED' OR employee_id = 'UNASSIGNED')
+          AND status IN ('Pending', 'Available', 'New')
       `).run(employeeId, employeeName, employeeId, userId, id);
+
+      if (updateResult.changes === 0) {
+        throw new Error('TASK_ALREADY_TAKEN');
+      }
 
       const logId = `TL-${id}-${Date.now()}`;
       db.prepare(`
@@ -2185,12 +3027,12 @@ app.post('/api/production-tasks', authenticateToken, (req, res) => {
       return res.status(400).json({ success: false, error: "Process Name is required" });
     }
 
-    const assignedEmpId = t.employeeId || (user.role !== 'Admin' ? user.employeeId : '');
-    const assignedEmpName = t.employeeName || (user.role !== 'Admin' ? user.name : '');
+    const assignedEmpId = t.employeeId || (user.role !== 'Admin' && user.employeeId ? user.employeeId : 'UNASSIGNED');
+    const assignedEmpName = t.employeeName || (user.role !== 'Admin' && user.name ? user.name : 'Available Work Pool');
 
     const taskId = t.id || `TSK-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
     const taskDate = t.taskDate || new Date().toISOString().split('T')[0];
-    const initialStatus = t.status || (assignedEmpId ? 'Assigned' : 'Available');
+    const initialStatus = t.status || (assignedEmpId !== 'UNASSIGNED' ? 'Assigned' : 'Available');
     const now = new Date();
     const nowIso = now.toISOString();
     const timeFormatted = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
@@ -2206,7 +3048,7 @@ app.post('/api/production-tasks', authenticateToken, (req, res) => {
           attachment_url, supervisor, qc_status, created_by, created_by_user_id, created_by_employee_id
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        taskId, taskDate, assignedEmpId || '', assignedEmpName || '', assignedEmpId || '', user.userId || user.id,
+        taskId, taskDate, assignedEmpId, assignedEmpName, (assignedEmpId === 'UNASSIGNED' ? null : assignedEmpId), user.userId || user.id,
         t.orderId || '', t.orderNumber || t.orderId || 'Direct Job',
         t.customerName || '', t.itemId || '', t.itemTitle || t.productName || 'Printing Item',
         t.processId || '', t.processName, Number(t.quantity || 1), t.unit || 'Nos',
@@ -2416,6 +3258,18 @@ app.post('/api/production-tasks/:id/action', authenticateToken, (req, res) => {
         INSERT INTO production_task_time_logs (id, task_id, action, timestamp, user_id, employee_id, logged_by, notes, elapsed_seconds)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(logId, id, action, nowIso, user.userId || user.id, user.employeeId, user.name || 'Staff', notes || newPauseReason, elapsedSecondsSegment);
+
+      // Automatic Unit-Aware Material Consumption on Task Completion (Requirement 29 & 30)
+      if (action === 'COMPLETE' && task.item_id) {
+        try {
+          const itemRow = db.prepare('SELECT * FROM sales_order_items WHERE id = ?').get(task.item_id);
+          if (itemRow) {
+            consumeInventoryForItem(db, itemRow, user.name || 'Staff');
+          }
+        } catch (invErr) {
+          console.warn(`[Inventory] Auto-consumption on task ${id} completion handled:`, invErr.message);
+        }
+      }
     });
 
     actionTx();
@@ -2861,7 +3715,7 @@ app.post('/api/inventory/transactions', authenticateToken, (req, res) => {
 // ============================================================================
 // 12. PERSISTENT PAYROLL COMMIT API
 // ============================================================================
-app.get('/api/payroll', (req, res) => {
+app.get('/api/payroll', authenticateToken, requirePermission('module.payroll'), (req, res) => {
   try {
     const payroll = db.prepare('SELECT * FROM payroll ORDER BY month DESC, staff_name ASC').all();
     res.json({ success: true, payroll });
@@ -2870,7 +3724,7 @@ app.get('/api/payroll', (req, res) => {
   }
 });
 
-app.post('/api/payroll/commit', authenticateToken, (req, res) => {
+app.post('/api/payroll/commit', authenticateToken, requirePermission('payroll.create_payroll'), (req, res) => {
   try {
     const { month, records } = req.body;
     if (!month || !records || !Array.isArray(records)) {
@@ -2913,7 +3767,10 @@ app.post('/api/payments', authenticateToken, (req, res) => {
     if (!amount || Number(amount) <= 0) {
       return res.status(400).json({ success: false, error: 'Valid payment amount is required' });
     }
-    const payId = req.body.id || `PAY-${Date.now()}`;
+    const payId = req.body.id || generateNextSequence(db, 'PAY');
+    const user = req.user;
+    const nowIso = new Date().toISOString();
+
     const payTx = db.transaction(() => {
       db.prepare(`
         INSERT INTO payments (id, order_id, customer_id, customer_name, amount, method, ref_no, status, paid_date, notes)
@@ -2935,7 +3792,40 @@ app.post('/api/payments', authenticateToken, (req, res) => {
         db.prepare('UPDATE customers SET outstanding = MAX(0, outstanding - ?) WHERE id = ?')
           .run(Number(amount), customerId);
       }
+
+      // Post Double-Entry Journal Voucher for Payment Receipt (Requirements 34, 37, 71)
+      const pmtMethod = (method || 'Cash').toLowerCase();
+      const debitAccount = pmtMethod.includes('bank') || pmtMethod.includes('upi') || pmtMethod.includes('cheque')
+        ? 'HDFC Bank Account'
+        : 'Cash Account';
+      const custDisplayName = customerName || 'Customer';
+
+      postDoubleEntryJournal(db, {
+        voucherType: 'Payment Receipt',
+        date: new Date().toISOString().split('T')[0],
+        refNo: refNo || payId,
+        referenceType: 'PAYMENT',
+        referenceId: payId,
+        narration: `Payment received for ${orderId ? 'Order ' + orderId : 'Customer Account'} from ${custDisplayName} via ${method || 'Cash'}`,
+        createdByUserId: user?.userId || user?.id,
+        createdByName: user?.name || 'Cashier',
+        entries: [
+          { accountName: debitAccount, accountGroup: 'Assets', entryType: 'DEBIT', amount: Number(amount), customerId: customerId || null, orderId: orderId || null },
+          { accountName: `Accounts Receivable (${custDisplayName})`, accountGroup: 'Assets', entryType: 'CREDIT', amount: Number(amount), customerId: customerId || null, orderId: orderId || null }
+        ]
+      });
+
+      // Immutable Audit Log
+      const auditId = `AUD-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+      db.prepare(`
+        INSERT INTO audit_logs (id, user_id, employee_id, employee_name, role, action, module, record_id, details)
+        VALUES (?, ?, ?, ?, ?, 'PAYMENT_RECEIVED', 'Accounts', ?, ?)
+      `).run(
+        auditId, user?.userId || user?.id, user?.employeeId, user?.name || 'Staff', user?.role || 'Staff',
+        payId, `Payment of ₹${Number(amount).toLocaleString('en-IN')} recorded for ${customerName || customerId} via ${method || 'Cash'}`
+      );
     });
+
     payTx();
     publishEvent('PAYMENT_RECEIVED', { paymentId: payId, orderId, customerId, customerName, amount, method });
     res.json({ success: true, paymentId: payId });
@@ -3002,6 +3892,897 @@ app.post('/api/rework-tickets', authenticateToken, (req, res) => {
 
     publishEvent('REWORK_CREATED', { ticketId, orderId, returnToStage });
     res.json({ success: true, ticketId });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================================
+// 16. MACHINES CRUD & MANAGEMENT API (Requirement 49, 50)
+// ============================================================================
+app.get('/api/machines', (req, res) => {
+  try {
+    const machines = db.prepare('SELECT * FROM machines ORDER BY name ASC').all();
+    res.json({ success: true, machines });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/machines', authenticateToken, requireRole(['Admin', 'Manager']), (req, res) => {
+  try {
+    const {
+      name, code, type = 'Printing', processType = 'Digital Printing',
+      hourlyRate = 0, speedSqftHr = 0, dailyCapacitySqft = 0, maxWidthInches = 64,
+      maintenanceNotes = ''
+    } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, error: 'Machine name is required' });
+    }
+
+    const machineId = req.body.id || `MAC-${Date.now()}`;
+    const machineCode = code || `M-${Date.now().toString().slice(-4)}`;
+
+    db.prepare(`
+      INSERT INTO machines (
+        id, name, code, type, process_type, status, hourly_rate, speed_sqft_hr,
+        daily_capacity_sqft, max_width_inches, total_runtime_hours, maintenance_notes
+      ) VALUES (?, ?, ?, ?, ?, 'Available', ?, ?, ?, ?, 0, ?)
+    `).run(
+      machineId, name, machineCode, type, processType,
+      Number(hourlyRate || 0), Number(speedSqftHr || 0), Number(dailyCapacitySqft || 0),
+      Number(maxWidthInches || 64), maintenanceNotes || ''
+    );
+
+    const created = db.prepare('SELECT * FROM machines WHERE id = ?').get(machineId);
+    publishEvent('MACHINE_CREATED', { machine: created });
+    res.json({ success: true, machine: created });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/machines/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, operatorId, operatorName, activeJobId, maintenanceNotes, totalRuntimeHours, lastMaintenanceDate, nextMaintenanceDate } = req.body;
+
+    const existing = db.prepare('SELECT * FROM machines WHERE id = ?').get(id);
+    if (!existing) return res.status(404).json({ success: false, error: 'Machine not found' });
+
+    db.prepare(`
+      UPDATE machines SET
+        status = COALESCE(?, status),
+        operator_id = COALESCE(?, operator_id),
+        operator_name = COALESCE(?, operator_name),
+        active_job_id = COALESCE(?, active_job_id),
+        maintenance_notes = COALESCE(?, maintenance_notes),
+        total_runtime_hours = COALESCE(?, total_runtime_hours),
+        last_maintenance_date = COALESCE(?, last_maintenance_date),
+        next_maintenance_date = COALESCE(?, next_maintenance_date),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(
+      status !== undefined ? status : null,
+      operatorId !== undefined ? operatorId : null,
+      operatorName !== undefined ? operatorName : null,
+      activeJobId !== undefined ? activeJobId : null,
+      maintenanceNotes !== undefined ? maintenanceNotes : null,
+      totalRuntimeHours !== undefined ? Number(totalRuntimeHours) : null,
+      lastMaintenanceDate !== undefined ? lastMaintenanceDate : null,
+      nextMaintenanceDate !== undefined ? nextMaintenanceDate : null,
+      id
+    );
+
+    const updated = db.prepare('SELECT * FROM machines WHERE id = ?').get(id);
+    publishEvent('MACHINE_UPDATED', { machine: updated });
+    res.json({ success: true, machine: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/machines/:id', authenticateToken, requireRole(['Admin']), (req, res) => {
+  try {
+    const { id } = req.params;
+    db.prepare('DELETE FROM machines WHERE id = ?').run(id);
+    publishEvent('MACHINE_DELETED', { machineId: id });
+    res.json({ success: true, message: `Machine ${id} deleted` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================================
+// 17. DOUBLE-ENTRY ACCOUNTING & GENERAL LEDGER API (Requirements 34, 35, 47, 71)
+// ============================================================================
+
+// 17A. GET Journal Vouchers with line entries
+app.get('/api/accounting/journals', authenticateToken, requirePermission('module.accounting'), (req, res) => {
+  try {
+    const { startDate, endDate, voucherType, search } = req.query;
+    let sql = 'SELECT * FROM journal_vouchers WHERE 1=1';
+    const params = [];
+
+    if (startDate) {
+      sql += ' AND voucher_date >= ?';
+      params.push(startDate);
+    }
+    if (endDate) {
+      sql += ' AND voucher_date <= ?';
+      params.push(endDate);
+    }
+    if (voucherType && voucherType !== 'ALL') {
+      sql += ' AND voucher_type = ?';
+      params.push(voucherType);
+    }
+    if (search) {
+      sql += ' AND (voucher_number LIKE ? OR narration LIKE ? OR ref_no LIKE ?)';
+      const s = `%${search}%`;
+      params.push(s, s, s);
+    }
+    sql += ' ORDER BY voucher_date DESC, created_at DESC';
+
+    const vouchers = db.prepare(sql).all(...params);
+    const getEntries = db.prepare('SELECT * FROM journal_entries WHERE voucher_id = ? ORDER BY entry_type DESC');
+
+    const result = vouchers.map(v => ({
+      ...v,
+      entries: getEntries.all(v.id)
+    }));
+
+    res.json({ success: true, vouchers: result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 17B. POST Manual Journal Voucher (Strict Double-Entry Balanced Validation)
+app.post('/api/accounting/journals', authenticateToken, (req, res) => {
+  try {
+    const { voucherType = 'Journal Entry', refNo, narration, date, entries } = req.body;
+    const user = req.user;
+
+    if (!Array.isArray(entries) || entries.length < 2) {
+      return res.status(400).json({ success: false, error: 'At least two entries (Debit and Credit) are required for a double-entry journal voucher.' });
+    }
+
+    let totalDebit = 0;
+    let totalCredit = 0;
+
+    for (const e of entries) {
+      const amt = Number(e.amount || 0);
+      if (amt <= 0) {
+        return res.status(400).json({ success: false, error: 'All entry amounts must be positive numbers.' });
+      }
+      const type = (e.entryType || e.type || '').toUpperCase();
+      if (type === 'DEBIT') totalDebit += amt;
+      else if (type === 'CREDIT') totalCredit += amt;
+      else return res.status(400).json({ success: false, error: `Invalid entry type "${e.type || e.entryType}". Must be DEBIT or CREDIT.` });
+    }
+
+    if (Math.abs(totalDebit - totalCredit) > 0.05) {
+      return res.status(400).json({
+        success: false,
+        error: `Journal voucher is unbalanced! Total Debit (₹${totalDebit.toFixed(2)}) must equal Total Credit (₹${totalCredit.toFixed(2)}).`
+      });
+    }
+
+    const voucherDate = date || new Date().toISOString().split('T')[0];
+
+    const normalizedEntries = entries.map(e => {
+      const accountName = e.accountName || e.account || 'General Account';
+      const accountGroup = (e.accountGroup) ? e.accountGroup :
+                           accountName.toLowerCase().includes('expense') ? 'Expenses' :
+                           accountName.toLowerCase().includes('revenue') || accountName.toLowerCase().includes('sales') ? 'Revenue' :
+                           accountName.toLowerCase().includes('payable') || accountName.toLowerCase().includes('gst') ? 'Liabilities' : 'Assets';
+      return {
+        accountName,
+        accountGroup,
+        entryType: (e.entryType || e.type || 'DEBIT').toUpperCase(),
+        amount: Number(e.amount),
+        notes: e.notes || e.narration || narration || ''
+      };
+    });
+
+    const jvResult = postDoubleEntryJournal(db, {
+      voucherType: voucherType || 'Journal Entry',
+      date: voucherDate,
+      refNo: refNo || '',
+      referenceType: 'MANUAL',
+      narration: narration || '',
+      createdByUserId: user?.userId || user?.id,
+      createdByName: user?.name || 'Accounts Staff',
+      entries: normalizedEntries
+    });
+    const voucherNumber = jvResult?.voucherNumber || String(jvResult);
+
+    // Audit Log
+    const auditId = `AUD-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+    db.prepare(`
+      INSERT INTO audit_logs (id, user_id, employee_id, employee_name, role, action, module, record_id, details)
+      VALUES (?, ?, ?, ?, ?, 'JOURNAL_POSTED', 'Accounts', ?, ?)
+    `).run(
+      auditId, user?.userId || user?.id, user?.employeeId, user?.name || 'Staff', user?.role || 'Accounts',
+      voucherNumber, `Journal Voucher ${voucherNumber} posted (₹${totalDebit.toFixed(2)})`
+    );
+
+    publishEvent('JOURNAL_POSTED', { voucherNumber, voucherType, totalDebit });
+    res.json({ success: true, voucherNumber, message: 'Journal voucher posted successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 17C. GET General Ledger with Running Balance
+app.get('/api/accounting/ledger', authenticateToken, requirePermission('module.accounting'), (req, res) => {
+  try {
+    const { account, startDate, endDate } = req.query;
+    let sql = `
+      SELECT e.*, v.voucher_number, v.voucher_type, v.voucher_date, v.reference_id
+      FROM journal_entries e
+      JOIN journal_vouchers v ON e.voucher_id = v.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (account && account !== 'ALL') {
+      sql += ' AND (e.account_name = ? OR e.account_name LIKE ?)';
+      params.push(account, `%${account}%`);
+    }
+    if (startDate) {
+      sql += ' AND v.voucher_date >= ?';
+      params.push(startDate);
+    }
+    if (endDate) {
+      sql += ' AND v.voucher_date <= ?';
+      params.push(endDate);
+    }
+    sql += ' ORDER BY v.voucher_date ASC, e.id ASC';
+
+    const rawEntries = db.prepare(sql).all(...params);
+
+    let runningBalance = 0;
+    const ledger = rawEntries.map(entry => {
+      const isDebit = entry.entry_type === 'DEBIT';
+      const grp = (entry.account_group || '').toUpperCase();
+      const isDebitNormal = grp.includes('ASSET') || grp.includes('EXPENSE');
+
+      if (isDebitNormal) {
+        runningBalance += isDebit ? entry.amount : -entry.amount;
+      } else {
+        runningBalance += isDebit ? -entry.amount : entry.amount;
+      }
+
+      return {
+        ...entry,
+        runningBalance: Math.round(runningBalance * 100) / 100
+      };
+    });
+
+    res.json({ success: true, ledger });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 17D. GET Trial Balance
+app.get('/api/accounting/reports/trial-balance', authenticateToken, (req, res) => {
+  try {
+    const rows = db.prepare(`
+      SELECT 
+        account_name, account_group,
+        SUM(CASE WHEN entry_type = 'DEBIT' THEN amount ELSE 0 END) as total_debit,
+        SUM(CASE WHEN entry_type = 'CREDIT' THEN amount ELSE 0 END) as total_credit
+      FROM journal_entries
+      GROUP BY account_name, account_group
+      ORDER BY account_group, account_name
+    `).all();
+
+    let grandDebit = 0;
+    let grandCredit = 0;
+
+    const accounts = rows.map(r => {
+      grandDebit += r.total_debit;
+      grandCredit += r.total_credit;
+      const net = r.total_debit - r.total_credit;
+      return {
+        ...r,
+        account_code: `ACC-${Math.abs(r.account_name.split('').reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0) % 9000 + 1000)}`,
+        net_debit: net > 0 ? Math.round(net * 100) / 100 : 0,
+        net_credit: net < 0 ? Math.round(Math.abs(net) * 100) / 100 : 0
+      };
+    });
+
+    res.json({
+      success: true,
+      trialBalance: {
+        accounts,
+        totalDebit: Math.round(grandDebit * 100) / 100,
+        totalCredit: Math.round(grandCredit * 100) / 100,
+        isBalanced: Math.abs(grandDebit - grandCredit) < 0.05
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 17E. GET Profit & Loss Statement (Admin & Manager Only)
+app.get('/api/accounting/reports/profit-loss', authenticateToken, (req, res) => {
+  try {
+    if (req.user?.role !== 'Admin' && req.user?.role !== 'Manager') {
+      return res.status(403).json({ success: false, error: 'Forbidden: Profit & Loss Statement access is restricted to Admin and Manager roles.' });
+    }
+
+    const revenueRow = db.prepare(`
+      SELECT COALESCE(SUM(amount), 0) as total FROM journal_entries 
+      WHERE (UPPER(account_group) = 'REVENUE' OR UPPER(account_group) = 'INCOME') AND entry_type = 'CREDIT'
+    `).get();
+
+    const cogsRow = db.prepare(`
+      SELECT COALESCE(SUM(amount), 0) as total FROM journal_entries 
+      WHERE (UPPER(account_group) = 'EXPENSES' OR UPPER(account_group) = 'EXPENSE') AND (account_name LIKE '%Cost of Goods%' OR account_name LIKE '%COGS%' OR account_name LIKE '%Raw Material%') AND entry_type = 'DEBIT'
+    `).get();
+
+    const opexRow = db.prepare(`
+      SELECT COALESCE(SUM(amount), 0) as total FROM journal_entries 
+      WHERE (UPPER(account_group) = 'EXPENSES' OR UPPER(account_group) = 'EXPENSE') AND NOT (account_name LIKE '%Cost of Goods%' OR account_name LIKE '%COGS%' OR account_name LIKE '%Raw Material%') AND entry_type = 'DEBIT'
+    `).get();
+
+    const totalRevenue = Number(revenueRow?.total || 0);
+    const totalCogs = Number(cogsRow?.total || 0);
+    const grossProfit = totalRevenue - totalCogs;
+    const totalOpex = Number(opexRow?.total || 0);
+    const netProfit = grossProfit - totalOpex;
+
+    res.json({
+      success: true,
+      statement: {
+        totalRevenue: Math.round(totalRevenue * 100) / 100,
+        totalCogs: Math.round(totalCogs * 100) / 100,
+        grossProfit: Math.round(grossProfit * 100) / 100,
+        grossProfitMarginPct: totalRevenue > 0 ? Number(((grossProfit / totalRevenue) * 100).toFixed(2)) : 0,
+        operatingExpenses: Math.round(totalOpex * 100) / 100,
+        netProfit: Math.round(netProfit * 100) / 100,
+        netProfitMarginPct: totalRevenue > 0 ? Number(((netProfit / totalRevenue) * 100).toFixed(2)) : 0
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 17F. GET Balance Sheet
+app.get('/api/accounting/reports/balance-sheet', authenticateToken, (req, res) => {
+  try {
+    const assetsRow = db.prepare(`
+      SELECT 
+        SUM(CASE WHEN entry_type = 'DEBIT' THEN amount ELSE -amount END) as total 
+      FROM journal_entries 
+      WHERE UPPER(account_group) LIKE '%ASSET%'
+    `).get();
+
+    const liabilitiesRow = db.prepare(`
+      SELECT 
+        SUM(CASE WHEN entry_type = 'CREDIT' THEN amount ELSE -amount END) as total 
+      FROM journal_entries 
+      WHERE UPPER(account_group) LIKE '%LIABILIT%'
+    `).get();
+
+    const equityRow = db.prepare(`
+      SELECT 
+        SUM(CASE WHEN entry_type = 'CREDIT' THEN amount ELSE -amount END) as total 
+      FROM journal_entries 
+      WHERE UPPER(account_group) LIKE '%EQUITY%'
+    `).get();
+
+    const totalAssets = Math.round(Number(assetsRow?.total || 0) * 100) / 100;
+    const totalLiabilities = Math.round(Number(liabilitiesRow?.total || 0) * 100) / 100;
+    const totalEquity = Math.round(Number(equityRow?.total || 0) * 100) / 100;
+
+    res.json({
+      success: true,
+      statement: {
+        totalAssets,
+        totalLiabilities,
+        totalEquity,
+        isBalanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 1.0
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 17G. GET GST Summary (Output CGST/SGST/IGST vs Input GST)
+app.get('/api/accounting/reports/gst-summary', authenticateToken, (req, res) => {
+  try {
+    const outputGstRows = db.prepare(`
+      SELECT account_name, SUM(amount) as total
+      FROM journal_entries
+      WHERE account_name IN ('CGST Output Tax Payable', 'SGST Output Tax Payable', 'IGST Output Tax Payable')
+        AND entry_type = 'CREDIT'
+      GROUP BY account_name
+    `).all();
+
+    const inputGstRows = db.prepare(`
+      SELECT account_name, SUM(amount) as total
+      FROM journal_entries
+      WHERE account_name IN ('CGST Input Tax Credit', 'SGST Input Tax Credit', 'IGST Input Tax Credit')
+        AND entry_type = 'DEBIT'
+      GROUP BY account_name
+    `).all();
+
+    let outputCgst = 0, outputSgst = 0, outputIgst = 0;
+    for (const r of outputGstRows) {
+      if (r.account_name.includes('CGST')) outputCgst = r.total;
+      else if (r.account_name.includes('SGST')) outputSgst = r.total;
+      else if (r.account_name.includes('IGST')) outputIgst = r.total;
+    }
+
+    let inputCgst = 0, inputSgst = 0, inputIgst = 0;
+    for (const r of inputGstRows) {
+      if (r.account_name.includes('CGST')) inputCgst = r.total;
+      else if (r.account_name.includes('SGST')) inputSgst = r.total;
+      else if (r.account_name.includes('IGST')) inputIgst = r.total;
+    }
+
+    const netLiability = (outputCgst + outputSgst + outputIgst) - (inputCgst + inputSgst + inputIgst);
+
+    res.json({
+      success: true,
+      gstSummary: {
+        output: { cgst: outputCgst, sgst: outputSgst, igst: outputIgst, total: outputCgst + outputSgst + outputIgst },
+        input: { cgst: inputCgst, sgst: inputSgst, igst: inputIgst, total: inputCgst + inputSgst + inputIgst },
+        netTaxPayable: Math.round(netLiability * 100) / 100
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================================
+// 18. EMPLOYEE USER CONTROL & PERMISSION MANAGEMENT API (Requirements 1-38)
+// ============================================================================
+
+// 18A. Legacy users list endpoint (Backwards-compatibility)
+app.get('/api/users', authenticateToken, requireRole(['Admin', 'Management']), (req, res) => {
+  try {
+    const users = db.prepare(`
+      SELECT u.id, u.username, u.role, u.department, u.status, u.employee_id, u.created_at, u.last_login,
+             u.login_count, u.last_active, u.created_by_name,
+             e.name as employee_name, e.code as employee_code, e.mobile as employee_phone, e.designation
+      FROM users u
+      LEFT JOIN employees e ON u.employee_id = e.id
+      ORDER BY u.username ASC
+    `).all();
+    res.json({ success: true, users });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 18B. GET Employee User Control Matrix (Employee list + accounts + effective access)
+app.get('/api/users/control-matrix', authenticateToken, requireRole(['Admin', 'Management']), (req, res) => {
+  try {
+    const employees = db.prepare(`
+      SELECT e.id, e.code, e.name, e.department, e.role, e.designation, e.status as emp_status,
+             e.mobile, e.email, e.allowed_processes,
+             u.id as user_id, u.username, u.email as user_email, u.role as user_role,
+             u.status as account_status, u.last_login, u.login_count, u.last_active,
+             u.created_at as user_created_at, u.created_by_name
+      FROM employees e
+      LEFT JOIN users u ON u.employee_id = e.id
+      ORDER BY 
+        CASE WHEN u.role = 'Admin' THEN 1
+             WHEN u.role = 'Management' THEN 2
+             WHEN u.id IS NOT NULL THEN 3
+             ELSE 4 END,
+        e.name ASC
+    `).all();
+
+    const allRoles = db.prepare('SELECT * FROM roles ORDER BY name ASC').all();
+    const allPerms = db.prepare('SELECT * FROM permissions ORDER BY module ASC, name ASC').all();
+    const allRolePerms = db.prepare('SELECT * FROM role_permissions').all();
+    const allOverrides = db.prepare('SELECT * FROM employee_permissions').all();
+    const allProcPerms = db.prepare('SELECT * FROM employee_process_permissions').all();
+
+    const matrix = employees.map(emp => {
+      let effectivePerms = [];
+      let effectiveProcs = [];
+      let accessSummary = 'No Login';
+
+      if (emp.user_id) {
+        const dummyUser = {
+          id: emp.user_id,
+          userId: emp.user_id,
+          employeeId: emp.id,
+          role: emp.user_role,
+          department: emp.department
+        };
+        effectivePerms = getEffectivePermissions(db, dummyUser);
+        effectiveProcs = getEffectiveProcesses(db, dummyUser);
+
+        if (emp.user_role === 'Admin') {
+          accessSummary = 'Full Access';
+        } else {
+          const modules = new Set();
+          effectivePerms.forEach(p => {
+            if (p.startsWith('module.')) {
+              modules.add(p.replace('module.', ''));
+            }
+          });
+          const modCount = modules.size;
+          accessSummary = `${modCount} Module${modCount === 1 ? '' : 's'}`;
+        }
+      }
+
+      const empOverrides = allOverrides.filter(o => o.user_id === emp.user_id || o.employee_id === emp.id);
+      const empProcs = allProcPerms.filter(p => (p.user_id === emp.user_id || p.employee_id === emp.id) && p.is_allowed === 1).map(p => p.process_name);
+
+      return {
+        id: emp.id,
+        employeeCode: emp.code,
+        name: emp.name,
+        department: emp.department,
+        designation: emp.designation || emp.role || 'Staff',
+        employeeStatus: emp.emp_status || 'Active',
+        mobile: emp.mobile,
+        email: emp.email,
+        hasUserAccount: !!emp.user_id,
+        userId: emp.user_id,
+        username: emp.username,
+        userEmail: emp.user_email,
+        userRole: emp.user_role,
+        accountStatus: emp.account_status || 'Not Created',
+        lastLogin: emp.last_login,
+        loginCount: emp.login_count || 0,
+        lastActive: emp.last_active,
+        userCreatedAt: emp.user_created_at,
+        createdByName: emp.created_by_name,
+        effectivePermissions: effectivePerms,
+        effectiveProcesses: effectiveProcs.length > 0 ? effectiveProcs : (emp.allowed_processes ? JSON.parse(emp.allowed_processes) : []),
+        overrides: empOverrides,
+        accessSummary
+      };
+    });
+
+    res.json({
+      success: true,
+      matrix,
+      roles: allRoles,
+      permissions: allPerms,
+      rolePermissions: allRolePerms
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 18C. POST Create Real Authenticated Employee Login Account
+app.post('/api/users/create', authenticateToken, requireRole(['Admin']), (req, res) => {
+  try {
+    const { employeeId, username, email, password, role = 'Sales', designation, status = 'Active', allowedProcesses } = req.body;
+    const actor = req.user;
+
+    if (!employeeId || !username || !password) {
+      return res.status(400).json({ success: false, error: 'Employee, username, and password are required' });
+    }
+
+    // 1. Verify employee exists in authoritative database
+    const employee = db.prepare('SELECT * FROM employees WHERE id = ?').get(employeeId);
+    if (!employee) {
+      return res.status(404).json({ success: false, error: 'Selected employee does not exist in the database' });
+    }
+
+    // 2. Prevent duplicate user account for same employee
+    const existingForEmp = db.prepare('SELECT id, username FROM users WHERE employee_id = ?').get(employeeId);
+    if (existingForEmp) {
+      return res.status(400).json({ success: false, error: `A login account (${existingForEmp.username}) already exists for this employee.` });
+    }
+
+    // 3. Username uniqueness
+    const existingUser = db.prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(?)').get(username);
+    if (existingUser) {
+      return res.status(400).json({ success: false, error: 'Username is already taken. Please choose another username.' });
+    }
+
+    // 4. Email uniqueness
+    if (email) {
+      const existingEmail = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(email);
+      if (existingEmail) {
+        return res.status(400).json({ success: false, error: 'Email is already in use by another user account.' });
+      }
+    }
+
+    const { hash, salt } = hashPassword(password);
+    const userId = `USR-${employeeId}`;
+
+    const createTx = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO users (
+          id, employee_id, username, email, password_hash, salt, role, department, status,
+          created_by_user_id, created_by_name, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `).run(
+        userId,
+        employeeId,
+        username,
+        email || employee.email || `${username.toLowerCase()}@screenarts.in`,
+        hash,
+        salt,
+        role,
+        employee.department || 'General',
+        status || 'Active',
+        actor.id || actor.userId,
+        actor.name || actor.username
+      );
+
+      // Update employee designation and role
+      if (designation) {
+        db.prepare('UPDATE employees SET designation = ? WHERE id = ?').run(designation, employeeId);
+      }
+
+      // If allowed processes provided, save them
+      if (Array.isArray(allowedProcesses) && allowedProcesses.length > 0) {
+        const insertProc = db.prepare('INSERT INTO employee_process_permissions (id, user_id, employee_id, process_name, is_allowed) VALUES (?, ?, ?, ?, 1)');
+        allowedProcesses.forEach((pName, idx) => {
+          insertProc.run(`EPP-${userId}-${idx}`, userId, employeeId, pName);
+        });
+        db.prepare('UPDATE employees SET allowed_processes = ? WHERE id = ?').run(JSON.stringify(allowedProcesses), employeeId);
+      }
+
+      // Record audit log
+      logAuditEvent(db, {
+        user: actor,
+        action: 'CREATE_USER',
+        module: 'Admin',
+        recordId: userId,
+        recordNumber: employee.code || employeeId,
+        details: {
+          employeeId,
+          employeeName: employee.name,
+          username,
+          role,
+          status: status || 'Active'
+        }
+      });
+    });
+
+    createTx();
+
+    const createdUser = db.prepare('SELECT id, employee_id, username, email, role, status, created_at FROM users WHERE id = ?').get(userId);
+    publishEvent('USER_CREATED', { userId, username, employeeId });
+
+    res.json({
+      success: true,
+      message: `User account for ${employee.name} created successfully.`,
+      user: createdUser
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 18D. PUT Toggle User Account Status (ON / OFF Login Access)
+app.put('/api/users/:id/status', authenticateToken, requireRole(['Admin']), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, reason } = req.body;
+    const actor = req.user;
+
+    const validStatuses = ['Active', 'Disabled', 'Locked', 'Pending'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ success: false, error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+    }
+
+    const targetUser = db.prepare(`
+      SELECT u.*, e.name as employee_name, e.code as employee_code
+      FROM users u
+      LEFT JOIN employees e ON u.employee_id = e.id
+      WHERE u.id = ?
+    `).get(id);
+
+    if (!targetUser) {
+      return res.status(404).json({ success: false, error: 'User account not found.' });
+    }
+
+    // PREVENT ADMIN LOCKOUT (Requirement 27)
+    // Never allow the last active Admin account to accidentally remove its own final Admin access or disable itself
+    if (targetUser.role === 'Admin' && status !== 'Active') {
+      const activeAdminCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'Admin' AND status = 'Active' AND id != ?").get(id).count;
+      if (activeAdminCount < 1) {
+        return res.status(400).json({
+          success: false,
+          error: 'At least one active administrator must remain.'
+        });
+      }
+    }
+
+    const oldStatus = targetUser.status;
+    db.prepare('UPDATE users SET status = ? WHERE id = ?').run(status, id);
+
+    logAuditEvent(db, {
+      user: actor,
+      action: 'CHANGE_USER_STATUS',
+      module: 'Admin',
+      recordId: id,
+      recordNumber: targetUser.employee_code || targetUser.username,
+      details: {
+        targetEmployeeId: targetUser.employee_id,
+        targetEmployeeName: targetUser.employee_name,
+        targetUsername: targetUser.username,
+        oldStatus,
+        newStatus: status,
+        reason: reason || 'Status updated by administrator'
+      }
+    });
+
+    publishEvent('USER_STATUS_CHANGED', { userId: id, status, oldStatus });
+
+    res.json({
+      success: true,
+      message: `Account status for ${targetUser.employee_name || targetUser.username} set to ${status}.`,
+      status
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 18E. PUT Update User Role & Granular Permission Overrides
+app.put('/api/users/:id/permissions', authenticateToken, requireRole(['Admin']), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role, roleId, overrides = [], allowedProcesses = [], reason = '' } = req.body;
+    const actor = req.user;
+
+    const targetUser = db.prepare(`
+      SELECT u.*, e.name as employee_name, e.code as employee_code
+      FROM users u
+      LEFT JOIN employees e ON u.employee_id = e.id
+      WHERE u.id = ?
+    `).get(id);
+
+    if (!targetUser) {
+      return res.status(404).json({ success: false, error: 'User account not found.' });
+    }
+
+    // PREVENT ADMIN LOCKOUT (Requirement 27)
+    if (targetUser.role === 'Admin' && role && role !== 'Admin') {
+      const activeAdminCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'Admin' AND status = 'Active' AND id != ?").get(id).count;
+      if (activeAdminCount < 1) {
+        return res.status(400).json({
+          success: false,
+          error: 'At least one active administrator must remain.'
+        });
+      }
+    }
+
+    const previousEffectivePerms = new Set(getEffectivePermissions(db, targetUser));
+
+    const updateTx = db.transaction(() => {
+      // 1. Update role if supplied
+      if (role && role !== targetUser.role) {
+        db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
+        if (targetUser.employee_id) {
+          db.prepare('UPDATE employees SET role = ? WHERE id = ?').run(role, targetUser.employee_id);
+        }
+      }
+
+      // 2. Overwrite employee_permissions overrides
+      db.prepare('DELETE FROM employee_permissions WHERE user_id = ? OR employee_id = ?').run(id, targetUser.employee_id);
+      if (Array.isArray(overrides) && overrides.length > 0) {
+        const insertOverride = db.prepare(`
+          INSERT INTO employee_permissions (id, user_id, employee_id, permission_id, is_granted)
+          VALUES (?, ?, ?, ?, ?)
+        `);
+        overrides.forEach(ov => {
+          const ovId = `EP-${id}-${ov.permissionId}`;
+          insertOverride.run(ovId, id, targetUser.employee_id, ov.permissionId, ov.isGranted ? 1 : 0);
+        });
+      }
+
+      // 3. Overwrite employee_process_permissions
+      db.prepare('DELETE FROM employee_process_permissions WHERE user_id = ? OR employee_id = ?').run(id, targetUser.employee_id);
+      if (Array.isArray(allowedProcesses) && allowedProcesses.length > 0) {
+        const insertProc = db.prepare(`
+          INSERT INTO employee_process_permissions (id, user_id, employee_id, process_name, is_allowed)
+          VALUES (?, ?, ?, ?, 1)
+        `);
+        allowedProcesses.forEach((pName, idx) => {
+          insertProc.run(`EPP-${id}-${idx}`, id, targetUser.employee_id, pName);
+        });
+        if (targetUser.employee_id) {
+          db.prepare('UPDATE employees SET allowed_processes = ? WHERE id = ?').run(JSON.stringify(allowedProcesses), targetUser.employee_id);
+        }
+      } else if (targetUser.employee_id) {
+        db.prepare('UPDATE employees SET allowed_processes = ? WHERE id = ?').run(JSON.stringify([]), targetUser.employee_id);
+      }
+    });
+
+    updateTx();
+
+    const refreshedUser = db.prepare('SELECT u.*, e.department as emp_dept FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE u.id = ?').get(id);
+    const newEffectivePerms = new Set(getEffectivePermissions(db, refreshedUser));
+    const newProcesses = getEffectiveProcesses(db, refreshedUser);
+
+    // Audit trail for each modified permission (Requirement 26)
+    const allCheckedPerms = new Set([...previousEffectivePerms, ...newEffectivePerms]);
+    allCheckedPerms.forEach(permId => {
+      const prevHas = previousEffectivePerms.has(permId);
+      const newHas = newEffectivePerms.has(permId);
+      if (prevHas !== newHas) {
+        logAuditEvent(db, {
+          user: actor,
+          action: 'PERMISSION_CHANGED',
+          module: 'Admin',
+          recordId: id,
+          recordNumber: targetUser.employee_code || targetUser.username,
+          details: {
+            targetEmployeeId: targetUser.employee_id,
+            targetEmployeeName: targetUser.employee_name,
+            permission: permId,
+            old_value: prevHas ? 'ON' : 'OFF',
+            new_value: newHas ? 'ON' : 'OFF',
+            reason: reason || 'Permissions updated by administrator'
+          }
+        });
+      }
+    });
+
+    publishEvent('USER_PERMISSIONS_CHANGED', { userId: id, employeeId: targetUser.employee_id });
+
+    res.json({
+      success: true,
+      message: `Permissions for ${targetUser.employee_name || targetUser.username} saved successfully.`,
+      effectivePermissions: Array.from(newEffectivePerms),
+      allowedProcesses: newProcesses
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 18F. GET Roles & Role Templates
+app.get('/api/roles', authenticateToken, requireRole(['Admin', 'Management']), (req, res) => {
+  try {
+    const roles = db.prepare('SELECT * FROM roles ORDER BY name ASC').all();
+    const rolePerms = db.prepare('SELECT * FROM role_permissions').all();
+    const result = roles.map(r => ({
+      ...r,
+      permissions: rolePerms.filter(rp => rp.role_id === r.id).map(rp => rp.permission_id)
+    }));
+    res.json({ success: true, roles: result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 18G. GET Master Permissions List
+app.get('/api/permissions', authenticateToken, requireRole(['Admin', 'Management']), (req, res) => {
+  try {
+    const permissions = db.prepare('SELECT * FROM permissions ORDER BY module ASC, code ASC').all();
+    res.json({ success: true, permissions });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 18H. GET Permission Audit Trail
+app.get('/api/audit-logs/permissions', authenticateToken, requireRole(['Admin', 'Management']), (req, res) => {
+  try {
+    const logs = db.prepare(`
+      SELECT * FROM audit_logs
+      WHERE action IN ('PERMISSION_CHANGED', 'CHANGE_USER_STATUS', 'CREATE_USER')
+         OR module = 'Admin'
+      ORDER BY timestamp DESC
+      LIMIT 100
+    `).all();
+    res.json({ success: true, logs });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

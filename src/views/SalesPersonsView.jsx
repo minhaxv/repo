@@ -4,7 +4,8 @@ import { useERP } from '../context/ERPContext';
 import EditSalesPersonModal from '../components/modals/EditSalesPersonModal';
 
 export const SalesPersonsView = () => {
-  const { salesPersons, addSalesPerson, salesOrders } = useERP();
+  const { salesPersons, addSalesPerson, salesOrders, activeRole, activeUser } = useERP();
+  const isAdminOrManager = activeRole === 'Admin' || activeRole === 'Manager' || activeUser?.role === 'Admin' || activeUser?.role === 'Manager';
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSP, setEditingSP] = useState(null);
@@ -14,6 +15,19 @@ export const SalesPersonsView = () => {
     target: 500000,
     commissionRate: 3.5
   });
+
+  if (!isAdminOrManager) {
+    return (
+      <div className="view-container">
+        <div className="card" style={{ textAlign: 'center', padding: '3.5rem 1rem' }}>
+          <h3 style={{ color: '#e11d48', fontSize: '1.25rem', fontWeight: 800 }}>Access Restricted</h3>
+          <p style={{ color: '#64748b', marginTop: '0.5rem', fontSize: '0.9rem' }}>
+            Executive targets, commission ledgers, and profit statistics are strictly restricted to Admin and Manager roles.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // Calculate live sales statistics per Sales Person from actual Sales Orders
   const getStats = (spId, spName, defaultRate = 3.5) => {

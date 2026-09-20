@@ -5,10 +5,24 @@ import CreateCareOfModal from '../components/modals/CreateCareOfModal';
 import EditCareOfModal from '../components/modals/EditCareOfModal';
 
 export const CareOfManagementView = () => {
-  const { careOfPersons, salesOrders, deleteCareOfPerson, customers } = useERP();
+  const { careOfPersons, salesOrders, deleteCareOfPerson, customers, activeRole, activeUser } = useERP();
+  const isAdminOrManager = activeRole === 'Admin' || activeRole === 'Manager' || activeUser?.role === 'Admin' || activeUser?.role === 'Manager';
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCareOf, setEditingCareOf] = useState(null);
+
+  if (!isAdminOrManager) {
+    return (
+      <div className="view-container">
+        <div className="card" style={{ textAlign: 'center', padding: '3.5rem 1rem' }}>
+          <h3 style={{ color: '#e11d48', fontSize: '1.25rem', fontWeight: 800 }}>Access Restricted</h3>
+          <p style={{ color: '#64748b', marginTop: '0.5rem', fontSize: '0.9rem' }}>
+            Care-of partner commissions, referral rates, and incentive reports are strictly restricted to Admin and Manager roles.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // Filter Care Of Persons
   const filtered = (careOfPersons || []).filter((co) => {

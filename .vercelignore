@@ -1,0 +1,11 @@
+# Vercel Ignore File
+.git
+.github
+database/
+*.sqlite*
+*.zip
+ERP_AI_AUDIT_EXPORT/
+ERP_AI_AUDIT_EXPORT.zip
+stitch_printflow_cloud_erp/
+scratch/
+tests/

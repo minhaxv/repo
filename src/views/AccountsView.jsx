@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useERP } from '../context/ERPContext';
+import { api } from '../utils/api';
 import {
   CreditCard,
   BookOpen,
@@ -45,8 +46,12 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
     addExpense,
     removeExpense,
     reconciliationData,
-    fetchCustomerReconciliation
+    fetchCustomerReconciliation,
+    activeRole,
+    activeUser
   } = useERP();
+
+  const isAdminOrManager = activeRole === 'Admin' || activeRole === 'Manager' || activeUser?.role === 'Admin' || activeUser?.role === 'Manager';
 
   // Active Section State
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -54,6 +59,32 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
 
   // Journal Vouchers State
   const [journals, setJournals] = useState(initialJournalVouchers);
+
+  // Load persistent double-entry journal vouchers from authoritative SQLite backend
+  useEffect(() => {
+    let isMounted = true;
+    api.fetchJournals().then(res => {
+      if (isMounted && res && res.vouchers && res.vouchers.length > 0) {
+        const mapped = res.vouchers.map(v => ({
+          id: v.voucher_number || v.id,
+          voucherType: v.voucher_type,
+          date: v.voucher_date,
+          refNo: v.reference_id || v.voucher_number,
+          narration: v.narration,
+          entries: (v.entries || []).map(e => ({
+            account: e.account_name,
+            type: e.entry_type,
+            amount: e.amount,
+            partyName: e.party_name
+          })),
+          status: v.status || 'Posted',
+          createdBy: v.created_by || 'System'
+        }));
+        setJournals(mapped);
+      }
+    }).catch(err => console.warn('Could not fetch backend journals:', err));
+    return () => { isMounted = false; };
+  }, []);
 
   // Filter States
   const [selectedLedgerAccount, setSelectedLedgerAccount] = useState('ALL');
@@ -85,29 +116,71 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
     description: ''
   });
 
-  // Calculate General Ledger & Statements
+  // Live Backend Accounting Statements Synchronization
+  const [backendStatements, setBackendStatements] = useState({
+    trialBalance: null,
+    pnl: null,
+    balanceSheet: null,
+    gstSummary: null
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    Promise.all([
+      api.fetchTrialBalance().catch(() => null),
+      api.fetchProfitAndLoss().catch(() => null),
+      api.fetchBalanceSheet().catch(() => null),
+      api.fetchGstSummary().catch(() => null)
+    ]).then(([tbRes, pnlRes, bsRes, gstRes]) => {
+      if (!isMounted) return;
+      setBackendStatements({
+        trialBalance: tbRes?.trialBalance || null,
+        pnl: pnlRes?.statement || null,
+        balanceSheet: bsRes?.statement || null,
+        gstSummary: gstRes?.gstSummary || null
+      });
+    });
+    return () => { isMounted = false; };
+  }, [journals, expenses, salesOrders, payments]);
+
+  // Calculate General Ledger & Statements from Live Persistent State
   const ledgerList = useMemo(() => {
     return calculateGeneralLedger(journals, salesOrders, payments, inventory);
   }, [journals, salesOrders, payments, inventory]);
 
   const trialBalance = useMemo(() => {
+    if (backendStatements.trialBalance && backendStatements.trialBalance.accounts?.length > 0) {
+      const tb = backendStatements.trialBalance;
+      return {
+        rows: tb.accounts.map(a => ({
+          accountName: a.account_name,
+          debit: a.total_debit,
+          credit: a.total_credit,
+          netDebit: a.net_debit,
+          netCredit: a.net_credit
+        })),
+        totalDebits: tb.totalDebit,
+        totalCredits: tb.totalCredit,
+        isBalanced: tb.isBalanced
+      };
+    }
     return generateTrialBalance(ledgerList);
-  }, [ledgerList]);
+  }, [ledgerList, backendStatements.trialBalance]);
 
   const profitAndLoss = useMemo(() => {
-    return generateProfitAndLoss(salesOrders, payments, journals);
-  }, [salesOrders, payments, journals]);
+    return generateProfitAndLoss(salesOrders, payments, journals, expenses);
+  }, [salesOrders, payments, journals, expenses]);
 
   const balanceSheet = useMemo(() => {
-    return generateBalanceSheet(salesOrders, customers, inventory, payments);
-  }, [salesOrders, customers, inventory, payments]);
+    return generateBalanceSheet(salesOrders, customers, inventory, payments, journals, vendors);
+  }, [salesOrders, customers, inventory, payments, journals, vendors]);
 
   const gstTaxSummary = useMemo(() => {
     return generateGstTaxSummary(salesOrders);
   }, [salesOrders]);
 
   // Handle Voucher Submission
-  const handleVoucherSubmit = (e) => {
+  const handleVoucherSubmit = async (e) => {
     e.preventDefault();
     const amt = parseFloat(voucherForm.amount) || 0;
     if (amt <= 0) {
@@ -115,8 +188,7 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
       return;
     }
 
-    const newJV = {
-      id: `JV-2026-${String(journals.length + 1).padStart(3, '0')}`,
+    const payload = {
       voucherType: voucherType,
       date: voucherForm.date,
       refNo: voucherForm.refNo || `REF-${Math.floor(100 + Math.random() * 900)}`,
@@ -124,22 +196,32 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
       entries: [
         { account: voucherForm.debitAccount, type: 'DEBIT', amount: amt },
         { account: voucherForm.creditAccount, type: 'CREDIT', amount: amt }
-      ],
-      status: 'Posted',
-      createdBy: 'Accounts Staff'
+      ]
     };
 
-    setJournals([newJV, ...journals]);
-    setIsVoucherModalOpen(false);
-    setVoucherForm({
-      date: new Date().toISOString().split('T')[0],
-      refNo: '',
-      narration: '',
-      debitAccount: 'Raw Material Ink Expense',
-      creditAccount: 'Cash Account',
-      amount: ''
-    });
-    alert(`${voucherType} posted successfully!`);
+    try {
+      const res = await api.postJournal(payload);
+      const newJV = {
+        id: res.voucherNumber || `JV-2026-${String(journals.length + 1).padStart(3, '0')}`,
+        ...payload,
+        status: 'Posted',
+        createdBy: 'Accounts Staff'
+      };
+
+      setJournals([newJV, ...journals]);
+      setIsVoucherModalOpen(false);
+      setVoucherForm({
+        date: new Date().toISOString().split('T')[0],
+        refNo: '',
+        narration: '',
+        debitAccount: 'Raw Material Ink Expense',
+        creditAccount: 'Cash Account',
+        amount: ''
+      });
+      alert(`${voucherType} posted successfully to General Ledger!`);
+    } catch (err) {
+      alert(`Error posting journal voucher: ${err.message}`);
+    }
   };
 
   // Handle Persistent Expense Submission
@@ -200,7 +282,7 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
     { id: 'party-ledger', label: 'Party Statements', icon: Users },
     { id: 'outstanding-receivables', label: 'Receivables & Payables', icon: ArrowDownLeft },
     { id: 'bank-reconciliation', label: 'Cheque & Reconciliation', icon: CheckCircle2 },
-    { id: 'income-statement', label: 'P&L Statement', icon: DollarSign },
+    ...(isAdminOrManager ? [{ id: 'income-statement', label: 'P&L Statement', icon: DollarSign }] : []),
     { id: 'trial-balance', label: 'Trial Balance', icon: Scale },
     { id: 'balance-sheet', label: 'Balance Sheet', icon: PieChart },
     { id: 'gst-e-filing', label: 'GST e-Filing', icon: FileSpreadsheet }
@@ -318,13 +400,15 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
               <span style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 600 }}>Outsource Vendor Pending</span>
             </div>
 
-            <div className="card" style={{ borderLeft: '4px solid #10b981' }}>
-              <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Net Operating Profit (YTD)</span>
-              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#047857', marginTop: '0.25rem' }}>
-                {formatINR(profitAndLoss.netOperatingProfit)}
+            {isAdminOrManager && (
+              <div className="card" style={{ borderLeft: '4px solid #10b981' }}>
+                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Net Operating Profit (YTD)</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#047857', marginTop: '0.25rem' }}>
+                  {formatINR(profitAndLoss.netOperatingProfit)}
+                </div>
+                <span style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600 }}>Margin: {profitAndLoss.grossMarginPct}%</span>
               </div>
-              <span style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600 }}>Margin: {profitAndLoss.grossMarginPct}%</span>
-            </div>
+            )}
 
             <div className="card" style={{ borderLeft: '4px solid #8b5cf6' }}>
               <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Cash & Bank Liquidity</span>
@@ -626,7 +710,7 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
       )}
 
       {/* TAB 3: FINANCIAL STATEMENTS (P&L, TRIAL BALANCE, BALANCE SHEET) */}
-      {(activeTab === 'income-statement' || activeTab === 'cash-flow') && (
+      {(activeTab === 'income-statement' || activeTab === 'cash-flow') && isAdminOrManager && (
         <div className="card">
           <div className="card-header">
             <div className="card-title">

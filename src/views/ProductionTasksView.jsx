@@ -44,7 +44,7 @@ import {
   Eye
 } from 'lucide-react';
 
-export const ProductionTasksView = ({ onNavigate = null }) => {
+export const ProductionTasksView = ({ onNavigate = null, initialStaffTab = 'my_work' }) => {
   const {
     productionTasks,
     productionProcesses,
@@ -89,7 +89,7 @@ export const ProductionTasksView = ({ onNavigate = null }) => {
   }, [activeUser]);
 
   // Staff-specific tab state: 'my_work' | 'available' | 'completed_today'
-  const [staffTab, setStaffTab] = useState('my_work');
+  const [staffTab, setStaffTab] = useState(initialStaffTab);
 
   // Available tasks state (fetched from backend for staff)
   const [availableWork, setAvailableWork] = useState({ tasks: [], availableItems: [], allowedProcesses: [] });

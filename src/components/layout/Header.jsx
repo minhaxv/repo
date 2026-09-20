@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useERP } from '../../context/ERPContext';
 import { USER_ROLES } from '../../types';
-import { Search, Bell, Plus, UserCheck, Users, Shield, ChevronDown, Printer, RotateCcw, LogOut, Menu, Check } from 'lucide-react';
+import { Search, Bell, Plus, UserCheck, Users, Shield, ChevronDown, Printer, LogOut, Menu, Check } from 'lucide-react';
 import { supabase } from '../../utils/supabase';
 
 export const Header = ({ onNewOrderClick, onNewQuotationClick, onToggleMobileSidebar }) => {
@@ -15,7 +15,6 @@ export const Header = ({ onNewOrderClick, onNewQuotationClick, onToggleMobileSid
     setIsSearchOpen,
     followUps,
     setIsFollowUpsOpen,
-    resetDemoData,
     realtimeConnected,
     logoutUser
   } = useERP();
@@ -470,21 +469,6 @@ export const Header = ({ onNewOrderClick, onNewQuotationClick, onToggleMobileSid
             </div>
           )}
         </div>
-
-        {/* Quick Reset Demo Data */}
-        <button
-          onClick={async () => {
-            if (window.confirm('Reset all Supabase database records back to fresh sample state?')) {
-              await resetDemoData();
-              alert('Database resetted successfully.');
-            }
-          }}
-          className="btn btn-secondary btn-icon"
-          style={{ width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#e11d48' }}
-          title="Reset Database Demo Data"
-        >
-          <RotateCcw size={16} />
-        </button>
 
         {/* Logout Button */}
         <button

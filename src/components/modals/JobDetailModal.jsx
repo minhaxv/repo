@@ -63,13 +63,18 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
     createDelivery
   } = useERP();
 
-  const [activeTab, setActiveTab] = useState(initialTab || 'overview'); // 'overview' | 'production' | 'materials' | 'costing' | 'outsourcing' | 'payments' | 'files' | 'history'
+  const isAdminOrManager = (activeUser?.role === 'Admin' || activeUser?.role === 'Manager');
+  const [activeTab, setActiveTab] = useState(() => (initialTab === 'costing' && !isAdminOrManager) ? 'overview' : (initialTab || 'overview'));
 
   useEffect(() => {
     if (initialTab) {
-      setActiveTab(initialTab);
+      if (initialTab === 'costing' && !isAdminOrManager) {
+        setActiveTab('overview');
+      } else {
+        setActiveTab(initialTab);
+      }
     }
-  }, [initialTab]);
+  }, [initialTab, isAdminOrManager]);
 
   // Stage update form state
   const [selectedStageName, setSelectedStageName] = useState('Printing');
@@ -515,7 +520,7 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
             { id: 'employee-tasks', label: `Employee Tasks (${orderTasks.length})`, icon: UserCheck, highlight: true },
             { id: 'production', label: 'Production Timeline', icon: Factory },
             { id: 'materials', label: 'Materials & Wastage', icon: Layers },
-            { id: 'costing', label: 'Costing & Margin', icon: DollarSign },
+            ...(isAdminOrManager ? [{ id: 'costing', label: 'Costing & Margin', icon: DollarSign }] : []),
             { id: 'outsourcing', label: 'Outsourcing', icon: Building2 },
             { id: 'payments', label: 'Payments', icon: CreditCard },
             { id: 'files', label: `Artwork Proofs (${artworkList.length})`, icon: ImageIcon },
@@ -579,12 +584,14 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
 
                 <div style={{ background: '#f8fafc', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
                   <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>JOB SELLING VALUE</span>
-                  <div style={{ fontWeight: 800, fontSize: '1.2rem', color: '#0f172a', marginTop: '0.2rem' }}>
+                  <div style={{ fontWeight: 800, fontSize: '1.2rem', color: '#0f172a', margin: '0.2rem 0' }}>
                     {formatINR(sellingPrice)}
                   </div>
-                  <span style={{ fontSize: '0.78rem', color: '#059669', fontWeight: 700 }}>
-                    Est. Profit: {formatINR(grossProfit)} ({grossMarginPct}%)
-                  </span>
+                  {isAdminOrManager && (
+                    <span style={{ fontSize: '0.78rem', color: '#059669', fontWeight: 700 }}>
+                      Est. Profit: {formatINR(grossProfit)} ({grossMarginPct}%)
+                    </span>
+                  )}
                 </div>
 
                 <div style={{ background: '#f8fafc', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
@@ -645,6 +652,11 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
                     <span style={{ color: '#64748b', display: 'block', fontSize: '0.72rem', fontWeight: 700 }}>CUSTOMER CONTACT</span>
                     <strong>{job.customerName || parentOrder.customerName}</strong>
                     <div style={{ color: '#64748b' }}>📱 {job.customerMobile || parentOrder.customerMobile || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b', display: 'block', fontSize: '0.72rem', fontWeight: 700 }}>BILLED BY (STAFF)</span>
+                    <strong style={{ color: '#1d4ed8' }}>{parentOrder.billedByStaff || 'Unassigned'}</strong>
+                    <div style={{ color: '#64748b' }}>{parentOrder.billedByRole ? `${parentOrder.billedByRole} • ` : ''}{parentOrder.billedAt || 'N/A'}</div>
                   </div>
                   <div>
                     <span style={{ color: '#64748b', display: 'block', fontSize: '0.72rem', fontWeight: 700 }}>CARE OF / PARTNER</span>
@@ -1541,8 +1553,8 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
             </div>
           )}
 
-          {/* TAB 4: COSTING & MARGIN */}
-          {activeTab === 'costing' && (
+          {/* TAB 4: COSTING & MARGIN (Admin & Manager Only) */}
+          {activeTab === 'costing' && isAdminOrManager && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <div>

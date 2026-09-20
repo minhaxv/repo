@@ -192,30 +192,48 @@ export const generateTrialBalance = (ledgerList = []) => {
 
 /**
  * Generate Income Statement (Profit & Loss)
+ * Strictly derived from real transactions and actual recorded expenses.
  */
-export const generateProfitAndLoss = (salesOrders = [], payments = [], journals = []) => {
+export const generateProfitAndLoss = (salesOrders = [], payments = [], journals = [], expenses = []) => {
   const totalRevenue = salesOrders.reduce((sum, o) => sum + Number(o.subtotal || 0), 0);
   const totalGstCollected = salesOrders.reduce((sum, o) => sum + Number(o.cgst || 0) + Number(o.sgst || 0) + Number(o.igst || 0), 0);
   const totalGrossSales = salesOrders.reduce((sum, o) => sum + Number(o.grandTotal || 0), 0);
 
-  const totalEstCost = salesOrders.reduce((sum, o) => sum + Number(o.totalEstimatedCost || 0), 0);
-  const totalOutsourceCost = salesOrders.reduce((sum, o) => sum + Number(o.totalInternalEstOutsourceCost || 0), 0);
+  const totalEstCost = salesOrders.reduce((sum, o) => sum + Number(o.totalEstimatedCost || o.actualCost || 0), 0);
+  const totalOutsourceCost = salesOrders.reduce((sum, o) => sum + Number(o.totalInternalEstOutsourceCost || o.actualVendorBill || 0), 0);
 
   const grossProfit = totalRevenue - (totalEstCost + totalOutsourceCost);
   const grossMarginPct = totalRevenue > 0 ? ((grossProfit / totalRevenue) * 100).toFixed(1) : 0;
 
-  const operatingExpenses = [
-    { category: 'Raw Materials & Media Stock', amount: Math.round(totalEstCost * 0.65) },
-    { category: 'Ink, Solvents & Lamination', amount: Math.round(totalEstCost * 0.20) },
-    { category: 'Outsource Printing & Fabrication Bills', amount: totalOutsourceCost },
-    { category: 'Staff Salaries & Operator Incentives', amount: 85000 },
-    { category: 'Factory Electricity & Power Bill', amount: 24500 },
-    { category: 'Shop Rent & Premises Lease', amount: 35000 },
-    { category: 'Machine Maintenance & CNC Servicing', amount: 12000 }
-  ];
+  // Real operational expenses aggregated dynamically from recorded expense records
+  const expenseCategoryMap = {};
+  (expenses || []).forEach((exp) => {
+    const cat = exp.category || 'General Operating Expense';
+    expenseCategoryMap[cat] = (expenseCategoryMap[cat] || 0) + Number(exp.amount || 0);
+  });
+
+  // Also include any journal vouchers with expense entries
+  (journals || []).forEach((jv) => {
+    if (jv.voucherType === 'Expense Entry' && Array.isArray(jv.entries)) {
+      jv.entries.forEach((e) => {
+        if (e.type === 'DEBIT' && (e.account?.toLowerCase().includes('expense') || e.account?.toLowerCase().includes('cost'))) {
+          const cat = e.account;
+          // Avoid double counting if already in expenseCategoryMap
+          if (!expenseCategoryMap[cat]) {
+            expenseCategoryMap[cat] = (expenseCategoryMap[cat] || 0) + Number(e.amount || 0);
+          }
+        }
+      });
+    }
+  });
+
+  const operatingExpenses = Object.entries(expenseCategoryMap).map(([category, amount]) => ({
+    category,
+    amount: Math.round(amount)
+  }));
 
   const totalExpenses = operatingExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const netOperatingProfit = totalRevenue - totalExpenses;
+  const netOperatingProfit = totalRevenue - (totalEstCost + totalOutsourceCost) - totalExpenses;
 
   return {
     totalGrossSales,
@@ -233,52 +251,79 @@ export const generateProfitAndLoss = (salesOrders = [], payments = [], journals 
 
 /**
  * Generate Balance Sheet (Assets = Liabilities + Equity)
+ * Derived from customer outstanding, payments, inventory, and supplier payables.
  */
-export const generateBalanceSheet = (salesOrders = [], customers = [], inventory = [], payments = []) => {
-  const totalAccountsReceivable = salesOrders.reduce((sum, o) => sum + Number(o.balanceAmount || 0), 0);
-  const cashInHand = 42500;
-  const bankAccountsBalance = 385000;
-  const inventoryStockValue = inventory.reduce((sum, i) => sum + (Number(i.currentStock || 0) * Number(i.unitCost || 0)), 0);
-  const fixedAssetsValue = 1850000; // Machinery, CNC Routers, Solvent Printers
+export const generateBalanceSheet = (salesOrders = [], customers = [], inventory = [], payments = [], journals = [], suppliers = []) => {
+  const totalAccountsReceivable = (customers || []).reduce((sum, c) => sum + Number(c.outstanding || 0), 0) ||
+                                  salesOrders.reduce((sum, o) => sum + Number(o.balanceAmount || 0), 0);
 
-  const totalCurrentAssets = totalAccountsReceivable + cashInHand + bankAccountsBalance + inventoryStockValue;
-  const totalAssets = totalCurrentAssets + fixedAssetsValue;
+  // Dynamic Cash & Bank balances from payments and journal entries
+  let cashInHand = 0;
+  let bankAccountsBalance = 0;
 
-  const accountsPayableOutsource = 68000;
-  const gstTaxLiabilityOutput = salesOrders.reduce((sum, o) => sum + Number(o.cgst || 0) + Number(o.sgst || 0), 0);
+  (payments || []).forEach((p) => {
+    const amt = Number(p.amount || 0);
+    const m = (p.method || 'Cash').toLowerCase();
+    if (m.includes('cash')) {
+      cashInHand += amt;
+    } else {
+      bankAccountsBalance += amt;
+    }
+  });
+
+  // If journals are available, reconcile with ledger balances
+  (journals || []).forEach((jv) => {
+    (jv.entries || []).forEach((e) => {
+      const acc = (e.account || '').toLowerCase();
+      const amt = Number(e.amount || 0);
+      if (acc.includes('cash')) {
+        if (e.type === 'DEBIT') cashInHand += amt;
+        else if (e.type === 'CREDIT') cashInHand = Math.max(0, cashInHand - amt);
+      } else if (acc.includes('bank') || acc.includes('hdfc')) {
+        if (e.type === 'DEBIT') bankAccountsBalance += amt;
+        else if (e.type === 'CREDIT') bankAccountsBalance = Math.max(0, bankAccountsBalance - amt);
+      }
+    });
+  });
+
+  const inventoryStockValue = (inventory || []).reduce((sum, i) => sum + (Number(i.currentStock || 0) * Number(i.unitCost || 0)), 0);
+  
+  // Real accounts payable to outsource vendors & suppliers
+  const accountsPayableOutsource = (suppliers || []).reduce((sum, s) => sum + Number(s.pending_payment || s.pendingPayment || 0), 0);
+  const gstTaxLiabilityOutput = salesOrders.reduce((sum, o) => sum + Number(o.cgst || 0) + Number(o.sgst || 0) + Number(o.igst || 0), 0);
   const totalCurrentLiabilities = accountsPayableOutsource + gstTaxLiabilityOutput;
 
-  const ownerCapital = 1500000;
-  const retainedEarnings = totalAssets - totalCurrentLiabilities - ownerCapital;
-  const totalLiabilitiesAndEquity = totalCurrentLiabilities + ownerCapital + retainedEarnings;
+  const totalCurrentAssets = totalAccountsReceivable + cashInHand + bankAccountsBalance + inventoryStockValue;
+  const totalAssets = totalCurrentAssets;
+
+  const ownerCapital = Math.max(0, totalAssets - totalCurrentLiabilities);
+  const retainedEarnings = 0;
+  const totalLiabilitiesAndEquity = totalCurrentLiabilities + ownerCapital;
 
   return {
     assets: {
       currentAssets: [
-        { name: 'Cash in Hand', amount: cashInHand },
-        { name: 'HDFC Bank Account', amount: bankAccountsBalance },
-        { name: 'Accounts Receivable (Customer Balance)', amount: totalAccountsReceivable },
-        { name: 'Inventory Stock-in-Hand', amount: inventoryStockValue }
+        { name: 'Cash in Hand (Cash Register)', amount: Math.round(cashInHand * 100) / 100 },
+        { name: 'Bank Account Balance (UPI / NetBanking)', amount: Math.round(bankAccountsBalance * 100) / 100 },
+        { name: 'Accounts Receivable (Customer Dues)', amount: Math.round(totalAccountsReceivable * 100) / 100 },
+        { name: 'Inventory Stock-in-Hand (At Cost)', amount: Math.round(inventoryStockValue * 100) / 100 }
       ],
-      fixedAssets: [
-        { name: 'Flex & Signage Machinery (Roland, Flora, CNC)', amount: fixedAssetsValue }
-      ],
-      totalAssets
+      fixedAssets: [],
+      totalAssets: Math.round(totalAssets * 100) / 100
     },
     liabilities: {
       currentLiabilities: [
-        { name: 'Accounts Payable (Outsource Vendors)', amount: accountsPayableOutsource },
-        { name: 'GST Output Tax Liability Payable', amount: gstTaxLiabilityOutput }
+        { name: 'Accounts Payable (Suppliers / Outsource Bills)', amount: Math.round(accountsPayableOutsource * 100) / 100 },
+        { name: 'GST Output Tax Liability Payable', amount: Math.round(gstTaxLiabilityOutput * 100) / 100 }
       ],
-      totalLiabilities: totalCurrentLiabilities
+      totalLiabilities: Math.round(totalCurrentLiabilities * 100) / 100
     },
     equity: {
       capitalAccounts: [
-        { name: "Proprietor's Capital Account", amount: ownerCapital },
-        { name: 'Retained Earnings & Reserves', amount: retainedEarnings }
+        { name: "Proprietor's Capital / Net Worth", amount: Math.round(ownerCapital * 100) / 100 }
       ],
-      totalEquity: ownerCapital + retainedEarnings,
-      totalLiabilitiesAndEquity
+      totalEquity: Math.round(ownerCapital * 100) / 100,
+      totalLiabilitiesAndEquity: Math.round(totalLiabilitiesAndEquity * 100) / 100
     },
     isBalanced: Math.abs(totalAssets - totalLiabilitiesAndEquity) < 1.0
   };

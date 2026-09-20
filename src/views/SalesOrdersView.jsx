@@ -70,6 +70,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
   } = useERP();
 
   const isQuotationsMode = isQuotationsOnly || initialType === 'Quotation';
+  const isAdminOrManager = (activeUser?.role === 'Admin' || activeUser?.role === 'Manager') || activeRole === 'Admin' || activeRole === 'Manager';
 
   const [isCreateEmpModalOpen, setIsCreateEmpModalOpen] = useState(false);
   const [createEmpDept, setCreateEmpDept] = useState('Sales');
@@ -88,7 +89,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
   const uniqueBillingStaff = React.useMemo(() => {
     const set = new Set();
     (salesOrders || []).forEach(o => {
-      const name = o.billedByStaff || o.salesPersonName;
+      const name = o.billedByStaff;
       if (name) set.add(name);
     });
     (employees || []).forEach(e => {
@@ -172,10 +173,6 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
     orderType: initialType || 'Direct',
     orderDate: new Date().toISOString().split('T')[0],
     deliveryDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    billedByStaff: activeUser?.name || 'Minhaj V (Admin)',
-    billedByStaffId: activeUser?.id || 'EMP-ADM-01',
-    billedByRole: activeUser?.designation || activeUser?.role || 'Senior Sales Executive',
-    billedByDept: activeUser?.department || 'Sales',
     salesPersonId: salesPersons[0]?.id || '',
     salesPersonName: salesPersons[0]?.name || '',
     careOfId: careOfPersons[0]?.id || '',
@@ -229,15 +226,39 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
     }
   }, [initialSelectId]);
 
-  // Customer search lookup
-  const filteredCusts = (custSearchTerm || '').trim()
-    ? (customers || []).filter(
-        (c) =>
-          (c.mobile || '').includes(custSearchTerm) ||
-          (c.name || '').toLowerCase().includes(custSearchTerm.toLowerCase()) ||
-          (c.code || '').toLowerCase().includes(custSearchTerm.toLowerCase())
-      )
-    : [];
+  // Server-side Customer and Product Search
+  const [serverCustResults, setServerCustResults] = useState(null);
+  const [serverProdResults, setServerProdResults] = useState(null);
+
+  const handleCustomerServerSearch = React.useCallback(async (query) => {
+    if (!query || query.trim().length === 0) {
+      setServerCustResults(null);
+      return;
+    }
+    try {
+      const res = await api.searchCustomers(query);
+      if (res && res.success) {
+        setServerCustResults(res.customers);
+      }
+    } catch (err) {
+      console.warn('Customer server search error:', err);
+    }
+  }, []);
+
+  const handleProductServerSearch = React.useCallback(async (query) => {
+    if (!query || query.trim().length === 0) {
+      setServerProdResults(null);
+      return;
+    }
+    try {
+      const res = await api.searchProducts(query);
+      if (res && res.success) {
+        setServerProdResults(res.products);
+      }
+    } catch (err) {
+      console.warn('Product server search error:', err);
+    }
+  }, []);
 
   const handleSelectCustomer = (cust) => {
     if (!cust) return;
@@ -311,10 +332,6 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
     setOrderHeader({
       orderDate: order.orderDate,
       deliveryDate: order.deliveryDate,
-      billedByStaff: order.billedByStaff || order.salesPersonName || activeUser?.name || 'Admin User',
-      billedByStaffId: order.billedByStaffId || order.salesPersonId || '',
-      billedByRole: order.billedByRole || '',
-      billedByDept: order.billedByDept || '',
       salesPersonId: order.salesPersonId || salesPersons[0]?.id || '',
       salesPersonName: order.salesPersonName || '',
       careOfId: order.careOfId || careOfPersons[0]?.id || '',
@@ -499,11 +516,6 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
       customerName: selectedCust.name || '',
       customerMobile: selectedCust.mobile || '',
       customerState: selectedCust.state || 'Maharashtra (27)',
-      billedByStaff: orderHeader.billedByStaff || activeUser?.name || 'Admin User',
-      billedByStaffId: orderHeader.billedByStaffId || activeUser?.id || '',
-      billedByRole: orderHeader.billedByRole || activeUser?.designation || activeUser?.role || 'Billing Staff',
-      billedByDept: orderHeader.billedByDept || activeUser?.department || 'Sales',
-      billedAt: orderHeader.billedAt || new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
       salesPersonId: orderHeader.salesPersonId || '',
       salesPersonName: sp?.name || 'House Sales',
       careOfId: orderHeader.careOfId || '',
@@ -608,7 +620,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
 
   // Filtered Orders List (Strict separation: Quotations vs Sales Orders)
   const filteredOrders = (salesOrders || []).filter((o) => {
-    const staffName = o.billedByStaff || o.salesPersonName || 'Admin User';
+    const staffName = o.billedByStaff || 'Unassigned';
     if (staffFilter !== 'ALL' && staffName !== staffFilter) return false;
 
     const matchesSearch =
@@ -651,9 +663,9 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
 
     // 1. Who Billed
     const billedBy = {
-      name: selectedOrder.billedByStaff || selectedOrder.salesPersonName || 'Admin User',
-      role: selectedOrder.billedByRole || selectedOrder.billedByDept || 'Sales & Counter Billing',
-      time: selectedOrder.billedAt || selectedOrder.orderDate || 'At Order Creation'
+      name: selectedOrder.billedByStaff || 'Unassigned',
+      role: selectedOrder.billedByRole || '',
+      time: selectedOrder.billedAt || 'N/A'
     };
 
     // 2. Who is Sales Person
@@ -781,8 +793,9 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                 </label>
                 <SearchableSelect
                   type="customer"
-                  options={customers || []}
+                  options={serverCustResults !== null ? serverCustResults : (customers || [])}
                   value={selectedCust?.id || selectedCust?.name || ''}
+                  onSearch={handleCustomerServerSearch}
                   onChange={(c) => {
                     if (c) {
                       handleSelectCustomer(c);
@@ -852,38 +865,6 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                   value={orderHeader.orderDate}
                   onChange={(e) => setOrderHeader({ ...orderHeader, orderDate: e.target.value })}
                 />
-              </div>
-
-              {/* Billed By Staff (Billing Employee Selector) */}
-              <div className="form-group">
-                <label className="form-label" style={{ fontWeight: 800, color: '#1e40af' }}>
-                  <UserCheck size={14} color="#1e40af" /> Billed By (Billing Staff)
-                </label>
-                <select
-                  className="form-select"
-                  value={orderHeader.billedByStaff || activeUser?.name || 'Admin User'}
-                  onChange={(e) => {
-                    const selectedName = e.target.value;
-                    const foundEmp = (employees || []).find(emp => emp.name === selectedName);
-                    setOrderHeader({
-                      ...orderHeader,
-                      billedByStaff: selectedName,
-                      billedByStaffId: foundEmp?.id || (selectedName.includes('Admin') ? 'EMP-ADM-01' : ''),
-                      billedByRole: foundEmp?.designation || foundEmp?.role || (selectedName.includes('Admin') ? 'Administrator' : 'Billing Staff'),
-                      billedByDept: foundEmp?.department || 'Sales'
-                    });
-                  }}
-                  style={{ borderColor: '#93c5fd', background: '#eff6ff', fontWeight: 700, color: '#1e40af' }}
-                >
-                  <option value={activeUser?.name || 'Admin User'}>
-                    ⭐ {activeUser?.name || 'Admin User'} ({activeUser?.department || activeUser?.role || 'Current User'}) [Active Login]
-                  </option>
-                  {(employees || []).filter(emp => emp.name !== activeUser?.name).map(emp => (
-                    <option key={emp.id || emp.name} value={emp.name}>
-                      👤 {emp.name} ({emp.designation || emp.department})
-                    </option>
-                  ))}
-                </select>
               </div>
 
               <div className="form-group">
@@ -1018,8 +999,9 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                           <SearchableSelect
                             type="product"
                             size="sm"
-                            options={products || []}
+                            options={serverProdResults !== null ? serverProdResults : (products || [])}
                             value={item.productId || item.productName}
+                            onSearch={handleProductServerSearch}
                             onChange={(p) => {
                               if (!p) {
                                 const newItems = [...items];
@@ -1581,12 +1563,14 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                   <span>₹{Number(balanceAmount ?? 0).toLocaleString()}</span>
                 </div>
 
-                <div style={{ borderTop: '1px dashed #cbd5e1', marginTop: '0.4rem', paddingTop: '0.4rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                  <span>Estimated Cost: ₹{Number(totalEstCost ?? 0).toLocaleString()}</span>
-                  <span style={{ color: '#059669', fontWeight: 800 }}>
-                    Gross Profit: ₹{Number(grossProfit ?? 0).toLocaleString()} ({profitMarginPct}%)
-                  </span>
-                </div>
+                {isAdminOrManager && (
+                  <div style={{ borderTop: '1px dashed #cbd5e1', marginTop: '0.4rem', paddingTop: '0.4rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                    <span>Estimated Cost: ₹{Number(totalEstCost ?? 0).toLocaleString()}</span>
+                    <span style={{ color: '#059669', fontWeight: 800 }}>
+                      Gross Profit: ₹{Number(grossProfit ?? 0).toLocaleString()} ({profitMarginPct}%)
+                    </span>
+                  </div>
+                )}
               </div>
 
               {editingOrderId && (
@@ -1801,7 +1785,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                     <th>Grand Total</th>
                     <th>Advance</th>
                     <th>Balance</th>
-                    <th>Profit Margin</th>
+                    {isAdminOrManager && <th>Profit Margin</th>}
                     <th style={{ textAlign: 'center' }}>Actions</th>
                   </tr>
                 </thead>
@@ -1860,11 +1844,13 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                         <td style={{ color: (order?.balanceAmount || 0) > 0 ? '#e11d48' : '#059669', fontWeight: 700 }}>
                           ₹{Number(order?.balanceAmount ?? 0).toLocaleString()}
                         </td>
-                        <td>
-                          <span className={`badge ${order.profitMarginPct >= 50 ? 'badge-emerald' : 'badge-amber'}`}>
-                            {order.profitMarginPct}%
-                          </span>
-                        </td>
+                        {isAdminOrManager && (
+                          <td>
+                            <span className={`badge ${order.profitMarginPct >= 50 ? 'badge-emerald' : 'badge-amber'}`}>
+                              {order.profitMarginPct}%
+                            </span>
+                          </td>
+                        )}
                         <td>
                           <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                             <button
@@ -2318,8 +2304,8 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                       <th>Size & Unit</th>
                       <th>Qty</th>
                       <th>Outsource Vendor</th>
-                      <th>Est Cost</th>
-                      <th>Actual Vendor Bill</th>
+                      {isAdminOrManager && <th>Est Cost</th>}
+                      {isAdminOrManager && <th>Actual Vendor Bill</th>}
                       <th>Selling Rate</th>
                       <th>Amount</th>
                     </tr>
@@ -2331,8 +2317,8 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                         <td>{it.width && it.height ? `${it.width} × ${it.height} ${it.unit}` : it.unit}</td>
                         <td style={{ fontWeight: 700 }}>{it.qty}</td>
                         <td>{it.outsource ? <span className="badge badge-violet">{it.vendorName}</span> : 'In-House'}</td>
-                        <td>₹{it.estimatedCost}</td>
-                        <td>₹{it.actualVendorBill || it.estimatedVendorCost || 0}</td>
+                        {isAdminOrManager && <td>₹{it.estimatedCost}</td>}
+                        {isAdminOrManager && <td>₹{it.actualVendorBill || it.estimatedVendorCost || 0}</td>}
                         <td>₹{it.sellingRate}</td>
                         <td style={{ fontWeight: 800 }}>₹{Number(it?.amount ?? 0).toLocaleString()}</td>
                       </tr>
@@ -2345,22 +2331,18 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
             {/* Financial Summary */}
             <div className="card">
               <div className="card-header">
-                <div className="card-title">Order Ledger & Profitability</div>
+                <div className="card-title">{isAdminOrManager ? 'Order Ledger & Profitability' : 'Order Payment Summary'}</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.88rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.35rem' }}>
-                  <span style={{ color: '#64748b' }}>Billed By Staff:</span>
-                  <strong>{selectedOrder.billedByStaff || selectedOrder.salesPersonName || 'Admin User'}</strong>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Subtotal (Excl. Tax):</span>
+                  <span>₹{Number(selectedOrder?.subtotal ?? 0).toLocaleString()}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Subtotal:</span>
-                  <strong>₹{Number(selectedOrder?.subtotal ?? 0).toLocaleString()}</strong>
+                  <span>Total GST ({selectedOrder?.taxMode || 'Exclusive'}):</span>
+                  <span>₹{Number(selectedOrder?.taxTotal ?? 0).toLocaleString()}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>GST Tax:</span>
-                  <span>₹{(Number(selectedOrder?.cgst ?? 0) + Number(selectedOrder?.sgst ?? 0) + Number(selectedOrder?.igst ?? 0)).toLocaleString()}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #cbd5e1', paddingTop: '0.4rem', fontSize: '1.1rem', fontWeight: 800 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '0.95rem' }}>
                   <span>Grand Total:</span>
                   <span>₹{Number(selectedOrder?.grandTotal ?? 0).toLocaleString()}</span>
                 </div>
@@ -2372,10 +2354,12 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                   <span>Balance Amount:</span>
                   <span>₹{Number(selectedOrder?.balanceAmount ?? 0).toLocaleString()}</span>
                 </div>
-                <div style={{ borderTop: '1px dashed #cbd5e1', marginTop: '0.4rem', paddingTop: '0.4rem', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Gross Profit:</span>
-                  <strong style={{ color: '#059669' }}>₹{Number(selectedOrder?.grossProfit ?? 0).toLocaleString()} ({selectedOrder?.profitMarginPct || 0}%)</strong>
-                </div>
+                {isAdminOrManager && (
+                  <div style={{ borderTop: '1px dashed #cbd5e1', marginTop: '0.4rem', paddingTop: '0.4rem', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Gross Profit:</span>
+                    <strong style={{ color: '#059669' }}>₹{Number(selectedOrder?.grossProfit ?? 0).toLocaleString()} ({selectedOrder?.profitMarginPct || 0}%)</strong>
+                  </div>
+                )}
               </div>
             </div>
           </div>

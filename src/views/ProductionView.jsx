@@ -31,7 +31,7 @@ import {
   Trash2
 } from 'lucide-react';
 
-export const ProductionView = ({ initialStageFilter = 'ALL', onNavigate = null }) => {
+export const ProductionView = ({ initialStageFilter = 'ALL', initialViewType = 'kanban', onNavigate = null }) => {
   const {
     salesOrders,
     employees,
@@ -41,7 +41,7 @@ export const ProductionView = ({ initialStageFilter = 'ALL', onNavigate = null }
     updateItemProductionStatus
   } = useERP();
 
-  const [viewType, setViewType] = useState('kanban'); // 'kanban' | 'list'
+  const [viewType, setViewType] = useState(initialViewType); // 'kanban' | 'list'
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCustomerFilter, setSelectedCustomerFilter] = useState('ALL');
   const [selectedMachineFilter, setSelectedMachineFilter] = useState('ALL');
