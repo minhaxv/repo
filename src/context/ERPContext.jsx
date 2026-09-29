@@ -1460,36 +1460,46 @@ export const ERPProvider = ({ children }) => {
     let totalInternalEstOutsourceCost = 0;
 
     const processedItems = orderPayload.items.map((item, idx) => {
+      const hasQty = item.qty !== null && item.qty !== undefined && item.qty !== '' && !isNaN(parseFloat(item.qty));
+      const hasRate = item.sellingRate !== null && item.sellingRate !== undefined && item.sellingRate !== '' && !isNaN(parseFloat(item.sellingRate));
+      const qty = hasQty ? parseFloat(item.qty) : 0;
+      const rate = hasRate ? parseFloat(item.sellingRate) : 0;
+
       const sqft = item.unit && item.unit.startsWith('Sq') 
-        ? (parseFloat(item.width) || 0) * (parseFloat(item.height) || 0) * (parseFloat(item.qty) || 1) 
+        ? (parseFloat(item.width) || 0) * (parseFloat(item.height) || 0) * qty 
         : 0;
-      const rate = parseFloat(item.sellingRate) || 0;
       const disc = parseFloat(item.discount) || 0;
       const itemGstRate = parseFloat(item.gstRate) || 18;
       
       let grossTotal = 0;
-      if (item.unit && item.unit.startsWith('Sq')) {
-        grossTotal = Math.max(0, (sqft * rate) - disc);
-      } else {
-        grossTotal = Math.max(0, ((parseFloat(item.qty) || 1) * rate) - disc);
+      if (hasQty && hasRate) {
+        if (item.unit && item.unit.startsWith('Sq') && sqft > 0) {
+          grossTotal = Math.max(0, (sqft * rate) - disc);
+        } else {
+          grossTotal = Math.max(0, (qty * rate) - disc);
+        }
       }
 
       let taxableAmount = grossTotal;
       let lineGst = 0;
 
-      if (orderTaxMode.includes('ITR')) {
-        taxableAmount = grossTotal / (1 + (itemGstRate / 100));
-        lineGst = grossTotal - taxableAmount;
-      } else if (orderTaxMode.includes('NTR')) {
-        taxableAmount = grossTotal;
-        lineGst = 0;
-      } else {
-        taxableAmount = grossTotal;
-        lineGst = grossTotal * (itemGstRate / 100);
+      if (grossTotal > 0) {
+        if (orderTaxMode.includes('ITR')) {
+          taxableAmount = grossTotal / (1 + (itemGstRate / 100));
+          lineGst = grossTotal - taxableAmount;
+        } else if (orderTaxMode.includes('NTR')) {
+          taxableAmount = grossTotal;
+          lineGst = 0;
+        } else {
+          taxableAmount = grossTotal;
+          lineGst = grossTotal * (itemGstRate / 100);
+        }
       }
 
-      const itemQty = item.unit && item.unit.startsWith('Sq') ? sqft : (parseFloat(item.qty) || 1);
-      const lineEstCost = (parseFloat(item.estimatedCost) || 0) * itemQty;
+      const itemQty = item.unit && item.unit.startsWith('Sq') ? sqft : qty;
+      const hasCost = item.estimatedCost !== null && item.estimatedCost !== undefined && item.estimatedCost !== '' && !isNaN(parseFloat(item.estimatedCost));
+      const estUnitCost = hasCost ? parseFloat(item.estimatedCost) : 0;
+      const lineEstCost = estUnitCost * itemQty;
       const lineActCost = (parseFloat(item.actualCost) || lineEstCost);
       const internalEstOutsourceCost = parseFloat(item.internalEstOutsourceCost) || 0;
 
@@ -1507,12 +1517,14 @@ export const ERPProvider = ({ children }) => {
         productionStatus: item.productionStatus || PRODUCTION_STATUS.NEW,
         deliveryDate: item.deliveryDate || defaultDeliveryDate,
         taxType: orderTaxMode,
+        qty: hasQty ? qty : null,
+        sellingRate: hasRate ? rate : null,
+        estimatedCost: hasCost ? estUnitCost : null,
         internalEstOutsourceCost: internalEstOutsourceCost,
         totalSqFt: sqft,
         taxableAmount: parseFloat(taxableAmount.toFixed(2)),
         gstAmount: parseFloat(lineGst.toFixed(2)),
         amount: grossTotal,
-        estimatedCost: lineEstCost,
         actualCost: lineActCost
       };
     });

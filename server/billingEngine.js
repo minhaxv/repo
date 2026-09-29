@@ -20,7 +20,8 @@ export function calculateChargeableQuantity(item) {
   const unit = (item.unit || 'Sq.Ft').trim();
   const width = Number(item.width || 0);
   const height = Number(item.height || 0);
-  const qty = Number(item.qty ?? 1);
+  const hasQty = item.qty !== null && item.qty !== undefined && item.qty !== '' && !isNaN(Number(item.qty));
+  const qty = hasQty ? Number(item.qty) : 0;
 
   if (unit.toLowerCase() === 'sq.ft' || unit.toLowerCase() === 'sqft') {
     if (width > 0 && height > 0) {
@@ -42,9 +43,12 @@ export function calculateChargeableQuantity(item) {
  * Calculate line item financial breakdown
  */
 export function calculateLineItem(item, options = {}) {
+  const hasRate = (item.sellingRate !== null && item.sellingRate !== undefined && item.sellingRate !== '' && !isNaN(Number(item.sellingRate))) ||
+                  (item.selling_rate !== null && item.selling_rate !== undefined && item.selling_rate !== '' && !isNaN(Number(item.selling_rate))) ||
+                  (item.rate !== null && item.rate !== undefined && item.rate !== '' && !isNaN(Number(item.rate)));
   const chargeableQty = calculateChargeableQuantity(item);
-  const rate = Number(item.sellingRate || item.selling_rate || item.rate || 0);
-  const baseGross = Number((chargeableQty * rate).toFixed(2));
+  const rate = hasRate ? Number(item.sellingRate || item.selling_rate || item.rate || 0) : 0;
+  const baseGross = (chargeableQty > 0 && rate > 0) ? Number((chargeableQty * rate).toFixed(2)) : 0;
   
   // Discount
   const discountVal = Number(item.discount || 0);
