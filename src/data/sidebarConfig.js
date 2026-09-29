@@ -131,8 +131,9 @@ export const NAVIGATION_MODULES = [
     icon: Building2,
     roles: ['Admin', 'Manager', 'Production'],
     subItems: [
+      { id: 'outsource-bills', label: 'Bills & Payments', icon: Receipt, highlight: true, roles: ['Admin', 'Manager', 'Production', 'Accounts'] },
       { id: 'vendors', label: 'Vendors Directory', icon: Building2, roles: ['Admin', 'Manager', 'Production'] },
-      { id: 'outsource-jobs', label: 'Outsource Jobs', icon: Briefcase, highlight: true, roles: ['Admin', 'Manager', 'Production'] }
+      { id: 'outsource-jobs', label: 'Outsource Jobs', icon: Briefcase, roles: ['Admin', 'Manager', 'Production'] }
     ]
   },
   {

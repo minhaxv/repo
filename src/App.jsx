@@ -206,8 +206,9 @@ const MainAppContent = () => {
             {activeTab === 'employee-tasks' && <ProductionTasksView onNavigate={handleNavigate} />}
             {activeTab === 'printing-dept' && <ProductionView initialStageFilter="Printing" onNavigate={handleNavigate} />}
             {activeTab === 'finishing-dept' && <ProductionView initialStageFilter="Finishing" onNavigate={handleNavigate} />}
-            {activeTab === 'qc-dept' && <ProductionView initialStageFilter="Quality Check" onNavigate={handleNavigate} />}
-            {(activeTab === 'vendors' || activeTab === 'outsource-jobs' || activeTab === 'suppliers') && <OutsourceVendorsView />}
+            {(activeTab === 'vendors' || activeTab === 'outsource-jobs' || activeTab === 'suppliers' || activeTab === 'outsource-bills' || activeTab === 'outsource-payments') && (
+              <OutsourceVendorsView initialTab={activeTab} onNavigate={handleNavigate} />
+            )}
             {activeTab === 'payments' && <PaymentsView />}
             {activeTab === 'purchase' && <PurchaseView />}
             {(activeTab === 'inventory' || activeTab === 'materials-spec' || activeTab === 'materials-master' || activeTab === 'stock-ledger') && <InventoryView />}

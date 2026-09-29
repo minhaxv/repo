@@ -79,6 +79,54 @@ export const ERPProvider = ({ children }) => {
   const [inventory, setInventory] = useState(() => initialInventory || []);
   const [purchaseOrders, setPurchaseOrders] = useState(() => initialPurchaseOrders || []);
   const [payments, setPayments] = useState(() => initialPayments || []);
+  const [outsourceBills, setOutsourceBills] = useState(() => [
+    {
+      id: 'BILL-125-DEMO',
+      billNumber: 'BILL-125',
+      vendorId: 'SUP-ABC-01',
+      vendorName: 'ABC Embroidery',
+      billDate: '2026-04-01',
+      totalAmount: 20000,
+      paidAmount: 5000,
+      outstandingAmount: 15000,
+      status: 'Partially Paid',
+      workOrderCount: 3,
+      workOrders: [
+        { workOrder: 'WO-001', jobCardId: 'WO-001', orderId: 'SO-1001', description: 'Logo Embroidery for T-Shirts', amount: 5000 },
+        { workOrder: 'WO-002', jobCardId: 'WO-002', orderId: 'SO-1002', description: 'Gold Thread Border Patches', amount: 8000 },
+        { workOrder: 'WO-003', jobCardId: 'WO-003', orderId: 'SO-1003', description: 'Cap Visor Direct Embroidery', amount: 7000 }
+      ],
+      payments: [
+        {
+          id: 'PAY-000101',
+          billId: 'BILL-125-DEMO',
+          billNumber: 'BILL-125',
+          vendorId: 'SUP-ABC-01',
+          vendorName: 'ABC Embroidery',
+          amount: 5000,
+          paymentMethod: 'Cash',
+          refNo: 'CASH/APR-01',
+          paymentDate: '2026-04-01',
+          notes: 'Initial advance payment on bill receipt'
+        }
+      ],
+      notes: 'Consolidated April embroidery work orders'
+    }
+  ]);
+  const [outsourcePayments, setOutsourcePayments] = useState(() => [
+    {
+      id: 'PAY-000101',
+      billId: 'BILL-125-DEMO',
+      billNumber: 'BILL-125',
+      vendorId: 'SUP-ABC-01',
+      vendorName: 'ABC Embroidery',
+      amount: 5000,
+      paymentMethod: 'Cash',
+      refNo: 'CASH/APR-01',
+      paymentDate: '2026-04-01',
+      notes: 'Initial advance payment on bill receipt'
+    }
+  ]);
   const [orderAuditLogs, setOrderAuditLogs] = useState(() => initialOrderAuditLogs || []);
   const [machines, setMachines] = useState(() => initialMachines || []);
   const [workflows, setWorkflows] = useState(() => initialWorkflows || []);
@@ -188,6 +236,8 @@ export const ERPProvider = ({ children }) => {
         if (data.salesOrders) setSalesOrders(data.salesOrders);
         if (data.workerJobIncentives) setWorkerJobIncentives(data.workerJobIncentives);
         if (data.payments) setPayments(data.payments);
+        if (data.outsourceBills) setOutsourceBills(data.outsourceBills);
+        if (data.outsourcePayments) setOutsourcePayments(data.outsourcePayments);
         if (data.productionProcesses && data.productionProcesses.length > 0) setProductionProcesses(data.productionProcesses);
         if (data.productionTasks && data.productionTasks.length > 0) setProductionTasks(data.productionTasks);
         if (data.machines) setMachines(data.machines);
@@ -2177,6 +2227,96 @@ export const ERPProvider = ({ children }) => {
     }
   };
 
+  // Create Outsource Bill (Bundling multiple Work Orders into 1 Bill)
+  const createOutsourceBill = async (billData) => {
+    try {
+      const res = await api.createOutsourceBill(billData);
+      if (res && res.success) {
+        await fetchAllERPData();
+        return res;
+      }
+    } catch (err) {
+      console.warn("api.createOutsourceBill exception, saving locally:", err);
+      // Fallback local update
+      const totalAmount = (billData.workOrders || []).reduce((s, w) => s + (Number(w.amount) || 0), 0);
+      const newBill = {
+        id: `BILL-${Date.now()}`,
+        billNumber: billData.billNumber,
+        vendorId: billData.vendorId,
+        vendorName: billData.vendorName,
+        billDate: billData.billDate || new Date().toISOString().split('T')[0],
+        totalAmount,
+        paidAmount: 0,
+        outstandingAmount: totalAmount,
+        status: 'Unpaid',
+        workOrderCount: (billData.workOrders || []).length,
+        workOrders: billData.workOrders || [],
+        payments: [],
+        notes: billData.notes || '',
+        createdAt: new Date().toISOString()
+      };
+      setOutsourceBills(prev => [newBill, ...prev]);
+      if (billData.vendorId) {
+        setVendors(prev => prev.map(v => v.id === billData.vendorId ? { ...v, pendingPayment: (v.pendingPayment || 0) + totalAmount } : v));
+      }
+      return { success: true, billId: newBill.id, billNumber: billData.billNumber };
+    }
+  };
+
+  // Record Single Outsource Payment against a Bill (Handles partial payments & keeps WO untouched)
+  const recordOutsourcePayment = async (paymentData) => {
+    const payAmt = Number(paymentData.amount);
+    try {
+      const res = await api.recordOutsourcePayment(paymentData);
+      if (res && res.success) {
+        await fetchAllERPData();
+        return res;
+      }
+    } catch (err) {
+      console.warn("api.recordOutsourcePayment exception, updating locally:", err);
+    }
+
+    // Local fallback update
+    const payId = `PAY-${Math.floor(100000 + Math.random() * 900000)}`;
+    const paymentDateVal = paymentData.paymentDate || new Date().toISOString().split('T')[0];
+    const newPayment = {
+      id: payId,
+      billId: paymentData.billId,
+      billNumber: paymentData.billNumber,
+      vendorId: paymentData.vendorId,
+      vendorName: paymentData.vendorName,
+      amount: payAmt,
+      paymentMethod: paymentData.paymentMethod || 'Cash',
+      refNo: paymentData.refNo || '',
+      paymentDate: paymentDateVal,
+      notes: paymentData.notes || '',
+      createdAt: new Date().toISOString()
+    };
+
+    setOutsourcePayments(prev => [newPayment, ...prev]);
+    setOutsourceBills(prev => prev.map(b => {
+      if (b.id === paymentData.billId || (b.billNumber === paymentData.billNumber && b.vendorId === paymentData.vendorId)) {
+        const newPaid = Number(b.paidAmount || 0) + payAmt;
+        const newOutstanding = Math.max(0, Number(b.totalAmount || 0) - newPaid);
+        const newStatus = newOutstanding <= 0 ? 'Paid' : (newPaid > 0 ? 'Partially Paid' : 'Unpaid');
+        return {
+          ...b,
+          paidAmount: newPaid,
+          outstandingAmount: newOutstanding,
+          status: newStatus,
+          payments: [newPayment, ...(b.payments || [])]
+        };
+      }
+      return b;
+    }));
+
+    if (paymentData.vendorId) {
+      setVendors(prev => prev.map(v => v.id === paymentData.vendorId ? { ...v, pendingPayment: Math.max(0, (v.pendingPayment || 0) - payAmt) } : v));
+    }
+
+    return { success: true, paymentId: payId, amount: payAmt };
+  };
+
   // 0.5% Job Worker Profit Incentive Record function
   const recordWorkerIncentive = async ({
     orderId,
@@ -3638,6 +3778,12 @@ export const ERPProvider = ({ children }) => {
         purchaseOrders,
         setPurchaseOrders,
         payments,
+        outsourceBills,
+        setOutsourceBills,
+        outsourcePayments,
+        setOutsourcePayments,
+        createOutsourceBill,
+        recordOutsourcePayment,
         followUps,
         setFollowUps,
         workerJobIncentives,

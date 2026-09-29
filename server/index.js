@@ -751,6 +751,54 @@ app.get('/api/all', authenticateToken, (req, res) => {
     const workerJobIncentives = db.prepare('SELECT * FROM worker_job_incentives ORDER BY completed_at DESC').all();
     const payments = db.prepare('SELECT * FROM payments ORDER BY paid_date DESC').all();
 
+    // Outsource Bills and Payments
+    let rawOutsourceBills = [];
+    let rawOutsourcePayments = [];
+    try {
+      rawOutsourceBills = db.prepare('SELECT * FROM outsource_bills ORDER BY bill_date DESC, created_at DESC').all();
+      rawOutsourcePayments = db.prepare('SELECT * FROM outsource_payments ORDER BY payment_date DESC, created_at DESC').all();
+    } catch(e) {}
+
+    const outsourceBills = rawOutsourceBills.map(b => {
+      let workOrders = [];
+      try { workOrders = JSON.parse(b.work_orders_json || '[]'); } catch(e){}
+      const billPayments = rawOutsourcePayments.filter(p => p.bill_id === b.id || (p.bill_number === b.bill_number && p.vendor_id === b.vendor_id));
+      const totalPaid = billPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+      const totalAmount = Number(b.total_amount || 0);
+      const outstandingAmount = Math.max(0, totalAmount - totalPaid);
+      const status = totalPaid >= totalAmount ? 'Paid' : (totalPaid > 0 ? 'Partially Paid' : 'Unpaid');
+
+      return {
+        id: b.id,
+        billNumber: b.bill_number,
+        vendorId: b.vendor_id,
+        vendorName: b.vendor_name,
+        billDate: b.bill_date,
+        totalAmount,
+        paidAmount: totalPaid,
+        outstandingAmount,
+        status,
+        workOrders,
+        workOrderCount: workOrders.length,
+        payments: billPayments.map(p => ({
+          id: p.id,
+          billId: p.bill_id,
+          billNumber: p.bill_number,
+          vendorId: p.vendor_id,
+          vendorName: p.vendor_name,
+          amount: Number(p.amount),
+          paymentMethod: p.payment_method,
+          refNo: p.ref_no,
+          paymentDate: p.payment_date,
+          notes: p.notes,
+          createdAt: p.created_at
+        })),
+        notes: b.notes,
+        createdAt: b.created_at,
+        updatedAt: b.updated_at
+      };
+    });
+
     // Multi-Task Employee Production & Work Logs (Scoped by role permissions)
     const rawProcesses = db.prepare('SELECT * FROM production_processes ORDER BY sort_order ASC, name ASC').all();
     const isManagerOrAdmin = hasPermission(user, 'production.view_all') || user.role === 'Admin' || user.role === 'Manager';
@@ -903,6 +951,8 @@ app.get('/api/all', authenticateToken, (req, res) => {
       salesOrders: formattedOrders,
       jobWork,
       outsourceJobs,
+      outsourceBills,
+      outsourcePayments: rawOutsourcePayments,
       workerJobIncentives: canViewFinancials ? workerJobIncentives.map(inc => ({
         id: inc.id,
         orderId: inc.order_id,
@@ -4070,6 +4120,252 @@ app.post('/api/payments', authenticateToken, (req, res) => {
     payTx();
     publishEvent('PAYMENT_RECEIVED', { paymentId: payId, orderId, customerId: targetCustomerId, customerName: targetCustomerName, amount, method });
     res.json({ success: true, paymentId: payId });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================================
+// 13B. OUTSOURCE BILLS & BILL-BASED PAYMENT API
+// ============================================================================
+
+// GET Outsource Bills
+app.get('/api/outsource-bills', authenticateToken, (req, res) => {
+  try {
+    const rawBills = db.prepare('SELECT * FROM outsource_bills ORDER BY bill_date DESC, created_at DESC').all();
+    const rawPayments = db.prepare('SELECT * FROM outsource_payments ORDER BY payment_date DESC, created_at DESC').all();
+
+    const formattedBills = rawBills.map(b => {
+      let workOrders = [];
+      try { workOrders = JSON.parse(b.work_orders_json || '[]'); } catch(e){}
+      const billPayments = rawPayments.filter(p => p.bill_id === b.id || (p.bill_number === b.bill_number && p.vendor_id === b.vendor_id));
+      const totalPaid = billPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+      const totalAmount = Number(b.total_amount || 0);
+      const outstandingAmount = Math.max(0, totalAmount - totalPaid);
+      const status = totalPaid >= totalAmount ? 'Paid' : (totalPaid > 0 ? 'Partially Paid' : 'Unpaid');
+
+      return {
+        id: b.id,
+        billNumber: b.bill_number,
+        vendorId: b.vendor_id,
+        vendorName: b.vendor_name,
+        billDate: b.bill_date,
+        totalAmount,
+        paidAmount: totalPaid,
+        outstandingAmount,
+        status,
+        workOrders,
+        workOrderCount: workOrders.length,
+        payments: billPayments.map(p => ({
+          id: p.id,
+          billId: p.bill_id,
+          billNumber: p.bill_number,
+          vendorId: p.vendor_id,
+          vendorName: p.vendor_name,
+          amount: Number(p.amount),
+          paymentMethod: p.payment_method,
+          refNo: p.ref_no,
+          paymentDate: p.payment_date,
+          notes: p.notes,
+          createdAt: p.created_at
+        })),
+        notes: b.notes,
+        createdAt: b.created_at,
+        updatedAt: b.updated_at
+      };
+    });
+
+    res.json({ success: true, bills: formattedBills });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// CREATE Outsource Bill (Bundles Multiple Work Orders into 1 Bill)
+app.post('/api/outsource-bills', authenticateToken, (req, res) => {
+  try {
+    const { billNumber, vendorId, vendorName, billDate, workOrders = [], notes = '', allowDuplicate = false } = req.body;
+    if (!billNumber || !billNumber.trim()) {
+      return res.status(400).json({ success: false, error: 'Bill Number is required' });
+    }
+    if (!vendorId) {
+      return res.status(400).json({ success: false, error: 'Vendor is required' });
+    }
+
+    const trimmedBillNo = billNumber.trim();
+
+    // Check duplicate Vendor + Bill Number
+    const existing = db.prepare('SELECT id FROM outsource_bills WHERE bill_number = ? AND vendor_id = ?').get(trimmedBillNo, vendorId);
+    if (existing && !allowDuplicate) {
+      return res.status(409).json({
+        success: false,
+        isDuplicate: true,
+        error: `Bill Number "${trimmedBillNo}" already exists for vendor "${vendorName || vendorId}". Duplicate bills for the same vendor are prevented.`
+      });
+    }
+
+    const user = req.user;
+    const billId = `BILL-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+    const effectiveDate = billDate || new Date().toISOString().split('T')[0];
+    const totalAmount = (workOrders || []).reduce((sum, wo) => sum + (Number(wo.amount) || 0), 0);
+    const outstandingAmount = totalAmount;
+
+    const tx = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO outsource_bills (id, bill_number, vendor_id, vendor_name, bill_date, total_amount, paid_amount, outstanding_amount, status, work_orders_json, notes)
+        VALUES (?, ?, ?, ?, ?, ?, 0, ?, 'Unpaid', ?, ?)
+      `).run(billId, trimmedBillNo, vendorId, vendorName || 'Outsource Vendor', effectiveDate, totalAmount, outstandingAmount, JSON.stringify(workOrders), notes);
+
+      // Increase vendor pending_payment by bill total
+      db.prepare('UPDATE suppliers SET pending_payment = pending_payment + ? WHERE id = ?').run(totalAmount, vendorId);
+
+      // Audit Log
+      const auditId = `AUD-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+      db.prepare(`
+        INSERT INTO audit_logs (id, user_id, employee_id, employee_name, role, action, module, record_id, details)
+        VALUES (?, ?, ?, ?, ?, 'OUTSOURCE_BILL_CREATED', 'Outsource', ?, ?)
+      `).run(
+        auditId, user?.userId || user?.id, user?.employeeId, user?.name || 'Staff', user?.role || 'Staff',
+        billId, `Outsource Bill ${trimmedBillNo} created for ${vendorName} with ${workOrders.length} Work Orders (Total: ₹${totalAmount.toLocaleString('en-IN')})`
+      );
+    });
+
+    tx();
+    publishEvent('OUTSOURCE_BILL_CREATED', { billId, billNumber: trimmedBillNo, vendorId, vendorName, totalAmount });
+    res.json({ success: true, billId, billNumber: trimmedBillNo, message: 'Outsource Bill created successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET Outsource Payments
+app.get('/api/outsource-payments', authenticateToken, (req, res) => {
+  try {
+    const rawPayments = db.prepare('SELECT * FROM outsource_payments ORDER BY payment_date DESC, created_at DESC').all();
+    res.json({ success: true, payments: rawPayments });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// RECORD Single Bill-Based Payment (Multiple partial payments allowed against 1 Bill)
+app.post('/api/outsource-payments', authenticateToken, (req, res) => {
+  try {
+    const { billId, billNumber, vendorId, amount, paymentMethod, refNo, paymentDate, notes } = req.body;
+    const payAmt = Number(amount);
+    if (!payAmt || payAmt <= 0) {
+      return res.status(400).json({ success: false, error: 'Valid payment amount is required' });
+    }
+
+    // Locate Bill
+    let bill = null;
+    if (billId) {
+      bill = db.prepare('SELECT * FROM outsource_bills WHERE id = ?').get(billId);
+    }
+    if (!bill && billNumber && vendorId) {
+      bill = db.prepare('SELECT * FROM outsource_bills WHERE bill_number = ? AND vendor_id = ?').get(billNumber, vendorId);
+    }
+    if (!bill) {
+      return res.status(404).json({ success: false, error: 'Target Outsource Bill not found' });
+    }
+
+    // Calculate current paid and outstanding
+    const existingPayments = db.prepare('SELECT amount FROM outsource_payments WHERE bill_id = ? OR (bill_number = ? AND vendor_id = ?)')
+      .all(bill.id, bill.bill_number, bill.vendor_id);
+    const alreadyPaid = existingPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const totalBillAmt = Number(bill.total_amount || 0);
+    const currentOutstanding = Math.max(0, totalBillAmt - alreadyPaid);
+
+    if (payAmt > currentOutstanding + 0.01) {
+      return res.status(400).json({
+        success: false,
+        error: `Payment amount (₹${payAmt.toLocaleString('en-IN')}) cannot exceed current bill outstanding balance of ₹${currentOutstanding.toLocaleString('en-IN')}`
+      });
+    }
+
+    const payId = generateNextSequence(db, 'PAY');
+    const pDate = paymentDate || new Date().toISOString().split('T')[0];
+    const pMethod = paymentMethod || 'Cash';
+    const user = req.user;
+
+    const newPaid = alreadyPaid + payAmt;
+    const newOutstanding = Math.max(0, totalBillAmt - newPaid);
+    const newStatus = newOutstanding <= 0 ? 'Paid' : 'Partially Paid';
+
+    const tx = db.transaction(() => {
+      // 1. Insert ONE single payment against the Bill (do NOT create separate payments for each WO)
+      db.prepare(`
+        INSERT INTO outsource_payments (id, bill_id, bill_number, vendor_id, vendor_name, amount, payment_method, ref_no, payment_date, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(payId, bill.id, bill.bill_number, bill.vendor_id, bill.vendor_name, payAmt, pMethod, refNo || '', pDate, notes || '');
+
+      // 2. Update Bill status and amounts
+      db.prepare(`
+        UPDATE outsource_bills
+        SET paid_amount = ?, outstanding_amount = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(newPaid, newOutstanding, newStatus, bill.id);
+
+      // 3. Update vendor pending payment in suppliers table
+      db.prepare(`
+        UPDATE suppliers
+        SET pending_payment = MAX(0, pending_payment - ?)
+        WHERE id = ?
+      `).run(payAmt, bill.vendor_id);
+
+      // 4. Double-Entry Accounting Journal Voucher
+      const isBankOrUpi = pMethod.toLowerCase().includes('bank') || pMethod.toLowerCase().includes('upi') || pMethod.toLowerCase().includes('cheque') || pMethod.toLowerCase().includes('card');
+      const creditAccount = isBankOrUpi ? 'HDFC Bank Account' : 'Cash Account';
+      const debitAccount = `Accounts Payable (${bill.vendor_name})`;
+
+      postDoubleEntryJournal(db, {
+        voucherType: 'Payment Entry',
+        date: pDate,
+        refNo: refNo || bill.bill_number,
+        referenceType: 'OUTSOURCE_PAYMENT',
+        referenceId: payId,
+        narration: `Payment of ₹${payAmt.toLocaleString('en-IN')} towards Outsource Bill ${bill.bill_number} to ${bill.vendor_name} via ${pMethod}${notes ? ' - ' + notes : ''}`,
+        createdByUserId: user?.userId || user?.id,
+        createdByName: user?.name || 'Accounts Staff',
+        entries: [
+          { accountName: debitAccount, accountGroup: 'Liabilities', entryType: 'DEBIT', amount: payAmt, supplierId: bill.vendor_id },
+          { accountName: creditAccount, accountGroup: 'Assets', entryType: 'CREDIT', amount: payAmt, supplierId: bill.vendor_id }
+        ]
+      });
+
+      // 5. Immutable Audit Log
+      const auditId = `AUD-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+      db.prepare(`
+        INSERT INTO audit_logs (id, user_id, employee_id, employee_name, role, action, module, record_id, details)
+        VALUES (?, ?, ?, ?, ?, 'OUTSOURCE_PAYMENT_RECORDED', 'Outsource', ?, ?)
+      `).run(
+        auditId, user?.userId || user?.id, user?.employeeId, user?.name || 'Staff', user?.role || 'Accounts',
+        payId, `Outsource payment ${payId} of ₹${payAmt.toLocaleString('en-IN')} recorded for Bill ${bill.bill_number} (${bill.vendor_name}) via ${pMethod}. Remaining Outstanding: ₹${newOutstanding.toLocaleString('en-IN')}`
+      );
+    });
+
+    tx();
+    publishEvent('OUTSOURCE_PAYMENT_RECORDED', {
+      paymentId: payId,
+      billId: bill.id,
+      billNumber: bill.bill_number,
+      vendorId: bill.vendor_id,
+      amount: payAmt,
+      remainingOutstanding: newOutstanding,
+      status: newStatus
+    });
+
+    res.json({
+      success: true,
+      paymentId: payId,
+      billNumber: bill.bill_number,
+      vendorName: bill.vendor_name,
+      amount: payAmt,
+      paidAmount: newPaid,
+      outstandingAmount: newOutstanding,
+      status: newStatus,
+      message: `Payment ${payId} of ₹${payAmt.toLocaleString('en-IN')} recorded successfully for Bill ${bill.bill_number}`
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

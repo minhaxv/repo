@@ -731,6 +731,40 @@ export const api = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to fetch audit logs');
     return data;
+  },
+
+  // Outsource Bills & Bill-Based Payments
+  async fetchOutsourceBills() {
+    const res = await fetch(`${API_BASE}/outsource-bills`, { headers: getHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to fetch outsource bills');
+    return data;
+  },
+  async createOutsourceBill(billData) {
+    const res = await fetch(`${API_BASE}/outsource-bills`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(billData)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to create outsource bill');
+    return data;
+  },
+  async fetchOutsourcePayments() {
+    const res = await fetch(`${API_BASE}/outsource-payments`, { headers: getHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to fetch outsource payments');
+    return data;
+  },
+  async recordOutsourcePayment(paymentData) {
+    const res = await fetch(`${API_BASE}/outsource-payments`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(paymentData)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to record outsource payment');
+    return data;
   }
 };
 

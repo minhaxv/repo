@@ -1182,6 +1182,81 @@ export function runMigrations(db) {
     console.log(' -> Migration 014 applied: Customer address and financial defaults ensured.');
   });
 
+  // ----------------------------------------------------
+  // MIGRATION 015: Outsource Bills and Bill-Based Payments
+  // ----------------------------------------------------
+  applyMigration('015_outsource_bills_and_payments', (database) => {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS outsource_bills (
+        id TEXT PRIMARY KEY,
+        bill_number TEXT NOT NULL,
+        vendor_id TEXT NOT NULL,
+        vendor_name TEXT NOT NULL,
+        bill_date TEXT NOT NULL,
+        total_amount REAL DEFAULT 0,
+        paid_amount REAL DEFAULT 0,
+        outstanding_amount REAL DEFAULT 0,
+        status TEXT DEFAULT 'Unpaid',
+        work_orders_json TEXT,
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_outsource_bills_vendor ON outsource_bills(vendor_id);
+      CREATE INDEX IF NOT EXISTS idx_outsource_bills_no ON outsource_bills(bill_number);
+
+      CREATE TABLE IF NOT EXISTS outsource_payments (
+        id TEXT PRIMARY KEY,
+        bill_id TEXT NOT NULL,
+        bill_number TEXT NOT NULL,
+        vendor_id TEXT NOT NULL,
+        vendor_name TEXT NOT NULL,
+        amount REAL NOT NULL,
+        payment_method TEXT NOT NULL,
+        ref_no TEXT,
+        payment_date TEXT NOT NULL,
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (bill_id) REFERENCES outsource_bills(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_outsource_payments_bill ON outsource_payments(bill_id);
+      CREATE INDEX IF NOT EXISTS idx_outsource_payments_vendor ON outsource_payments(vendor_id);
+    `);
+
+    // Ensure Vendor "ABC Embroidery" exists
+    const abcVendor = database.prepare("SELECT id FROM suppliers WHERE name = 'ABC Embroidery' OR supplier_code = 'SUP-ABC-01'").get();
+    let vendorId = abcVendor ? abcVendor.id : 'SUP-ABC-01';
+    if (!abcVendor) {
+      database.prepare(`
+        INSERT INTO suppliers (id, supplier_code, name, category, mobile, email, address, gstin, pending_payment, avg_turnaround_days, notes)
+        VALUES (?, 'SUP-ABC-01', 'ABC Embroidery', 'Job Work & Embroidery', '9846012345', 'abc@embroidery.com', 'Plot 18, Textile Zone, Surat', '24AAACA5566G1Z9', 15000, 2, 'Preferred vendor for machine embroidery and applique')
+      `).run(vendorId);
+    }
+
+    // Seed Demo Bill BILL-125 for ABC Embroidery with 3 Work Orders (WO-001, WO-002, WO-003)
+    const existingBill = database.prepare("SELECT id FROM outsource_bills WHERE bill_number = 'BILL-125' AND vendor_id = ?").get(vendorId);
+    if (!existingBill) {
+      const billId = 'BILL-125-DEMO';
+      const workOrders = [
+        { workOrder: 'WO-001', jobCardId: 'WO-001', orderId: 'SO-1001', description: 'Logo Embroidery for T-Shirts', amount: 5000 },
+        { workOrder: 'WO-002', jobCardId: 'WO-002', orderId: 'SO-1002', description: 'Gold Thread Border Patches', amount: 8000 },
+        { workOrder: 'WO-003', jobCardId: 'WO-003', orderId: 'SO-1003', description: 'Cap Visor Direct Embroidery', amount: 7000 }
+      ];
+      database.prepare(`
+        INSERT INTO outsource_bills (id, bill_number, vendor_id, vendor_name, bill_date, total_amount, paid_amount, outstanding_amount, status, work_orders_json, notes)
+        VALUES (?, 'BILL-125', ?, 'ABC Embroidery', '2026-04-01', 20000, 5000, 15000, 'Partially Paid', ?, 'Consolidated April embroidery work orders')
+      `).run(billId, vendorId, JSON.stringify(workOrders));
+
+      // First partial payment PAY-000101 for ₹5,000 via Cash
+      database.prepare(`
+        INSERT INTO outsource_payments (id, bill_id, bill_number, vendor_id, vendor_name, amount, payment_method, ref_no, payment_date, notes)
+        VALUES ('PAY-000101', ?, 'BILL-125', ?, 'ABC Embroidery', 5000, 'Cash', 'CASH/APR-01', '2026-04-01', 'Initial advance payment on bill receipt')
+      `).run(billId, vendorId);
+    }
+
+    console.log(' -> Migration 015 applied: Outsource bills, bill-based single payment tracking, and demo BILL-125 ready.');
+  });
+
   console.log('✅ All migrations processed successfully!');
 }
 

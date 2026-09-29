@@ -300,6 +300,43 @@ export function initDatabase() {
     );
     CREATE INDEX IF NOT EXISTS idx_outsource_order ON outsource_jobs(sales_order_id);
 
+    -- 11B. Outsource Bills (Consolidated single vendor bill with multiple Work Orders)
+    CREATE TABLE IF NOT EXISTS outsource_bills (
+      id TEXT PRIMARY KEY,
+      bill_number TEXT NOT NULL,
+      vendor_id TEXT NOT NULL,
+      vendor_name TEXT NOT NULL,
+      bill_date TEXT NOT NULL,
+      total_amount REAL DEFAULT 0,
+      paid_amount REAL DEFAULT 0,
+      outstanding_amount REAL DEFAULT 0,
+      status TEXT DEFAULT 'Unpaid',
+      work_orders_json TEXT,
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_outsource_bills_vendor ON outsource_bills(vendor_id);
+    CREATE INDEX IF NOT EXISTS idx_outsource_bills_no ON outsource_bills(bill_number);
+
+    -- 11C. Outsource Payments (Single bill payment transactions)
+    CREATE TABLE IF NOT EXISTS outsource_payments (
+      id TEXT PRIMARY KEY,
+      bill_id TEXT NOT NULL,
+      bill_number TEXT NOT NULL,
+      vendor_id TEXT NOT NULL,
+      vendor_name TEXT NOT NULL,
+      amount REAL NOT NULL,
+      payment_method TEXT NOT NULL,
+      ref_no TEXT,
+      payment_date TEXT NOT NULL,
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (bill_id) REFERENCES outsource_bills(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_outsource_payments_bill ON outsource_payments(bill_id);
+    CREATE INDEX IF NOT EXISTS idx_outsource_payments_vendor ON outsource_payments(vendor_id);
+
     -- 12. Worker Job Incentives Ledger (0.5% Profit Incentive)
     CREATE TABLE IF NOT EXISTS worker_job_incentives (
       id TEXT PRIMARY KEY,
