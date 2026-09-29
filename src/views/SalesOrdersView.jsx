@@ -42,7 +42,8 @@ import {
   AlertTriangle,
   Users,
   ExternalLink,
-  MapPin
+  MapPin,
+  Receipt
 } from 'lucide-react';
 
 export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null, initialType = 'Direct', initialCust = null, onNavigate = null, isQuotationsOnly = false }) => {
@@ -68,7 +69,8 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
     cancelSalesOrder,
     deleteSalesOrder,
     orderAuditLogs,
-    updateVendorBill
+    updateVendorBill,
+    recordPayment
   } = useERP();
 
   const isQuotationsMode = isQuotationsOnly || initialType === 'Quotation';
@@ -120,6 +122,84 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
   const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState(null);
   const [printJobCardOrder, setPrintJobCardOrder] = useState(null);
   const [printInvoiceOrder, setPrintInvoiceOrder] = useState(null);
+
+  // Receive Payment / Receipt Modal State
+  const [receiptModalOrder, setReceiptModalOrder] = useState(null);
+  const [receiptForm, setReceiptForm] = useState({
+    amount: '',
+    paymentMethod: 'Cash',
+    receiptDate: new Date().toISOString().split('T')[0],
+    bankAccountId: '',
+    bankAccountName: '',
+    reference: '',
+    notes: ''
+  });
+  const [receiptError, setReceiptError] = useState('');
+  const [isSavingReceipt, setIsSavingReceipt] = useState(false);
+
+  const handleOpenReceiptModal = (order) => {
+    if (!order) return;
+    const total = Number(order.grandTotal || 0);
+    const received = Number(order.advanceAmount || 0);
+    const outstanding = Math.max(0, total - received);
+    if (outstanding <= 0) {
+      alert('This sales order is already fully paid.');
+      return;
+    }
+    setReceiptModalOrder(order);
+    setReceiptForm({
+      amount: '',
+      paymentMethod: 'Cash',
+      receiptDate: new Date().toISOString().split('T')[0],
+      bankAccountId: (companyBankAccounts && companyBankAccounts[0]?.id) || '',
+      bankAccountName: (companyBankAccounts && companyBankAccounts[0]?.bankName) || '',
+      reference: '',
+      notes: ''
+    });
+    setReceiptError('');
+  };
+
+  const handleSaveReceipt = async (e) => {
+    e.preventDefault();
+    if (!receiptModalOrder || isSavingReceipt) return;
+
+    const amt = parseFloat(receiptForm.amount);
+    if (isNaN(amt) || amt <= 0) {
+      setReceiptError('Please enter a valid receipt amount greater than 0.');
+      return;
+    }
+
+    const orderTotal = Number(receiptModalOrder.grandTotal || 0);
+    const orderReceived = Number(receiptModalOrder.advanceAmount || 0);
+    const currentOutstanding = Math.max(0, orderTotal - orderReceived);
+
+    if (amt > currentOutstanding + 0.001) {
+      setReceiptError(`Receipt amount cannot exceed current outstanding of ₹${currentOutstanding.toLocaleString('en-IN')}.`);
+      return;
+    }
+
+    try {
+      setIsSavingReceipt(true);
+      setReceiptError('');
+
+      await recordPayment(
+        receiptModalOrder.id,
+        amt,
+        receiptForm.paymentMethod,
+        receiptForm.reference || `REC-${receiptModalOrder.id}`,
+        receiptForm.bankAccountId,
+        receiptForm.bankAccountName,
+        receiptForm.receiptDate,
+        receiptForm.notes
+      );
+
+      setReceiptModalOrder(null);
+    } catch (err) {
+      setReceiptError(err.message || 'Failed to save receipt.');
+    } finally {
+      setIsSavingReceipt(false);
+    }
+  };
 
   // Multi-Vendor Outsource Jobs Modal State (1 or More Vendors per Line Item)
   const [outsourceModalIdx, setOutsourceModalIdx] = useState(null);
@@ -1948,9 +2028,9 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                             <div style={{ fontWeight: 800, fontSize: '1rem', color: '#0f172a' }}>₹{Number(order?.grandTotal ?? 0).toLocaleString()}</div>
                           </div>
                           <div style={{ textAlign: 'right' }}>
-                            <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Balance:</span>
-                            <div style={{ fontWeight: 800, fontSize: '0.9rem', color: (order?.balanceAmount || 0) > 0 ? '#e11d48' : '#059669' }}>
-                              ₹{Number(order?.balanceAmount ?? 0).toLocaleString()}
+                            <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Outstanding:</span>
+                            <div style={{ fontWeight: 800, fontSize: '0.9rem', color: (Number(order?.balanceAmount ?? (Number(order?.grandTotal || 0) - Number(order?.advanceAmount || 0)))) > 0 ? '#e11d48' : '#059669' }}>
+                              ₹{Number(order?.balanceAmount ?? (Number(order?.grandTotal || 0) - Number(order?.advanceAmount || 0))).toLocaleString()}
                             </div>
                           </div>
                         </div>
@@ -1986,6 +2066,37 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                         >
                           Edit
                         </button>
+                        {!isQuote && (
+                          (() => {
+                            const ordTotal = Number(order?.grandTotal || 0);
+                            const ordReceived = Number(order?.advanceAmount || 0);
+                            const ordOutstanding = Math.max(0, ordTotal - ordReceived);
+                            const isFullyPaid = ordTotal > 0 && ordOutstanding <= 0;
+
+                            if (isFullyPaid) {
+                              return (
+                                <span
+                                  className="badge badge-emerald"
+                                  style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '2px' }}
+                                >
+                                  <Check size={12} /> Paid ✓
+                                </span>
+                              );
+                            }
+
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenReceiptModal(order)}
+                                className="btn btn-sm btn-secondary"
+                                style={{ padding: '0.2rem 0.55rem', color: '#059669', borderColor: '#a7f3d0', background: '#f0fdf4', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                title="Receive Payment"
+                              >
+                                <Receipt size={13} /> Receipt
+                              </button>
+                            );
+                          })()
+                        )}
                       </div>
                     </div>
                   );
@@ -2006,8 +2117,8 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                     <th>Sales Person</th>
                     <th>Status / Workflow</th>
                     <th>Grand Total</th>
-                    <th>Advance</th>
-                    <th>Balance</th>
+                    <th>Received</th>
+                    <th>Outstanding</th>
                     {isAdminOrManager && <th>Profit Margin</th>}
                     <th style={{ textAlign: 'center' }}>Actions</th>
                   </tr>
@@ -2064,8 +2175,8 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                         </td>
                         <td style={{ fontWeight: 800 }}>₹{Number(order?.grandTotal ?? 0).toLocaleString()}</td>
                         <td style={{ color: '#059669', fontWeight: 600 }}>₹{Number(order?.advanceAmount ?? 0).toLocaleString()}</td>
-                        <td style={{ color: (order?.balanceAmount || 0) > 0 ? '#e11d48' : '#059669', fontWeight: 700 }}>
-                          ₹{Number(order?.balanceAmount ?? 0).toLocaleString()}
+                        <td style={{ color: (Number(order?.balanceAmount ?? (Number(order?.grandTotal || 0) - Number(order?.advanceAmount || 0)))) > 0 ? '#e11d48' : '#059669', fontWeight: 700 }}>
+                          ₹{Number(order?.balanceAmount ?? (Number(order?.grandTotal || 0) - Number(order?.advanceAmount || 0))).toLocaleString()}
                         </td>
                         {isAdminOrManager && (
                           <td>
@@ -2075,7 +2186,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                           </td>
                         )}
                         <td>
-                          <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center', flexWrap: 'wrap', alignItems: 'center' }}>
                             <button
                               onClick={() => {
                                 setSelectedOrderId(order.id);
@@ -2103,6 +2214,62 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                             >
                               <Edit size={14} /> Edit
                             </button>
+
+                            {/* RECEIPT / RECEIVE PAYMENT ACTION */}
+                            {!isQuote && (
+                              (() => {
+                                const ordTotal = Number(order?.grandTotal || 0);
+                                const ordReceived = Number(order?.advanceAmount || 0);
+                                const ordOutstanding = Math.max(0, ordTotal - ordReceived);
+                                const isFullyPaid = ordTotal > 0 && ordOutstanding <= 0;
+
+                                if (isFullyPaid) {
+                                  return (
+                                    <span
+                                      className="badge badge-emerald"
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '2px',
+                                        padding: '0.22rem 0.5rem',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 800,
+                                        background: '#ecfdf5',
+                                        color: '#059669',
+                                        border: '1px solid #a7f3d0',
+                                        borderRadius: '4px'
+                                      }}
+                                      title="Fully Paid ✓ (Outstanding: ₹0)"
+                                    >
+                                      <Check size={12} /> Paid ✓
+                                    </span>
+                                  );
+                                }
+
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenReceiptModal(order)}
+                                    className="btn btn-sm btn-secondary"
+                                    style={{
+                                      color: '#059669',
+                                      borderColor: '#a7f3d0',
+                                      background: '#f0fdf4',
+                                      fontWeight: 700,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                      padding: '0.22rem 0.55rem',
+                                      fontSize: '0.78rem'
+                                    }}
+                                    title={`Receive Payment (Outstanding: ₹${Number(ordOutstanding).toLocaleString('en-IN')})`}
+                                  >
+                                    <Receipt size={13} /> Receipt
+                                  </button>
+                                );
+                              })()
+                            )}
+
                             {!isQuote && (
                               <button
                                 onClick={() => setPrintJobCardOrder(order)}
@@ -2996,6 +3163,217 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
           onClose={() => setSelectedJobDetailJob(null)}
           onPrintJobCard={(j) => setPrintJobCardOrder(j)}
         />
+      )}
+
+      {/* RECEIVE PAYMENT / RECEIPT MODAL */}
+      {receiptModalOrder && (
+        <div className="modal-overlay" onClick={() => !isSavingReceipt && setReceiptModalOrder(null)}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '480px', width: '92%', borderRadius: '12px', overflow: 'hidden' }}
+          >
+            <div className="modal-header" style={{ background: '#f0fdf4', borderBottom: '1px solid #bbf7d0', padding: '1rem 1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Receipt size={22} color="#059669" />
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: '#065f46' }}>
+                  Receive Payment
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReceiptModalOrder(null)}
+                className="btn-secondary btn-icon"
+                style={{ border: 'none' }}
+                disabled={isSavingReceipt}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveReceipt}>
+              <div className="modal-body" style={{ padding: '1.25rem' }}>
+                {(() => {
+                  const orderTotal = Number(receiptModalOrder.grandTotal || 0);
+                  const orderReceived = Number(receiptModalOrder.advanceAmount || 0);
+                  const orderOutstanding = Math.max(0, orderTotal - orderReceived);
+
+                  return (
+                    <>
+                      {/* Order Info Summary Box */}
+                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.85rem 1rem', marginBottom: '1.15rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.65rem' }}>
+                          <div>
+                            <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, display: 'block' }}>Sales Order:</span>
+                            <span style={{ fontWeight: 800, fontSize: '0.9rem', color: '#1e40af' }}>{receiptModalOrder.id}</span>
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, display: 'block' }}>Customer:</span>
+                            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a' }}>{receiptModalOrder.customerName || 'Customer'}</span>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', paddingTop: '0.65rem', borderTop: '1px dashed #cbd5e1' }}>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, display: 'block' }}>Order Total:</span>
+                            <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#334155' }}>
+                              ₹{orderTotal.toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, display: 'block' }}>Received:</span>
+                            <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#059669' }}>
+                              ₹{orderReceived.toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <span style={{ fontSize: '0.7rem', color: '#e11d48', fontWeight: 700, display: 'block' }}>Outstanding:</span>
+                            <span style={{ fontWeight: 900, fontSize: '0.98rem', color: '#e11d48' }}>
+                              ₹{orderOutstanding.toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {receiptError && (
+                        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '0.6rem 0.85rem', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <AlertTriangle size={15} /> {receiptError}
+                        </div>
+                      )}
+
+                      {/* Receipt Amount Field */}
+                      <div className="form-group" style={{ marginBottom: '0.95rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                          <label className="form-label" style={{ fontWeight: 700, fontSize: '0.82rem', margin: 0 }}>
+                            Receipt Amount (₹) *
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setReceiptForm(prev => ({ ...prev, amount: String(orderOutstanding) }))}
+                            className="btn btn-outline btn-xs"
+                            style={{ fontSize: '0.7rem', fontWeight: 700, color: '#2563eb', borderColor: '#bfdbfe', background: '#eff6ff', padding: '1px 6px' }}
+                          >
+                            Pay Full (₹{orderOutstanding.toLocaleString('en-IN')})
+                          </button>
+                        </div>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0.01"
+                          max={orderOutstanding}
+                          className="form-control"
+                          style={{ fontSize: '1.1rem', fontWeight: 800, color: '#059669', borderColor: '#a7f3d0' }}
+                          placeholder={`₹ Amount (Max: ₹${orderOutstanding.toLocaleString('en-IN')})`}
+                          value={receiptForm.amount}
+                          onChange={(e) => {
+                            setReceiptForm({ ...receiptForm, amount: e.target.value });
+                            setReceiptError('');
+                          }}
+                          autoFocus
+                          required
+                        />
+                      </div>
+
+                      {/* Payment Mode */}
+                      <div className="form-group" style={{ marginBottom: '0.95rem' }}>
+                        <label className="form-label" style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>
+                          Payment Mode *
+                        </label>
+                        <select
+                          className="form-select"
+                          value={receiptForm.paymentMethod}
+                          onChange={(e) => setReceiptForm({ ...receiptForm, paymentMethod: e.target.value })}
+                          required
+                        >
+                          <option value="Cash">Cash</option>
+                          <option value="UPI">UPI</option>
+                          <option value="Bank Transfer">Bank Transfer / NEFT / RTGS</option>
+                          <option value="Cheque">Cheque</option>
+                          <option value="Card">Credit / Debit Card</option>
+                        </select>
+                      </div>
+
+                      {/* Deposit Bank Account (if non-cash) */}
+                      {receiptForm.paymentMethod !== 'Cash' && companyBankAccounts && companyBankAccounts.length > 0 && (
+                        <div className="form-group" style={{ marginBottom: '0.95rem' }}>
+                          <label className="form-label" style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>
+                            Deposit Bank Account
+                          </label>
+                          <select
+                            className="form-select"
+                            value={receiptForm.bankAccountId}
+                            onChange={(e) => {
+                              const found = companyBankAccounts.find(b => b.id === e.target.value);
+                              setReceiptForm({
+                                ...receiptForm,
+                                bankAccountId: e.target.value,
+                                bankAccountName: found?.bankName || ''
+                              });
+                            }}
+                          >
+                            {companyBankAccounts.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.bankName} - {b.accountNumber} ({b.accountHolder})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Receipt Date */}
+                      <div className="form-group" style={{ marginBottom: '0.95rem' }}>
+                        <label className="form-label" style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>
+                          Receipt Date *
+                        </label>
+                        <input
+                          type="date"
+                          className="form-control"
+                          value={receiptForm.receiptDate}
+                          onChange={(e) => setReceiptForm({ ...receiptForm, receiptDate: e.target.value })}
+                          required
+                        />
+                      </div>
+
+                      {/* Reference / Notes */}
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.35rem' }}>
+                          Reference / Note (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          placeholder="e.g. UPI Ref, Cheque No, Transaction ID..."
+                          value={receiptForm.reference}
+                          onChange={(e) => setReceiptForm({ ...receiptForm, reference: e.target.value })}
+                        />
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              <div className="modal-footer" style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0', padding: '0.75rem 1.25rem', display: 'flex', justifyContent: 'flex-end', gap: '0.65rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setReceiptModalOrder(null)}
+                  className="btn btn-secondary"
+                  disabled={isSavingReceipt}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  style={{ background: '#059669', borderColor: '#059669', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                  disabled={isSavingReceipt}
+                >
+                  <Check size={16} />
+                  {isSavingReceipt ? 'Saving Receipt...' : 'Save Receipt'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

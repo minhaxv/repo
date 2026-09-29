@@ -4000,22 +4000,18 @@ app.post('/api/payroll/commit', authenticateToken, requirePermission('payroll.cr
 // ============================================================================
 app.post('/api/payments', authenticateToken, (req, res) => {
   try {
-    const { orderId, customerId, customerName, amount, method, refNo, notes } = req.body;
+    const { orderId, customerId, customerName, amount, method, refNo, notes, date, paidDate, paid_date } = req.body;
     if (!amount || Number(amount) <= 0) {
       return res.status(400).json({ success: false, error: 'Valid payment amount is required' });
     }
     const payId = req.body.id || generateNextSequence(db, 'PAY');
     const user = req.user;
-    const nowIso = new Date().toISOString();
+    const paymentDateVal = date || paidDate || paid_date || new Date().toISOString().split('T')[0];
 
     const payTx = db.transaction(() => {
-      db.prepare(`
-        INSERT INTO payments (id, order_id, customer_id, customer_name, amount, method, ref_no, status, paid_date, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'Completed', CURRENT_TIMESTAMP, ?)
-      `).run(payId, orderId || null, customerId || null, customerName || '', Number(amount), method || 'Cash', refNo || '', notes || '');
-
+      let ord = null;
       if (orderId) {
-        const ord = db.prepare('SELECT grand_total, advance_amount FROM sales_orders WHERE id = ?').get(orderId);
+        ord = db.prepare('SELECT grand_total, advance_amount, customer_id, customer_name FROM sales_orders WHERE id = ?').get(orderId);
         if (ord) {
           const newAdvance = Number(ord.advance_amount || 0) + Number(amount);
           const newBalance = Math.max(0, Number(ord.grand_total || 0) - newAdvance);
@@ -4025,9 +4021,17 @@ app.post('/api/payments', authenticateToken, (req, res) => {
         }
       }
 
-      if (customerId) {
+      const targetCustomerId = customerId || ord?.customer_id || null;
+      const targetCustomerName = customerName || ord?.customer_name || 'Customer';
+
+      db.prepare(`
+        INSERT INTO payments (id, order_id, customer_id, customer_name, amount, method, ref_no, status, paid_date, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'Completed', ?, ?)
+      `).run(payId, orderId || null, targetCustomerId, targetCustomerName, Number(amount), method || 'Cash', refNo || '', paymentDateVal, notes || '');
+
+      if (targetCustomerId) {
         db.prepare('UPDATE customers SET outstanding = MAX(0, outstanding - ?) WHERE id = ?')
-          .run(Number(amount), customerId);
+          .run(Number(amount), targetCustomerId);
       }
 
       // Post Double-Entry Journal Voucher for Payment Receipt (Requirements 34, 37, 71)
@@ -4035,20 +4039,20 @@ app.post('/api/payments', authenticateToken, (req, res) => {
       const debitAccount = pmtMethod.includes('bank') || pmtMethod.includes('upi') || pmtMethod.includes('cheque')
         ? 'HDFC Bank Account'
         : 'Cash Account';
-      const custDisplayName = customerName || 'Customer';
+      const custDisplayName = targetCustomerName;
 
       postDoubleEntryJournal(db, {
         voucherType: 'Payment Receipt',
-        date: new Date().toISOString().split('T')[0],
+        date: paymentDateVal,
         refNo: refNo || payId,
         referenceType: 'PAYMENT',
         referenceId: payId,
-        narration: `Payment received for ${orderId ? 'Order ' + orderId : 'Customer Account'} from ${custDisplayName} via ${method || 'Cash'}`,
+        narration: `Payment received for ${orderId ? 'Order ' + orderId : 'Customer Account'} from ${custDisplayName} via ${method || 'Cash'}${notes ? ' - ' + notes : ''}`,
         createdByUserId: user?.userId || user?.id,
         createdByName: user?.name || 'Cashier',
         entries: [
-          { accountName: debitAccount, accountGroup: 'Assets', entryType: 'DEBIT', amount: Number(amount), customerId: customerId || null, orderId: orderId || null },
-          { accountName: `Accounts Receivable (${custDisplayName})`, accountGroup: 'Assets', entryType: 'CREDIT', amount: Number(amount), customerId: customerId || null, orderId: orderId || null }
+          { accountName: debitAccount, accountGroup: 'Assets', entryType: 'DEBIT', amount: Number(amount), customerId: targetCustomerId, orderId: orderId || null },
+          { accountName: `Accounts Receivable (${custDisplayName})`, accountGroup: 'Assets', entryType: 'CREDIT', amount: Number(amount), customerId: targetCustomerId, orderId: orderId || null }
         ]
       });
 
@@ -4059,12 +4063,12 @@ app.post('/api/payments', authenticateToken, (req, res) => {
         VALUES (?, ?, ?, ?, ?, 'PAYMENT_RECEIVED', 'Accounts', ?, ?)
       `).run(
         auditId, user?.userId || user?.id, user?.employeeId, user?.name || 'Staff', user?.role || 'Staff',
-        payId, `Payment of ₹${Number(amount).toLocaleString('en-IN')} recorded for ${customerName || customerId} via ${method || 'Cash'}`
+        payId, `Payment of ₹${Number(amount).toLocaleString('en-IN')} recorded for ${custDisplayName} via ${method || 'Cash'}`
       );
     });
 
     payTx();
-    publishEvent('PAYMENT_RECEIVED', { paymentId: payId, orderId, customerId, customerName, amount, method });
+    publishEvent('PAYMENT_RECEIVED', { paymentId: payId, orderId, customerId: targetCustomerId, customerName: targetCustomerName, amount, method });
     res.json({ success: true, paymentId: payId });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

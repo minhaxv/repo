@@ -2622,7 +2622,7 @@ export const ERPProvider = ({ children }) => {
   };
 
   // Record Customer Payment Received
-  const recordPayment = async (orderId, amount, method, refNo, bankAccountId = '', bankAccountName = '') => {
+  const recordPayment = async (orderId, amount, method, refNo, bankAccountId = '', bankAccountName = '', receiptDate = null, notes = '') => {
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) return;
 
@@ -2636,17 +2636,21 @@ export const ERPProvider = ({ children }) => {
     else if (newAdvance > 0) newPayStatus = 'Partial';
 
     const payId = `PAY-${Math.floor(1000 + Math.random() * 9000)}`;
+    const paymentDateVal = receiptDate || new Date().toISOString().split('T')[0];
     const payVoucher = {
       id: payId,
-      date: new Date().toISOString().split('T')[0],
+      date: paymentDateVal,
       orderId: orderId,
       order_id: orderId,
+      customerId: order.customerId || null,
+      customer_id: order.customerId || null,
       customerName: order.customerName || 'Customer',
       customer_name: order.customerName || 'Customer',
       amount: amt,
-      method: method || 'UPI',
+      method: method || 'Cash',
       refNo: refNo || `REC-${orderId}`,
       ref_no: refNo || `REC-${orderId}`,
+      notes: notes || '',
       status: 'Verified',
       bankAccountId: bankAccountId || '',
       bankAccountName: bankAccountName || 'Main Cash Account',
@@ -2675,7 +2679,8 @@ export const ERPProvider = ({ children }) => {
           amount: payVoucher.amount,
           method: payVoucher.method,
           ref_no: payVoucher.ref_no,
-          status: payVoucher.status
+          status: payVoucher.status,
+          notes: payVoucher.notes
         });
       } catch (err) {
         console.warn("Supabase recordPayment exception:", err);
@@ -2711,10 +2716,14 @@ export const ERPProvider = ({ children }) => {
       await api.recordPayment({
         id: payVoucher.id,
         orderId: orderId,
+        customerId: order.customerId || null,
         customerName: order.customerName || 'Customer',
         amount: amt,
-        method: method || 'UPI',
+        method: method || 'Cash',
         refNo: refNo || `REC-${orderId}`,
+        date: paymentDateVal,
+        paid_date: paymentDateVal,
+        notes: notes || '',
         bankAccountId: bankAccountId || '',
         bankAccountName: bankAccountName || 'Main Cash Account',
         recordedBy: activeUser?.name || 'Authorized Staff'
