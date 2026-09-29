@@ -845,9 +845,16 @@ app.get('/api/all', authenticateToken, (req, res) => {
           ...c,
           code: c.customer_code,
           gstin: c.gst_number,
+          type: c.customer_type || 'Regular',
+          address: c.address || '',
+          city: c.city || '',
+          pincode: c.pincode || '',
+          district: c.district || 'Kozhikode',
+          state: c.state || 'Kerala',
           additionalMobiles: Array.isArray(addMobiles) ? addMobiles : [],
           outstandingAmount: Number(c.outstanding),
-          creditLimit: Number(c.credit_limit || 50000),
+          creditLimit: Number(c.credit_limit !== null && c.credit_limit !== undefined ? c.credit_limit : 10000),
+          referralCommissionPct: Number(c.referral_commission_pct !== null && c.referral_commission_pct !== undefined ? c.referral_commission_pct : 0.2),
           openingBalance: Number(c.opening_balance || 0),
           openingBalanceType: c.opening_balance_type || 'Receivable',
           openingBalanceDate: c.opening_balance_date || null,
@@ -1212,6 +1219,42 @@ app.post('/api/customers', (req, res) => {
     const id = c.id || `CUST-${Date.now()}`;
     const addMobiles = Array.isArray(c.additionalMobiles) ? JSON.stringify(c.additionalMobiles) : (c.additionalMobiles ? JSON.stringify([c.additionalMobiles]) : '[]');
     
+    // Validations
+    const name = (c.name || '').trim();
+    if (!name) {
+      return res.status(400).json({ success: false, error: 'Customer Name is required.' });
+    }
+
+    const address = (c.address || '').trim();
+    if (!address) {
+      return res.status(400).json({ success: false, error: 'Address is required.' });
+    }
+
+    const city = (c.city || '').trim();
+    if (!city) {
+      return res.status(400).json({ success: false, error: 'City is required.' });
+    }
+
+    const pincode = String(c.pincode || c.pinCode || c.pin_code || '').trim();
+    if (!pincode) {
+      return res.status(400).json({ success: false, error: 'PIN Code is required.' });
+    }
+
+    const district = (c.district || 'Kozhikode').trim();
+    if (!district) {
+      return res.status(400).json({ success: false, error: 'District is required.' });
+    }
+
+    const state = (c.state || 'Kerala').trim();
+    if (!state) {
+      return res.status(400).json({ success: false, error: 'State is required.' });
+    }
+
+    // Default values for new customer
+    const customerType = c.customerType || c.type || 'Regular';
+    const creditLimit = Math.max(0, Number(c.creditLimit !== undefined ? c.creditLimit : (c.credit_limit !== undefined ? c.credit_limit : 10000)));
+    const referralCommissionPct = Math.max(0, Number(c.referralCommissionPct !== undefined ? c.referralCommissionPct : (c.referral_commission_pct !== undefined ? c.referral_commission_pct : 0.2)));
+
     // Opening balance parameters
     const openingBalance = Math.max(0, Number(c.openingBalance || c.opening_balance || 0));
     const openingBalanceType = c.openingBalanceType || c.opening_balance_type || 'Receivable';
@@ -1228,13 +1271,14 @@ app.post('/api/customers', (req, res) => {
 
     db.prepare(`
       INSERT INTO customers (
-        id, customer_code, name, mobile, additional_mobiles, email, address, gst_number, customer_type, notes,
+        id, customer_code, name, mobile, additional_mobiles, email, address, city, pincode, district, state,
+        gst_number, customer_type, credit_limit, referral_commission_pct, notes,
         outstanding, opening_balance, opening_balance_type, opening_balance_date, opening_balance_notes
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      id, c.code || id, c.name, c.mobile || '', addMobiles, c.email || '', c.address || '',
-      c.gstin || c.gstNumber || '', c.customerType || c.type || 'Retail', c.notes || '',
+      id, c.code || id, name, c.mobile || '', addMobiles, c.email || '', address, city, pincode, district, state,
+      c.gstin || c.gstNumber || '', customerType, creditLimit, referralCommissionPct, c.notes || '',
       initialOutstanding, openingBalance, openingBalanceType, openingBalanceDate, openingBalanceNotes
     );
 
@@ -1242,7 +1286,7 @@ app.post('/api/customers', (req, res) => {
     if (openingBalance > 0) {
       const existingJv = db.prepare("SELECT id FROM journal_vouchers WHERE reference_type = 'CUSTOMER_OPENING_BALANCE' AND reference_id = ?").get(id);
       if (!existingJv) {
-        const custDisplayName = c.name || 'Customer';
+        const custDisplayName = name || 'Customer';
         const isReceivable = openingBalanceType === 'Receivable';
         const entries = isReceivable
           ? [
@@ -1271,7 +1315,22 @@ app.post('/api/customers', (req, res) => {
       }
     }
 
-    res.json({ success: true, customerId: id, outstanding: initialOutstanding });
+    const createdRow = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
+    res.json({
+      success: true,
+      customerId: id,
+      customer: {
+        ...createdRow,
+        code: createdRow.customer_code,
+        gstin: createdRow.gst_number,
+        creditLimit,
+        referralCommissionPct,
+        type: customerType,
+        outstanding: initialOutstanding,
+        outstandingAmount: initialOutstanding
+      },
+      outstanding: initialOutstanding
+    });
   } catch (err) {
     console.error("POST /api/customers Error:", err);
     res.status(500).json({ success: false, error: err.message });
@@ -1296,6 +1355,12 @@ app.put('/api/customers/:id', (req, res) => {
     const openingBalanceType = (c.openingBalanceType || c.opening_balance_type || existing.opening_balance_type || 'Receivable');
     const openingBalanceDate = (c.openingBalanceDate || c.opening_balance_date || existing.opening_balance_date || new Date().toISOString().split('T')[0]);
     const openingBalanceNotes = (c.openingBalanceNotes !== undefined ? c.openingBalanceNotes : (c.opening_balance_notes !== undefined ? c.opening_balance_notes : (existing.opening_balance_notes || '')));
+
+    const creditLimit = c.creditLimit !== undefined ? Number(c.creditLimit) : (c.credit_limit !== undefined ? Number(c.credit_limit) : undefined);
+    const referralCommissionPct = c.referralCommissionPct !== undefined ? Number(c.referralCommissionPct) : (c.referral_commission_pct !== undefined ? Number(c.referral_commission_pct) : undefined);
+    const pincode = c.pincode !== undefined ? c.pincode : (c.pinCode !== undefined ? c.pinCode : c.pin_code);
+
+    let recalculatedOutstanding = undefined;
 
     // If opening balance was changed, update corresponding ledger entry and recalculate outstanding
     if (hasNewOpeningBalance) {
@@ -1344,34 +1409,9 @@ app.put('/api/customers/:id', (req, res) => {
       const totalPayments = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
       const signedOpening = openingBalanceType === 'Payable' ? -openingBalance : openingBalance;
-      const recalculatedOutstanding = Number((signedOpening + totalInvoiced - totalPayments).toFixed(2));
-
-      db.prepare(`
-        UPDATE customers SET
-          name = COALESCE(?, name),
-          mobile = COALESCE(?, mobile),
-          additional_mobiles = COALESCE(?, additional_mobiles),
-          email = COALESCE(?, email),
-          address = COALESCE(?, address),
-          gst_number = COALESCE(?, gst_number),
-          customer_type = COALESCE(?, customer_type),
-          notes = COALESCE(?, notes),
-          opening_balance = ?,
-          opening_balance_type = ?,
-          opening_balance_date = ?,
-          opening_balance_notes = ?,
-          outstanding = ?,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).run(
-        c.name, c.mobile, addMobiles, c.email, c.address, c.gstin || c.gstNumber, c.type || c.customerType, c.notes,
-        openingBalance, openingBalanceType, openingBalanceDate, openingBalanceNotes, recalculatedOutstanding, id
-      );
-
-      return res.json({ success: true, outstanding: recalculatedOutstanding, openingBalance });
+      recalculatedOutstanding = Number((signedOpening + totalInvoiced - totalPayments).toFixed(2));
     }
 
-    // Normal update without opening balance change
     db.prepare(`
       UPDATE customers SET
         name = COALESCE(?, name),
@@ -1379,18 +1419,63 @@ app.put('/api/customers/:id', (req, res) => {
         additional_mobiles = COALESCE(?, additional_mobiles),
         email = COALESCE(?, email),
         address = COALESCE(?, address),
+        city = COALESCE(?, city),
+        pincode = COALESCE(?, pincode),
+        district = COALESCE(?, district),
+        state = COALESCE(?, state),
         gst_number = COALESCE(?, gst_number),
         customer_type = COALESCE(?, customer_type),
+        credit_limit = COALESCE(?, credit_limit),
+        referral_commission_pct = COALESCE(?, referral_commission_pct),
         notes = COALESCE(?, notes),
+        opening_balance = COALESCE(?, opening_balance),
+        opening_balance_type = COALESCE(?, opening_balance_type),
+        opening_balance_date = COALESCE(?, opening_balance_date),
+        opening_balance_notes = COALESCE(?, opening_balance_notes),
         outstanding = COALESCE(?, outstanding),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
-      c.name, c.mobile, addMobiles, c.email, c.address, c.gstin || c.gstNumber, c.type || c.customerType, c.notes,
-      c.outstandingAmount !== undefined ? Number(c.outstandingAmount) : (c.outstanding !== undefined ? Number(c.outstanding) : null), id
+      c.name, c.mobile, addMobiles, c.email, c.address, c.city, pincode, c.district, c.state,
+      c.gstin || c.gstNumber, c.type || c.customerType, creditLimit, referralCommissionPct, c.notes,
+      hasNewOpeningBalance ? openingBalance : null,
+      hasNewOpeningBalance ? openingBalanceType : null,
+      hasNewOpeningBalance ? openingBalanceDate : null,
+      hasNewOpeningBalance ? openingBalanceNotes : null,
+      recalculatedOutstanding !== undefined ? recalculatedOutstanding : (c.outstandingAmount !== undefined ? Number(c.outstandingAmount) : (c.outstanding !== undefined ? Number(c.outstanding) : null)),
+      id
     );
 
-    res.json({ success: true });
+    const updatedRow = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
+    let finalAddMobiles = [];
+    try {
+      if (updatedRow.additional_mobiles) {
+        finalAddMobiles = typeof updatedRow.additional_mobiles === 'string' ? JSON.parse(updatedRow.additional_mobiles) : updatedRow.additional_mobiles;
+      }
+    } catch (e) {}
+
+    const formattedCustomer = {
+      ...updatedRow,
+      code: updatedRow.customer_code,
+      gstin: updatedRow.gst_number,
+      additionalMobiles: Array.isArray(finalAddMobiles) ? finalAddMobiles : [],
+      creditLimit: Number(updatedRow.credit_limit),
+      referralCommissionPct: Number(updatedRow.referral_commission_pct),
+      type: updatedRow.customer_type,
+      outstanding: Number(updatedRow.outstanding),
+      outstandingAmount: Number(updatedRow.outstanding),
+      openingBalance: Number(updatedRow.opening_balance || 0),
+      openingBalanceType: updatedRow.opening_balance_type || 'Receivable',
+      openingBalanceDate: updatedRow.opening_balance_date || null,
+      openingBalanceNotes: updatedRow.opening_balance_notes || ''
+    };
+
+    res.json({
+      success: true,
+      customer: formattedCustomer,
+      outstanding: Number(updatedRow.outstanding),
+      openingBalance: Number(updatedRow.opening_balance)
+    });
   } catch (err) {
     console.error("PUT /api/customers/:id Error:", err);
     res.status(500).json({ success: false, error: err.message });
@@ -1437,7 +1522,7 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
     // Credit limit check on credit orders
     if (validCustomerId && totals.balanceAmount > 0 && !orderHeader.creditLimitOverride && !isQuote) {
       const cust = db.prepare('SELECT outstanding, credit_limit FROM customers WHERE id = ?').get(validCustomerId);
-      const creditLimit = Number(cust?.credit_limit ?? 50000);
+      const creditLimit = Number(cust?.credit_limit !== null && cust?.credit_limit !== undefined ? cust.credit_limit : 10000);
       const projectedBalance = Number(cust?.outstanding || 0) + totals.balanceAmount;
       if (projectedBalance > creditLimit) {
         return res.status(400).json({

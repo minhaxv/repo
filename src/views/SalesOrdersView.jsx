@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useERP } from '../context/ERPContext';
 import { CUSTOMER_TYPES, TAX_TYPES, PAYMENT_METHODS, DEFAULT_UNITS, PRODUCTION_STATUS } from '../types';
 import { CreateCustomerModal } from '../components/modals/CreateCustomerModal';
+import { EditCustomerModal } from '../components/modals/EditCustomerModal';
 import { CreateProductModal } from '../components/modals/CreateProductModal';
 import { CreateEmployeeModal } from '../components/modals/CreateEmployeeModal';
 import CreateCareOfModal from '../components/modals/CreateCareOfModal';
@@ -40,7 +41,8 @@ import {
   XCircle,
   AlertTriangle,
   Users,
-  ExternalLink
+  ExternalLink,
+  MapPin
 } from 'lucide-react';
 
 export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null, initialType = 'Direct', initialCust = null, onNavigate = null, isQuotationsOnly = false }) => {
@@ -106,6 +108,8 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
 
   // Modals state
   const [isCreateCustModalOpen, setIsCreateCustModalOpen] = useState(false);
+  const [isEditCustModalOpen, setIsEditCustModalOpen] = useState(false);
+  const [creditOverrideApproved, setCreditOverrideApproved] = useState(false);
   const [isCreateProdModalOpen, setIsCreateProdModalOpen] = useState(false);
   const [isCreateCareOfModalOpen, setIsCreateCareOfModalOpen] = useState(false);
   const [isCreateVendorModalOpen, setIsCreateVendorModalOpen] = useState(false);
@@ -282,11 +286,15 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
       additionalMobiles: (addMobiles || []).filter(Boolean),
       email: cust.email || '',
       gstin: cust.gstin || '',
-      type: cust.type || 'Retail Customer',
+      type: cust.type || cust.customer_type || 'Regular',
       address: cust.address || '',
-      state: cust.state || 'Maharashtra (27)',
-      credit_limit: Number(cust.credit_limit ?? cust.creditLimit ?? 0),
-      creditLimit: Number(cust.credit_limit ?? cust.creditLimit ?? 0),
+      city: cust.city || '',
+      pincode: cust.pincode || cust.pinCode || cust.pin_code || '',
+      district: cust.district || '',
+      state: cust.state || 'Kerala',
+      credit_limit: Number(cust.credit_limit ?? cust.creditLimit ?? 10000),
+      creditLimit: Number(cust.credit_limit ?? cust.creditLimit ?? 10000),
+      referralCommissionPct: Number(cust.referralCommissionPct ?? cust.referral_commission_pct ?? 0.2),
       outstanding: Number(cust.outstanding ?? cust.outstandingAmount ?? 0),
       outstandingAmount: Number(cust.outstanding ?? cust.outstandingAmount ?? 0),
       total_orders: Number(cust.total_orders ?? cust.totalOrders ?? 0),
@@ -298,6 +306,56 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
     const targetCareOfId = cust.careOfId || cust.care_of_id;
     if (targetCareOfId) {
       const foundCO = (careOfPersons || []).find((co) => co.id === targetCareOfId);
+      if (foundCO) {
+        setOrderHeader((prev) => ({
+          ...prev,
+          careOfId: foundCO.id,
+          careOfName: foundCO.name
+        }));
+      }
+    }
+  };
+
+  // Called when customer is edited directly inside the Sales Order
+  const handleCustomerUpdatedInOrder = (updatedCust) => {
+    if (!updatedCust) return;
+    let addMobiles = [];
+    if (updatedCust.additionalMobiles) {
+      addMobiles = Array.isArray(updatedCust.additionalMobiles) ? updatedCust.additionalMobiles : [updatedCust.additionalMobiles];
+    } else if (updatedCust.additional_mobiles) {
+      try {
+        addMobiles = typeof updatedCust.additional_mobiles === 'string' ? JSON.parse(updatedCust.additional_mobiles) : updatedCust.additional_mobiles;
+      } catch (e) {
+        addMobiles = [updatedCust.additional_mobiles];
+      }
+    }
+
+    const mergedCust = {
+      ...(selectedCust || {}),
+      ...updatedCust,
+      name: updatedCust.name || selectedCust?.name || '',
+      mobile: updatedCust.mobile || selectedCust?.mobile || '',
+      additionalMobiles: (addMobiles || []).filter(Boolean),
+      email: updatedCust.email !== undefined ? updatedCust.email : selectedCust?.email,
+      gstin: updatedCust.gstin !== undefined ? updatedCust.gstin : selectedCust?.gstin,
+      type: updatedCust.type || updatedCust.customer_type || selectedCust?.type || 'Regular',
+      address: updatedCust.address !== undefined ? updatedCust.address : selectedCust?.address,
+      city: updatedCust.city !== undefined ? updatedCust.city : selectedCust?.city,
+      pincode: updatedCust.pincode !== undefined ? updatedCust.pincode : selectedCust?.pincode,
+      district: updatedCust.district !== undefined ? updatedCust.district : selectedCust?.district,
+      state: updatedCust.state !== undefined ? updatedCust.state : selectedCust?.state,
+      credit_limit: Number(updatedCust.creditLimit ?? updatedCust.credit_limit ?? selectedCust?.credit_limit ?? 10000),
+      creditLimit: Number(updatedCust.creditLimit ?? updatedCust.credit_limit ?? selectedCust?.creditLimit ?? 10000),
+      referralCommissionPct: Number(updatedCust.referralCommissionPct ?? updatedCust.referral_commission_pct ?? selectedCust?.referralCommissionPct ?? 0.2),
+      outstanding: Number(updatedCust.outstanding !== undefined ? updatedCust.outstanding : (selectedCust?.outstanding ?? 0)),
+      outstandingAmount: Number(updatedCust.outstanding !== undefined ? updatedCust.outstanding : (selectedCust?.outstandingAmount ?? 0))
+    };
+
+    setSelectedCust(mergedCust);
+    setCustSearchTerm(`${mergedCust.name}${mergedCust.mobile ? ` (${mergedCust.mobile})` : ''}`);
+
+    if (mergedCust.careOfId) {
+      const foundCO = (careOfPersons || []).find((co) => co.id === mergedCust.careOfId);
       if (foundCO) {
         setOrderHeader((prev) => ({
           ...prev,
@@ -488,6 +546,19 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
   const roundOff = parseFloat((grandTotal - rawGrandTotal).toFixed(2));
   const balanceAmount = Math.max(0, grandTotal - (parseFloat(paymentInfo.advanceAmount) || 0));
 
+  // Customer Credit Limit & Exposure Calculation
+  const custCreditLimit = Number(selectedCust?.credit_limit ?? selectedCust?.creditLimit ?? 10000);
+  const custOutstanding = Number(selectedCust?.outstanding ?? selectedCust?.outstandingAmount ?? 0);
+  const availableCredit = custCreditLimit - custOutstanding;
+  const newOrderBalance = balanceAmount;
+  const totalExposure = custOutstanding + newOrderBalance;
+  const isCreditExceeded = Boolean(
+    selectedCust &&
+    orderHeader.orderType !== 'Quotation' &&
+    custCreditLimit > 0 &&
+    totalExposure > custCreditLimit
+  );
+
   const grossProfit = subtotal - totalEstCost;
   const profitMarginPct = subtotal > 0 ? parseFloat(((grossProfit / subtotal) * 100).toFixed(1)) : 0;
 
@@ -499,6 +570,37 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
     if (!selectedCust) {
       alert('Please select or create a Customer for this order.');
       return;
+    }
+
+    // Enforce Credit Limit Policy with Role-based Authorization
+    if (isCreditExceeded) {
+      if (isAdminOrManager) {
+        if (!creditOverrideApproved) {
+          const confirmOverride = window.confirm(
+            `CREDIT LIMIT EXCEEDED!\n\n` +
+            `Customer: ${selectedCust.name}\n` +
+            `Credit Limit: ₹${custCreditLimit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+            `Current Outstanding: ₹${custOutstanding.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+            `New Order Balance: ₹${newOrderBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+            `Total Exposure: ₹${totalExposure.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n\n` +
+            `Order exposure exceeds allowed credit limit by ₹${(totalExposure - custCreditLimit).toLocaleString('en-IN', { minimumFractionDigits: 2 })}.\n\n` +
+            `As Admin/Manager, do you authorize and proceed with this order?`
+          );
+          if (!confirmOverride) return;
+        }
+      } else {
+        alert(
+          `ORDER BLOCKED: Credit Limit Exceeded!\n\n` +
+          `Customer: ${selectedCust.name}\n` +
+          `Credit Limit: ₹${custCreditLimit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+          `Current Outstanding: ₹${custOutstanding.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+          `New Order Balance: ₹${newOrderBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+          `Total Exposure: ₹${totalExposure.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n\n` +
+          `Order exceeds allowed credit limit by ₹${(totalExposure - custCreditLimit).toLocaleString('en-IN', { minimumFractionDigits: 2 })}.\n\n` +
+          `Please obtain Admin/Manager authorization or collect an advance payment to reduce the unpaid balance.`
+        );
+        return;
+      }
     }
 
     const sp = (salesPersons || []).find((s) => s.id === orderHeader.salesPersonId);
@@ -515,7 +617,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
       customerId: selectedCust.id,
       customerName: selectedCust.name || '',
       customerMobile: selectedCust.mobile || '',
-      customerState: selectedCust.state || 'Maharashtra (27)',
+      customerState: selectedCust.state || 'Kerala',
       salesPersonId: orderHeader.salesPersonId || '',
       salesPersonName: sp?.name || 'House Sales',
       careOfId: orderHeader.careOfId || '',
@@ -786,7 +888,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: selectedCust ? '1.2fr 1fr' : '1fr', gap: '1.5rem', alignItems: 'flex-start' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: selectedCust ? 'repeat(auto-fit, minmax(320px, 1fr))' : '1fr', gap: '1.25rem', alignItems: 'flex-start' }}>
               <div>
                 <label className="form-label" style={{ fontWeight: 700 }}>
                   <Search size={14} color="#2563eb" /> Customer Name / Mobile / GSTIN / Code
@@ -814,38 +916,154 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
 
               {/* Selected Customer Details Card */}
               {selectedCust && (
-                <div style={{ background: '#eff6ff', padding: '0.85rem', borderRadius: '8px', border: '1px solid #bfdbfe', fontSize: '0.82rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
-                    <div style={{ fontWeight: 800, color: '#1e40af', fontSize: '0.95rem' }}>
-                      {selectedCust.name || 'Unnamed Customer'} <span className="badge badge-blue">{selectedCust.type || 'Customer'}</span>
+                <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '0.82rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 800, color: '#0f172a', fontSize: '1rem' }}>
+                          {selectedCust.name || 'Unnamed Customer'}
+                        </span>
+                        <span className="badge badge-blue" style={{ fontSize: '0.72rem', fontWeight: 700 }}>
+                          {selectedCust.type || 'Regular'}
+                        </span>
+                        {selectedCust.code && (
+                          <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
+                            ({selectedCust.code})
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.2rem', color: '#334155' }}>
+                        <span>📱 <strong>{selectedCust.mobile || 'No Mobile'}</strong></span>
+                        {selectedCust.additionalMobiles && selectedCust.additionalMobiles.length > 0 && (
+                          <span style={{ color: '#64748b' }}>
+                            (Alt: {selectedCust.additionalMobiles.join(', ')})
+                          </span>
+                        )}
+                        {selectedCust.gstin && (
+                          <span>GSTIN: <strong>{selectedCust.gstin}</strong></span>
+                        )}
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedCust(null);
-                        setCustSearchTerm('');
-                      }}
-                      style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '0.75rem', textDecoration: 'underline' }}
-                    >
-                      Change
-                    </button>
+
+                    <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditCustModalOpen(true)}
+                        className="btn btn-sm btn-outline-primary"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          padding: '0.3rem 0.65rem',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          borderRadius: '6px',
+                          borderColor: '#2563eb',
+                          color: '#2563eb',
+                          background: '#ffffff',
+                          cursor: 'pointer'
+                        }}
+                        title="Edit this customer's details without losing the current Sales Order"
+                      >
+                        <Edit size={13} /> ✏ Edit Customer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedCust(null);
+                          setCustSearchTerm('');
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '0.75rem', textDecoration: 'underline' }}
+                      >
+                        Change
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.2rem', color: '#334155' }}>
-                    <span>📱 <strong>{selectedCust.mobile || 'No Mobile'}</strong></span>
-                    {selectedCust.additionalMobiles && selectedCust.additionalMobiles.length > 0 && (
-                      <span style={{ color: '#64748b' }}>
-                        (Alt: {selectedCust.additionalMobiles.join(', ')})
-                      </span>
-                    )}
+
+                  {/* Customer Address & Location */}
+                  <div style={{ background: '#ffffff', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '0.65rem', color: '#334155' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.35rem' }}>
+                      <MapPin size={14} color="#2563eb" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <div>
+                        <strong>Address: </strong>
+                        {selectedCust.address || 'N/A'}
+                        {selectedCust.city ? `, ${selectedCust.city}` : ''}
+                        {selectedCust.district ? `, ${selectedCust.district}` : ''}
+                        {selectedCust.state ? `, ${selectedCust.state}` : ''}
+                        {selectedCust.pincode ? ` - ${selectedCust.pincode}` : ''}
+                      </div>
+                    </div>
                   </div>
-                  <div>GSTIN: <strong>{selectedCust.gstin || 'Unregistered (URP)'}</strong></div>
-                  <div>Address: {selectedCust.address || 'N/A'} ({selectedCust.state || 'Maharashtra (27)'})</div>
-                  <div style={{ display: 'flex', gap: '1rem', marginTop: '0.4rem', paddingTop: '0.4rem', borderTop: '1px dashed #bfdbfe' }}>
-                    <span style={{ color: Number(selectedCust.outstanding ?? selectedCust.outstandingAmount ?? 0) > 0 ? '#e11d48' : '#059669', fontWeight: 700 }}>
-                      Outstanding: ₹{Number(selectedCust.outstanding ?? selectedCust.outstandingAmount ?? 0).toLocaleString()}
-                    </span>
-                    <span>Credit Limit: ₹{Number(selectedCust.credit_limit ?? selectedCust.creditLimit ?? 0).toLocaleString()}</span>
+
+                  {/* Financial & Credit Summary */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(115px, 1fr))', gap: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed #cbd5e1' }}>
+                    <div style={{ background: '#ffffff', padding: '0.45rem 0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.66rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Outstanding</div>
+                      <div style={{ fontSize: '0.92rem', fontWeight: 800, color: custOutstanding > 0 ? '#e11d48' : '#059669' }}>
+                        ₹{custOutstanding.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
+
+                    <div style={{ background: '#ffffff', padding: '0.45rem 0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.66rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Credit Limit</div>
+                      <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
+                        ₹{custCreditLimit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
+
+                    <div style={{
+                      background: availableCredit < 0 ? '#fef2f2' : '#f0fdf4',
+                      padding: '0.45rem 0.6rem',
+                      borderRadius: '6px',
+                      border: `1px solid ${availableCredit < 0 ? '#fca5a5' : '#bbf7d0'}`
+                    }}>
+                      <div style={{ fontSize: '0.66rem', color: availableCredit < 0 ? '#991b1b' : '#166534', fontWeight: 700, textTransform: 'uppercase' }}>Available Credit</div>
+                      <div style={{ fontSize: '0.92rem', fontWeight: 800, color: availableCredit < 0 ? '#dc2626' : '#15803d' }}>
+                        ₹{availableCredit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
+
+                    <div style={{ background: '#ffffff', padding: '0.45rem 0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.66rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Referral Comm.</div>
+                      <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#2563eb' }}>
+                        {Number(selectedCust.referralCommissionPct ?? selectedCust.referral_commission_pct ?? 0.2)}%
+                      </div>
+                    </div>
                   </div>
+
+                  {/* Credit Limit Exceeded Warning in Customer Section */}
+                  {isCreditExceeded && (
+                    <div style={{ marginTop: '0.75rem', background: '#fff1f2', border: '1.5px solid #f43f5e', padding: '0.85rem', borderRadius: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#be123c', fontWeight: 800, fontSize: '0.88rem' }}>
+                        <ShieldAlert size={18} color="#e11d48" />
+                        <span>Credit Limit Exceeded</span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.45rem', fontSize: '0.8rem', marginTop: '0.45rem' }}>
+                        <div>Credit Limit: <strong>₹{custCreditLimit.toLocaleString('en-IN')}</strong></div>
+                        <div>Current Outstanding: <strong>₹{custOutstanding.toLocaleString('en-IN')}</strong></div>
+                        <div>New Order Balance: <strong>₹{newOrderBalance.toLocaleString('en-IN')}</strong></div>
+                        <div style={{ color: '#be123c' }}>Total Exposure: <strong>₹{totalExposure.toLocaleString('en-IN')}</strong></div>
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#9f1239', fontWeight: 600, marginTop: '0.35rem' }}>
+                        Exposure exceeds allowed credit limit by ₹{(totalExposure - custCreditLimit).toLocaleString('en-IN')}.
+                      </div>
+                      {isAdminOrManager ? (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginTop: '0.5rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, color: '#be123c' }}>
+                          <input
+                            type="checkbox"
+                            checked={creditOverrideApproved}
+                            onChange={(e) => setCreditOverrideApproved(e.target.checked)}
+                            style={{ width: '16px', height: '16px', accentColor: '#e11d48' }}
+                          />
+                          Manager / Admin Approval: Authorize order creation despite credit limit breach
+                        </label>
+                      ) : (
+                        <div style={{ fontSize: '0.75rem', color: '#881337', background: '#ffe4e6', padding: '0.35rem 0.55rem', borderRadius: '4px', fontWeight: 600, marginTop: '0.4rem' }}>
+                          ⚠️ Manager / Admin authorization is required to book this order.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1562,6 +1780,33 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                   <span>Balance Payable:</span>
                   <span>₹{Number(balanceAmount ?? 0).toLocaleString()}</span>
                 </div>
+
+                {isCreditExceeded && (
+                  <div style={{ marginTop: '0.65rem', background: '#fff1f2', border: '1.5px solid #f43f5e', padding: '0.75rem', borderRadius: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#be123c', fontWeight: 800, fontSize: '0.85rem' }}>
+                      <ShieldAlert size={16} color="#e11d48" />
+                      <span>Credit Limit Warning</span>
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#881337', marginTop: '0.25rem' }}>
+                      Total Exposure: <strong>₹{totalExposure.toLocaleString('en-IN')}</strong> / Limit: ₹{custCreditLimit.toLocaleString('en-IN')}
+                    </div>
+                    {isAdminOrManager ? (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.4rem', fontSize: '0.78rem', fontWeight: 700, color: '#be123c', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={creditOverrideApproved}
+                          onChange={(e) => setCreditOverrideApproved(e.target.checked)}
+                          style={{ accentColor: '#e11d48' }}
+                        />
+                        Admin/Manager Override Approved
+                      </label>
+                    ) : (
+                      <div style={{ fontSize: '0.74rem', color: '#be123c', fontWeight: 600, marginTop: '0.3rem' }}>
+                        ⚠️ Admin / Manager authorization required to confirm order.
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {isAdminOrManager && (
                   <div style={{ borderTop: '1px dashed #cbd5e1', marginTop: '0.4rem', paddingTop: '0.4rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
@@ -2415,6 +2660,13 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
           setIsCreateCustModalOpen(false);
         }}
         initialMobile={/^\d+$/.test(custSearchTerm.trim()) ? custSearchTerm.trim() : ''}
+      />
+
+      <EditCustomerModal
+        isOpen={isEditCustModalOpen}
+        onClose={() => setIsEditCustModalOpen(false)}
+        customer={selectedCust}
+        onCustomerUpdated={handleCustomerUpdatedInOrder}
       />
 
       <CreateProductModal

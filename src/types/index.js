@@ -1,12 +1,15 @@
 // Domain Constants & Types for ScreenArts Printing, Signage & Production ERP
 
 export const CUSTOMER_TYPES = {
-  WALKIN: 'Walk-in',
   REGULAR: 'Regular',
-  DEALER: 'Dealer',
+  AGENT: 'Agent',
+  GOVERNMENT: 'Government',
   CORPORATE: 'Corporate',
+  WALKIN: 'Walk In',
+  // Backwards compatibility aliases
+  DEALER: 'Agent',
   GOVT: 'Government',
-  CREDIT: 'Credit Customer'
+  CREDIT: 'Corporate'
 };
 
 export const TAX_TYPES = {

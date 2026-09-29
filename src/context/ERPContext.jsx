@@ -414,6 +414,15 @@ export const ERPProvider = ({ children }) => {
       }
     }
 
+    const creditLimit = customerData.creditLimit !== undefined ? parseFloat(customerData.creditLimit) : 10000;
+    const referralCommissionPct = customerData.referralCommissionPct !== undefined ? parseFloat(customerData.referralCommissionPct) : 0.2;
+    const customerType = customerData.type || customerData.customerType || 'Regular';
+    const address = (customerData.address || '').trim();
+    const city = (customerData.city || '').trim();
+    const pincode = String(customerData.pincode || customerData.pinCode || customerData.pin_code || '').trim();
+    const district = (customerData.district || 'Kozhikode').trim();
+    const state = (customerData.state || 'Kerala').trim();
+
     const uiCustomer = {
       id: newId,
       code: newCode,
@@ -422,10 +431,14 @@ export const ERPProvider = ({ children }) => {
       additionalMobiles: additionalMobiles,
       email: (customerData.email || '').trim(),
       gstin: (customerData.gstin || '').trim().toUpperCase(),
-      type: customerData.type || 'Walk-in',
-      address: customerData.address || '',
-      state: customerData.state || 'Maharashtra (27)',
-      creditLimit: parseFloat(customerData.creditLimit) || 0,
+      type: customerType,
+      address,
+      city,
+      pincode,
+      district,
+      state,
+      creditLimit,
+      referralCommissionPct,
       outstanding: initialOutstanding,
       openingBalance: openingBalance,
       openingBalanceType: openingBalanceType,
@@ -456,8 +469,12 @@ export const ERPProvider = ({ children }) => {
           gstin: uiCustomer.gstin,
           type: uiCustomer.type,
           address: uiCustomer.address,
+          city: uiCustomer.city,
+          pincode: uiCustomer.pincode,
+          district: uiCustomer.district,
           state: uiCustomer.state,
           credit_limit: uiCustomer.creditLimit,
+          referral_commission_pct: uiCustomer.referralCommissionPct,
           outstanding: uiCustomer.outstanding,
           opening_balance: uiCustomer.openingBalance,
           opening_balance_type: uiCustomer.openingBalanceType,
@@ -708,9 +725,27 @@ export const ERPProvider = ({ children }) => {
       dbUpdate.care_of_id = updatedData.careOfId;
       delete dbUpdate.careOfId;
     }
-    if (updatedData.careOfName !== undefined) {
-      dbUpdate.care_of_name = updatedData.careOfName;
-      delete dbUpdate.careOfName;
+    if (updatedData.referralCommissionPct !== undefined || updatedData.referral_commission_pct !== undefined) {
+      dbUpdate.referral_commission_pct = parseFloat(updatedData.referralCommissionPct !== undefined ? updatedData.referralCommissionPct : updatedData.referral_commission_pct) || 0;
+      delete dbUpdate.referralCommissionPct;
+    }
+    if (updatedData.city !== undefined) {
+      dbUpdate.city = updatedData.city;
+    }
+    if (updatedData.pincode !== undefined || updatedData.pinCode !== undefined || updatedData.pin_code !== undefined) {
+      dbUpdate.pincode = String(updatedData.pincode || updatedData.pinCode || updatedData.pin_code || '');
+      delete dbUpdate.pinCode;
+      delete dbUpdate.pin_code;
+    }
+    if (updatedData.district !== undefined) {
+      dbUpdate.district = updatedData.district;
+    }
+    if (updatedData.state !== undefined) {
+      dbUpdate.state = updatedData.state;
+    }
+    if (updatedData.type !== undefined || updatedData.customerType !== undefined) {
+      dbUpdate.type = updatedData.type || updatedData.customerType;
+      dbUpdate.customer_type = dbUpdate.type;
     }
 
     try {
@@ -731,28 +766,39 @@ export const ERPProvider = ({ children }) => {
       console.warn("api.updateCustomer exception, using local state:", err);
     }
 
+    let returnedUpdatedCust = null;
     setCustomers((prev) => {
-      const updated = prev.map((c) =>
-        c.id === id
-          ? {
-              ...c,
-              ...updatedData,
-              additionalMobiles: additionalMobiles !== undefined ? additionalMobiles : (c.additionalMobiles || []),
-              openingBalance: dbUpdate.opening_balance !== undefined ? dbUpdate.opening_balance : c.openingBalance,
-              openingBalanceType: dbUpdate.opening_balance_type !== undefined ? dbUpdate.opening_balance_type : c.openingBalanceType,
-              openingBalanceDate: dbUpdate.opening_balance_date !== undefined ? dbUpdate.opening_balance_date : c.openingBalanceDate,
-              openingBalanceNotes: dbUpdate.opening_balance_notes !== undefined ? dbUpdate.opening_balance_notes : c.openingBalanceNotes,
-              creditLimit: dbUpdate.credit_limit ?? c.creditLimit ?? c.credit_limit,
-              outstanding: dbUpdate.outstanding !== undefined ? dbUpdate.outstanding : c.outstanding,
-              careOfId: dbUpdate.care_of_id ?? c.careOfId,
-              careOfName: dbUpdate.care_of_name ?? c.careOfName
-            }
-          : c
-      );
+      const updated = prev.map((c) => {
+        if (c.id === id) {
+          const merged = {
+            ...c,
+            ...updatedData,
+            type: dbUpdate.type ?? c.type,
+            address: dbUpdate.address ?? c.address,
+            city: dbUpdate.city ?? c.city,
+            pincode: dbUpdate.pincode ?? c.pincode,
+            district: dbUpdate.district ?? c.district,
+            state: dbUpdate.state ?? c.state,
+            additionalMobiles: additionalMobiles !== undefined ? additionalMobiles : (c.additionalMobiles || []),
+            openingBalance: dbUpdate.opening_balance !== undefined ? dbUpdate.opening_balance : c.openingBalance,
+            openingBalanceType: dbUpdate.opening_balance_type !== undefined ? dbUpdate.opening_balance_type : c.openingBalanceType,
+            openingBalanceDate: dbUpdate.opening_balance_date !== undefined ? dbUpdate.opening_balance_date : c.openingBalanceDate,
+            openingBalanceNotes: dbUpdate.opening_balance_notes !== undefined ? dbUpdate.opening_balance_notes : c.openingBalanceNotes,
+            creditLimit: dbUpdate.credit_limit ?? c.creditLimit ?? c.credit_limit,
+            referralCommissionPct: dbUpdate.referral_commission_pct ?? c.referralCommissionPct ?? c.referral_commission_pct ?? 0.2,
+            outstanding: dbUpdate.outstanding !== undefined ? dbUpdate.outstanding : c.outstanding,
+            careOfId: dbUpdate.care_of_id ?? c.careOfId,
+            careOfName: dbUpdate.care_of_name ?? c.careOfName
+          };
+          returnedUpdatedCust = merged;
+          return merged;
+        }
+        return c;
+      });
       try { localStorage.setItem('stitch_erp_customers', JSON.stringify(updated)); } catch (e) {}
       return updated;
     });
-    return true;
+    return returnedUpdatedCust || true;
   };
 
   const deleteCustomer = async (id) => {

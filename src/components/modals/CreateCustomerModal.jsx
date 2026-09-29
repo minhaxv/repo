@@ -6,22 +6,64 @@ import { X, UserPlus, Building, Phone, PhoneCall, Plus, Trash2, Mail, MapPin, Ha
 import CreateCareOfModal from './CreateCareOfModal';
 import { SearchableSelect } from '../common/SearchableSelect';
 
+export const KERALA_DISTRICTS = [
+  'Kozhikode',
+  'Alappuzha',
+  'Ernakulam',
+  'Idukki',
+  'Kannur',
+  'Kasaragod',
+  'Kollam',
+  'Kottayam',
+  'Malappuram',
+  'Palakkad',
+  'Pathanamthitta',
+  'Thiruvananthapuram',
+  'Thrissur',
+  'Wayanad'
+];
+
+export const INDIAN_STATES = [
+  'Kerala',
+  'Maharashtra',
+  'Karnataka',
+  'Tamil Nadu',
+  'Delhi',
+  'Gujarat',
+  'Andhra Pradesh',
+  'Telangana',
+  'Goa',
+  'Rajasthan',
+  'Uttar Pradesh',
+  'West Bengal',
+  'Madhya Pradesh',
+  'Bihar',
+  'Punjab',
+  'Haryana',
+  'Odisha',
+  'Assam'
+];
+
 export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initialMobile = '' }) => {
   const { addCustomer, customers, careOfPersons } = useERP();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreateCareOfOpen, setIsCreateCareOfOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   
-  // Form State
+  // Form State with required defaults
   const [formData, setFormData] = useState({
     name: '',
     mobile: initialMobile,
     email: '',
     gstin: '',
-    type: CUSTOMER_TYPES.WALKIN,
+    type: 'Regular',
+    creditLimit: 10000,
+    referralCommissionPct: 0.2,
     address: '',
-    state: 'Maharashtra (27)',
-    creditLimit: 50000,
+    city: '',
+    pincode: '',
+    district: 'Kozhikode',
+    state: 'Kerala',
     careOfId: ''
   });
 
@@ -42,10 +84,21 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
   // Sync initialMobile and reset form when modal opens
   useEffect(() => {
     if (isOpen) {
-      setFormData((prev) => ({
-        ...prev,
-        mobile: initialMobile || prev.mobile
-      }));
+      setFormData({
+        name: '',
+        mobile: initialMobile || '',
+        email: '',
+        gstin: '',
+        type: 'Regular',
+        creditLimit: 10000,
+        referralCommissionPct: 0.2,
+        address: '',
+        city: '',
+        pincode: '',
+        district: 'Kozhikode',
+        state: 'Kerala',
+        careOfId: ''
+      });
       setAdditionalMobiles([]);
       setEnableOpeningBalance(false);
       setOpeningBalance('');
@@ -140,6 +193,36 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
       return;
     }
 
+    const cleanAddress = (formData.address || '').trim();
+    if (!cleanAddress) {
+      setErrorMsg('Address is required.');
+      return;
+    }
+
+    const cleanCity = (formData.city || '').trim();
+    if (!cleanCity) {
+      setErrorMsg('City is required.');
+      return;
+    }
+
+    const cleanPincode = (formData.pincode || '').trim();
+    if (!cleanPincode) {
+      setErrorMsg('PIN Code is required.');
+      return;
+    }
+
+    const cleanDistrict = (formData.district || '').trim();
+    if (!cleanDistrict) {
+      setErrorMsg('District is required.');
+      return;
+    }
+
+    const cleanState = (formData.state || '').trim();
+    if (!cleanState) {
+      setErrorMsg('State is required.');
+      return;
+    }
+
     // Opening Balance Validations
     if (enableOpeningBalance) {
       const numAmount = parseFloat(openingBalance);
@@ -164,6 +247,14 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
       name: cleanName,
       mobile: cleanMobile,
       additionalMobiles: cleanExtra,
+      address: cleanAddress,
+      city: cleanCity,
+      pincode: cleanPincode,
+      district: cleanDistrict,
+      state: cleanState,
+      type: formData.type || 'Regular',
+      creditLimit: parseFloat(formData.creditLimit) >= 0 ? parseFloat(formData.creditLimit) : 10000,
+      referralCommissionPct: parseFloat(formData.referralCommissionPct) >= 0 ? parseFloat(formData.referralCommissionPct) : 0.2,
       enableOpeningBalance,
       openingBalance: enableOpeningBalance ? Math.max(0, parseFloat(openingBalance) || 0) : 0,
       openingBalanceType: enableOpeningBalance ? openingBalanceType : 'Receivable',
@@ -526,9 +617,11 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
                 onChange={(e) => setFormData({ ...formData, type: e.target.value })}
                 disabled={isSubmitting}
               >
-                {Object.values(CUSTOMER_TYPES).map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
+                <option value="Regular">Regular</option>
+                <option value="Agent">Agent</option>
+                <option value="Government">Government</option>
+                <option value="Corporate">Corporate</option>
+                <option value="Walk In">Walk In</option>
               </select>
             </div>
 
@@ -539,27 +632,17 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
               <input
                 type="text"
                 className="form-control"
-                placeholder="e.g. 27AAACP9988K1Z2"
+                placeholder="e.g. 32AAACP9988K1Z2"
                 value={formData.gstin}
                 onChange={(e) => setFormData({ ...formData, gstin: e.target.value.toUpperCase() })}
                 disabled={isSubmitting}
               />
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Credit Limit (₹)</label>
-              <input
-                type="number"
-                className="form-control"
-                placeholder="e.g. 50000"
-                value={formData.creditLimit}
-                onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
-                disabled={isSubmitting}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Email Address</label>
+            <div className="form-group" style={{ gridColumn: 'span 2' }}>
+              <label className="form-label">
+                <Mail size={14} /> Email Address (Optional)
+              </label>
               <input
                 type="email"
                 className="form-control"
@@ -607,23 +690,52 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
                 disabled={isSubmitting}
                 allowClear={true}
               />
-              <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.2rem', display: 'block' }}>
-                Select an existing referral agent or click <strong>+ Add New Agent</strong> to create one on the fly.
+            </div>
+
+            {/* FINANCIAL INFORMATION SECTION */}
+            <div style={{ gridColumn: 'span 2', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '0.35rem', marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#334155' }}>
+                Financial Information
               </span>
             </div>
 
-            <div className="form-group" style={{ gridColumn: 'span 2' }}>
-              <label className="form-label">
-                <MapPin size={14} /> Address
-              </label>
-              <textarea
-                className="form-control"
-                rows="2"
-                placeholder="Complete street address, city, pin code..."
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                disabled={isSubmitting}
-              ></textarea>
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600 }}>Credit Limit (₹)</label>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <span style={{ position: 'absolute', left: '10px', color: '#64748b', fontWeight: 700 }}>₹</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="100"
+                  className="form-control"
+                  style={{ paddingLeft: '1.6rem', fontWeight: 600 }}
+                  placeholder="10000"
+                  value={formData.creditLimit}
+                  onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
+                  disabled={isSubmitting}
+                />
+              </div>
+              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Default: ₹10,000</span>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600 }}>Referral Commission (%)</label>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.05"
+                  className="form-control"
+                  style={{ paddingRight: '1.8rem', fontWeight: 600 }}
+                  placeholder="0.2"
+                  value={formData.referralCommissionPct}
+                  onChange={(e) => setFormData({ ...formData, referralCommissionPct: e.target.value })}
+                  disabled={isSubmitting}
+                />
+                <span style={{ position: 'absolute', right: '10px', color: '#64748b', fontWeight: 700 }}>%</span>
+              </div>
+              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Default: 0.2%</span>
             </div>
 
             {/* OPENING BALANCE SECTION */}
@@ -796,6 +908,108 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
                   })()}
                 </div>
               )}
+            </div>
+
+            {/* MANDATORY ADDRESS SECTION */}
+            <div style={{ gridColumn: 'span 2', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '0.35rem', marginTop: '0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                <MapPin size={16} color="#2563eb" />
+                <span style={{ fontSize: '0.82rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#1e40af' }}>
+                  Address Details (Mandatory) *
+                </span>
+              </div>
+              <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 700 }}>* All address fields required</span>
+            </div>
+
+            <div className="form-group" style={{ gridColumn: 'span 2' }}>
+              <label className="form-label" style={{ fontWeight: 600 }}>
+                Street / Building / Area Address *
+              </label>
+              <textarea
+                className="form-control"
+                rows="2"
+                placeholder="Complete street address, building name, shop/office number..."
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                disabled={isSubmitting}
+                required
+              ></textarea>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600 }}>City *</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="e.g. Kozhikode"
+                value={formData.city}
+                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                disabled={isSubmitting}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600 }}>PIN Code *</label>
+              <input
+                type="text"
+                maxLength={10}
+                className="form-control"
+                placeholder="e.g. 673001"
+                value={formData.pincode}
+                onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
+                disabled={isSubmitting}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600 }}>District *</label>
+              {formData.state === 'Kerala' ? (
+                <select
+                  className="form-select"
+                  value={formData.district}
+                  onChange={(e) => setFormData({ ...formData, district: e.target.value })}
+                  disabled={isSubmitting}
+                  required
+                >
+                  {KERALA_DISTRICTS.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="Enter district"
+                  value={formData.district}
+                  onChange={(e) => setFormData({ ...formData, district: e.target.value })}
+                  disabled={isSubmitting}
+                  required
+                />
+              )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600 }}>State *</label>
+              <select
+                className="form-select"
+                value={formData.state}
+                onChange={(e) => {
+                  const nextState = e.target.value;
+                  setFormData({
+                    ...formData,
+                    state: nextState,
+                    district: nextState === 'Kerala' ? 'Kozhikode' : formData.district
+                  });
+                }}
+                disabled={isSubmitting}
+                required
+              >
+                {INDIAN_STATES.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
             </div>
           </div>
 

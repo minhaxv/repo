@@ -140,8 +140,9 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(customer)
     });
-    if (!res.ok) throw new Error(`API createCustomer failed`);
-    return await res.json();
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || `API createCustomer failed`);
+    return data;
   },
 
   async updateCustomer(id, customer) {
@@ -150,8 +151,9 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(customer)
     });
-    if (!res.ok) throw new Error(`API updateCustomer failed`);
-    return await res.json();
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || `API updateCustomer failed`);
+    return data;
   },
 
   // Sales Orders (Atomic creation of Order + Line Items + Job Work + Outsource Jobs)

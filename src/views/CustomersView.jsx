@@ -402,9 +402,21 @@ export const CustomersView = ({ onNavigate }) => {
                   {activeHistoryCustomer.email && <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.2rem' }}>✉️ {activeHistoryCustomer.email}</div>}
                 </div>
                 <div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>GSTIN & STATE</div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>GSTIN & TYPE</div>
                   <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e40af' }}>{activeHistoryCustomer.gstin || 'Unregistered'}</div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{activeHistoryCustomer.state}</div>
+                  <div style={{ marginTop: '0.2rem' }}>
+                    <span className="badge badge-blue" style={{ fontSize: '0.65rem' }}>{activeHistoryCustomer.type || 'Regular'}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>CREDIT & COMMISSION</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a' }}>
+                    Limit: ₹{Number(activeHistoryCustomer.creditLimit ?? activeHistoryCustomer.credit_limit ?? 10000).toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: 700, marginTop: '0.15rem' }}>
+                    Commission: {Number(activeHistoryCustomer.referralCommissionPct ?? activeHistoryCustomer.referral_commission_pct ?? 0.2)}%
+                  </div>
                 </div>
 
                 {/* Opening Balance Card with Edit Action */}
@@ -418,7 +430,7 @@ export const CustomersView = ({ onNavigate }) => {
                       onClick={() => setEditingCust(activeHistoryCustomer)}
                       className="btn btn-secondary btn-sm"
                       style={{ padding: '0.1rem 0.35rem', fontSize: '0.68rem', height: 'auto', display: 'inline-flex', alignItems: 'center', gap: '2px' }}
-                      title="Edit Opening Balance"
+                      title="Edit Customer"
                     >
                       <Edit size={10} /> Edit
                     </button>
@@ -445,6 +457,16 @@ export const CustomersView = ({ onNavigate }) => {
                   <div style={{ fontSize: '0.67rem', color: '#64748b' }}>
                     Live Ledger Balance
                   </div>
+                </div>
+
+                {/* Full Address Row */}
+                <div style={{ gridColumn: '1 / -1', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: '#334155' }}>
+                  <strong>Address: </strong>
+                  {activeHistoryCustomer.address || 'N/A'}
+                  {activeHistoryCustomer.city ? `, ${activeHistoryCustomer.city}` : ''}
+                  {activeHistoryCustomer.district ? `, ${activeHistoryCustomer.district}` : ''}
+                  {activeHistoryCustomer.state ? `, ${activeHistoryCustomer.state}` : ''}
+                  {activeHistoryCustomer.pincode ? ` - ${activeHistoryCustomer.pincode}` : ''}
                 </div>
               </div>
 
@@ -663,6 +685,11 @@ export const CustomersView = ({ onNavigate }) => {
         isOpen={!!editingCust}
         customer={editingCust}
         onClose={() => setEditingCust(null)}
+        onCustomerUpdated={(updated) => {
+          if (historyCust && updated?.id === historyCust.id) {
+            setHistoryCust((prev) => ({ ...prev, ...updated }));
+          }
+        }}
       />
     </div>
   );

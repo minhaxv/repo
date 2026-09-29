@@ -721,7 +721,12 @@ export function runMigrations(db) {
     try { database.prepare("ALTER TABLE sales_orders ADD COLUMN credit_limit_override INTEGER DEFAULT 0").run(); } catch(e) {}
 
     // 5. Extend Customers with Credit Limit & Opening Balance
-    try { database.prepare("ALTER TABLE customers ADD COLUMN credit_limit REAL DEFAULT 50000").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE customers ADD COLUMN credit_limit REAL DEFAULT 10000").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE customers ADD COLUMN referral_commission_pct REAL DEFAULT 0.2").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE customers ADD COLUMN city TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE customers ADD COLUMN pincode TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE customers ADD COLUMN district TEXT DEFAULT 'Kozhikode'").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE customers ADD COLUMN state TEXT DEFAULT 'Kerala'").run(); } catch(e) {}
     try { database.prepare("ALTER TABLE customers ADD COLUMN opening_balance REAL DEFAULT 0").run(); } catch(e) {}
     try { database.prepare("ALTER TABLE customers ADD COLUMN opening_balance_type TEXT DEFAULT 'Receivable'").run(); } catch(e) {}
     try { database.prepare("ALTER TABLE customers ADD COLUMN opening_balance_date TEXT").run(); } catch(e) {}
@@ -1153,6 +1158,28 @@ export function runMigrations(db) {
       WHERE id = 1
     `).run();
     console.log(' -> Migration 013 applied: Company profile default bank details & terms ensured.');
+  });
+
+  // ----------------------------------------------------
+  // MIGRATION 014: Customer Address and Financial Defaults
+  // ----------------------------------------------------
+  applyMigration('014_customer_address_and_financial_defaults', (database) => {
+    try { database.prepare("ALTER TABLE customers ADD COLUMN credit_limit REAL DEFAULT 10000").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE customers ADD COLUMN referral_commission_pct REAL DEFAULT 0.2").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE customers ADD COLUMN city TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE customers ADD COLUMN pincode TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE customers ADD COLUMN district TEXT DEFAULT 'Kozhikode'").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE customers ADD COLUMN state TEXT DEFAULT 'Kerala'").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE customers ADD COLUMN customer_type TEXT DEFAULT 'Regular'").run(); } catch(e) {}
+
+    try {
+      database.prepare("UPDATE customers SET credit_limit = 10000 WHERE credit_limit IS NULL").run();
+      database.prepare("UPDATE customers SET referral_commission_pct = 0.2 WHERE referral_commission_pct IS NULL").run();
+      database.prepare("UPDATE customers SET customer_type = 'Regular' WHERE customer_type IS NULL OR customer_type = ''").run();
+      database.prepare("UPDATE customers SET state = 'Kerala' WHERE state IS NULL OR state = ''").run();
+      database.prepare("UPDATE customers SET district = 'Kozhikode' WHERE district IS NULL OR district = ''").run();
+    } catch(e) {}
+    console.log(' -> Migration 014 applied: Customer address and financial defaults ensured.');
   });
 
   console.log('✅ All migrations processed successfully!');
