@@ -14,7 +14,6 @@ function runCustomerCreation({ name, mobile, address, city, pincode, district, s
   // Check mandatory address fields
   if (!address || !address.trim()) throw new Error('Address is required.');
   if (!city || !city.trim()) throw new Error('City is required.');
-  if (!pincode || !pincode.trim()) throw new Error('PIN Code is required.');
   if (!district || !district.trim()) throw new Error('District is required.');
   if (!state || !state.trim()) throw new Error('State is required.');
 
@@ -43,7 +42,7 @@ function runCustomerCreation({ name, mobile, address, city, pincode, district, s
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    id, `CODE-${id}`, name.trim(), mobile.trim(), address.trim(), city.trim(), pincode.trim(), finalDistrict, finalState,
+    id, `CODE-${id}`, name.trim(), mobile.trim(), address.trim(), city.trim(), (pincode || '').trim(), finalDistrict, finalState,
     finalType, finalCreditLimit, finalCommission,
     initialOutstanding, obAmount, obType, obDate, obNotes
   );
@@ -78,7 +77,6 @@ function runCustomerUpdate(id, updates) {
   if (updates.mobile !== undefined && !updates.mobile.trim()) throw new Error('Mobile Number is required.');
   if (updates.address !== undefined && !updates.address.trim()) throw new Error('Address is required.');
   if (updates.city !== undefined && !updates.city.trim()) throw new Error('City is required.');
-  if (updates.pincode !== undefined && !updates.pincode.trim()) throw new Error('PIN Code is required.');
   if (updates.district !== undefined && !updates.district.trim()) throw new Error('District is required.');
   if (updates.state !== undefined && !updates.state.trim()) throw new Error('State is required.');
 
@@ -214,12 +212,26 @@ async function runTests() {
       mobile: '9876543211',
       address: '',
       city: 'Kozhikode',
-      pincode: '673001',
       district: 'Kozhikode',
       state: 'Kerala'
     });
   }, /Address is required/, 'Must throw "Address is required." when address is empty');
   passedCount += 2;
+
+  // Test: Verify PIN Code is NOT mandatory (Optional)
+  console.log('Test: Verify PIN Code is optional');
+  const custNoPincode = runCustomerCreation({
+    name: 'Customer Without PIN',
+    mobile: '9876543219',
+    address: 'Near Beach Road',
+    city: 'Kozhikode',
+    pincode: '',
+    district: 'Kozhikode',
+    state: 'Kerala'
+  });
+  assert.ok(custNoPincode.id, 'Customer created without PIN code');
+  assert.equal(custNoPincode.pincode, '', 'PIN code is empty/optional');
+  passedCount++;
 
   // Test 9: Change customer type and save
   console.log('Test 9: Change customer type and save');

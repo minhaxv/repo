@@ -206,10 +206,6 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
     }
 
     const cleanPincode = (formData.pincode || '').trim();
-    if (!cleanPincode) {
-      setErrorMsg('PIN Code is required.');
-      return;
-    }
 
     const cleanDistrict = (formData.district || '').trim();
     if (!cleanDistrict) {
@@ -950,7 +946,7 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
             </div>
 
             <div className="form-group">
-              <label className="form-label" style={{ fontWeight: 600 }}>PIN Code *</label>
+              <label className="form-label" style={{ fontWeight: 600 }}>PIN Code (Optional)</label>
               <input
                 type="text"
                 maxLength={10}
@@ -959,7 +955,6 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
                 value={formData.pincode}
                 onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
                 disabled={isSubmitting}
-                required
               />
             </div>
 

@@ -1236,9 +1236,6 @@ app.post('/api/customers', (req, res) => {
     }
 
     const pincode = String(c.pincode || c.pinCode || c.pin_code || '').trim();
-    if (!pincode) {
-      return res.status(400).json({ success: false, error: 'PIN Code is required.' });
-    }
 
     const district = (c.district || 'Kozhikode').trim();
     if (!district) {

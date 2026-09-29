@@ -136,10 +136,6 @@ export const EditCustomerModal = ({ isOpen, onClose, customer, onCustomerUpdated
     }
 
     const cleanPincode = (formData.pincode || '').trim();
-    if (!cleanPincode) {
-      setErrorMsg('PIN Code is required.');
-      return;
-    }
 
     const cleanDistrict = (formData.district || '').trim();
     if (!cleanDistrict) {
@@ -664,14 +660,13 @@ export const EditCustomerModal = ({ isOpen, onClose, customer, onCustomerUpdated
                 </div>
 
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label" style={{ fontWeight: 700 }}>PIN Code *</label>
+                  <label className="form-label" style={{ fontWeight: 700 }}>PIN Code (Optional)</label>
                   <input
                     type="text"
                     className="form-control"
                     placeholder="6-digit PIN Code"
                     value={formData.pincode}
                     onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
-                    required
                     disabled={isSubmitting}
                   />
                 </div>
