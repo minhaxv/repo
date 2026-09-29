@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useERP } from '../context/ERPContext';
-import { Settings, Save, Building, CreditCard, FileText, Check, Activity, ShieldCheck, Database, RefreshCw } from 'lucide-react';
+import { Settings, Save, Building, CreditCard, FileText, Check, Activity, ShieldCheck, Database, RefreshCw, Trash2, AlertTriangle, Download } from 'lucide-react';
 
 const getInitialProfileForm = (cp) => {
   const profile = cp || {};
@@ -28,11 +28,18 @@ const getInitialProfileForm = (cp) => {
 };
 
 export const SettingsView = ({ initialTab = 'profile' }) => {
-  const { companyProfile, setCompanyProfile, updateCompanyProfile, activeUser, activeRole } = useERP();
+  const { companyProfile, setCompanyProfile, updateCompanyProfile, activeUser, activeRole, resetDatabase, createBackup, backups, fetchBackups } = useERP();
   const isAdminOrManager = (activeUser?.role === 'Admin' || activeUser?.role === 'Manager') || activeRole === 'Admin' || activeRole === 'Manager';
   const [profileForm, setProfileForm] = useState(() => getInitialProfileForm(companyProfile));
-  const [activeSettingsTab, setActiveSettingsTab] = useState(initialTab === 'health' || initialTab === 'system-health' ? 'health' : 'profile');
+  const [activeSettingsTab, setActiveSettingsTab] = useState(initialTab === 'health' || initialTab === 'system-health' ? 'health' : (initialTab === 'data-management' ? 'data-management' : 'profile'));
   const [isSaving, setIsSaving] = useState(false);
+
+  // Database Reset and Backup state
+  const [resetConfirmation, setResetConfirmation] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetMessage, setResetMessage] = useState(null);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [backupMessage, setBackupMessage] = useState(null);
 
   useEffect(() => {
     if (companyProfile) {
@@ -111,6 +118,16 @@ export const SettingsView = ({ initialTab = 'profile' }) => {
           >
             <Activity size={14} /> System Health
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveSettingsTab('data-management');
+              if (fetchBackups) fetchBackups();
+            }}
+            className={`btn btn-sm ${activeSettingsTab === 'data-management' ? 'btn-primary' : 'btn-secondary'}`}
+          >
+            <Database size={14} /> Data Management & Reset
+          </button>
         </div>
       </div>
 
@@ -158,6 +175,188 @@ export const SettingsView = ({ initialTab = 'profile' }) => {
                 </div>
                 <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
                   Version {healthData?.version || 'v2.6.0'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeSettingsTab === 'data-management' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Backups Card */}
+          <div className="card">
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="card-title">
+                <Database size={18} color="#2563eb" /> SQLite Database Backups
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                disabled={isBackingUp}
+                onClick={async () => {
+                  try {
+                    setIsBackingUp(true);
+                    setBackupMessage(null);
+                    const res = await createBackup();
+                    setBackupMessage({ type: 'success', text: `Backup created successfully: ${res?.backup?.filename || 'New backup saved'}` });
+                  } catch (err) {
+                    setBackupMessage({ type: 'error', text: err.message || 'Backup creation failed' });
+                  } finally {
+                    setIsBackingUp(false);
+                  }
+                }}
+              >
+                <Download size={14} /> {isBackingUp ? 'Creating Backup...' : 'Create Instant Backup'}
+              </button>
+            </div>
+
+            {backupMessage && (
+              <div style={{
+                padding: '0.75rem 1rem',
+                margin: '1rem 0 0',
+                borderRadius: '6px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                background: backupMessage.type === 'success' ? '#f0fdf4' : '#fef2f2',
+                color: backupMessage.type === 'success' ? '#166534' : '#991b1b',
+                border: `1px solid ${backupMessage.type === 'success' ? '#bbf7d0' : '#fecaca'}`
+              }}>
+                {backupMessage.text}
+              </div>
+            )}
+
+            <div style={{ marginTop: '1rem' }}>
+              <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '0.75rem' }}>
+                Online SQLite hot backups stored in local server directory (<code style={{ background: '#f1f5f9', padding: '2px 4px', borderRadius: '4px' }}>database/backups/</code>). All backups are verified via <code style={{ background: '#f1f5f9', padding: '2px 4px', borderRadius: '4px' }}>PRAGMA integrity_check</code>.
+              </div>
+              {(!backups || backups.length === 0) ? (
+                <div style={{ padding: '1.5rem', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', background: '#f8fafc', borderRadius: '6px' }}>
+                  No backups found. Click "Create Instant Backup" above to generate a snapshot.
+                </div>
+              ) : (
+                <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
+                  <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
+                        <th style={{ padding: '0.5rem 0.75rem' }}>Filename</th>
+                        <th style={{ padding: '0.5rem 0.75rem' }}>Size</th>
+                        <th style={{ padding: '0.5rem 0.75rem' }}>Created At</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {backups.map((b, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontWeight: 600, color: '#1e293b' }}>{b.filename}</td>
+                          <td style={{ padding: '0.5rem 0.75rem', color: '#64748b' }}>{(b.sizeBytes / 1024).toFixed(1)} KB</td>
+                          <td style={{ padding: '0.5rem 0.75rem', color: '#64748b' }}>{new Date(b.createdAt).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* DANGER ZONE: Fresh Start / Reset Database */}
+          <div className="card" style={{ border: '2px solid #ef4444', background: '#fff5f5' }}>
+            <div className="card-header" style={{ borderBottom: '1px solid #fecaca', background: '#fee2e2' }}>
+              <div className="card-title" style={{ color: '#991b1b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <AlertTriangle size={20} color="#dc2626" /> Danger Zone: Fresh Start / Reset Database
+              </div>
+            </div>
+
+            <div style={{ padding: '1rem 0' }}>
+              <p style={{ fontSize: '0.9rem', color: '#7f1d1d', margin: '0 0 0.75rem 0', fontWeight: 600 }}>
+                Start the ERP with a completely fresh, empty dataset by clearing all test and demo transactional records.
+              </p>
+              
+              <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #fecaca', marginBottom: '1.25rem' }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+                  What will be deleted (Reset to 0):
+                </div>
+                <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: '#4b5563', lineHeight: 1.6 }}>
+                  <li>All Customers & Customer Balances</li>
+                  <li>All Suppliers / Outsource Vendors</li>
+                  <li>All Products & Material Specifications</li>
+                  <li>All Sales Orders, Invoices, Quotations, and Job Work Cards</li>
+                  <li>All Outsource Work Orders, Outsource Bills, and Vendor Payments</li>
+                  <li>All Payments, Receipts, and Double-Entry Ledgers</li>
+                  <li>All Stock Movements, Inventory, and Purchase Orders</li>
+                  <li>All Worker Incentives, Production Work Logs, and Tasks</li>
+                  <li>All Document Number Sequences (SO, INV, BILL, PAY reset to 0)</li>
+                </ul>
+
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', marginTop: '0.75rem', marginBottom: '0.5rem' }}>
+                  What is strictly preserved:
+                </div>
+                <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: '#4b5563', lineHeight: 1.6 }}>
+                  <li>Database structure, tables, and schema migrations</li>
+                  <li>Company Profile & GST Invoice Settings</li>
+                  <li>Admin and user access accounts (passwords & roles)</li>
+                  <li>Biometric device configurations</li>
+                </ul>
+              </div>
+
+              {resetMessage && (
+                <div style={{
+                  padding: '0.75rem 1rem',
+                  marginBottom: '1.25rem',
+                  borderRadius: '6px',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  background: resetMessage.type === 'success' ? '#f0fdf4' : '#fef2f2',
+                  color: resetMessage.type === 'success' ? '#166534' : '#991b1b',
+                  border: `1px solid ${resetMessage.type === 'success' ? '#bbf7d0' : '#fecaca'}`
+                }}>
+                  {resetMessage.text}
+                </div>
+              )}
+
+              <div style={{ background: '#fff', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#1e293b', marginBottom: '0.5rem' }}>
+                  To proceed, type <span style={{ fontFamily: 'monospace', color: '#dc2626', background: '#fee2e2', padding: '2px 6px', borderRadius: '4px' }}>RESET ERP</span> below to double-confirm:
+                </label>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder='Type "RESET ERP"'
+                    value={resetConfirmation}
+                    onChange={(e) => setResetConfirmation(e.target.value)}
+                    style={{ maxWidth: '280px', fontFamily: 'monospace', fontWeight: 700, letterSpacing: '1px' }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    disabled={resetConfirmation !== 'RESET ERP' || isResetting}
+                    onClick={async () => {
+                      if (!window.confirm('CRITICAL ACTION: Are you absolutely sure you want to reset all ERP transactional data? A backup will be created automatically before wiping.')) {
+                        return;
+                      }
+                      try {
+                        setIsResetting(true);
+                        setResetMessage(null);
+                        const res = await resetDatabase('RESET ERP');
+                        setResetConfirmation('');
+                        setResetMessage({
+                          type: 'success',
+                          text: `ERP successfully reset to clean slate! All transactional tables are empty (0 orders, 0 customers, 0 suppliers). Pre-reset backup saved: ${res?.backup?.filename || 'Saved'}`
+                        });
+                        if (fetchBackups) fetchBackups();
+                      } catch (err) {
+                        setResetMessage({
+                          type: 'error',
+                          text: err.message || 'Failed to reset database.'
+                        });
+                      } finally {
+                        setIsResetting(false);
+                      }
+                    }}
+                  >
+                    <Trash2 size={16} /> {isResetting ? 'Resetting Database...' : 'Reset All Business Data (Clean Slate)'}
+                  </button>
                 </div>
               </div>
             </div>

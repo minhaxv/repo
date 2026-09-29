@@ -29,6 +29,11 @@ export const TaxInvoicePrintModal = ({ order, isOpen, onClose }) => {
 
   const isInterstate = order.customerState && !order.customerState.includes('Maharashtra');
   const hasMobile = Boolean(order.customerMobile && order.customerMobile.trim());
+  const isB2B = Boolean(
+    order.invoiceType === 'B2B' ||
+    (order.customerGstin && order.customerGstin.trim().length >= 10 && !['URP', 'N/A', 'NONE', 'UNREGISTERED'].includes(order.customerGstin.trim().toUpperCase()))
+  );
+  const invoiceTypeBadge = isB2B ? 'B2B' : 'B2C';
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -41,7 +46,22 @@ export const TaxInvoicePrintModal = ({ order, isOpen, onClose }) => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <FileText size={20} color="#059669" />
             <div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>GST Tax Invoice — {order.id}</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>GST Tax Invoice — {order.id}</h3>
+                <span
+                  style={{
+                    padding: '0.15rem 0.5rem',
+                    borderRadius: '4px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    letterSpacing: '0.5px',
+                    background: isB2B ? '#1e40af' : '#059669',
+                    color: '#ffffff'
+                  }}
+                >
+                  {invoiceTypeBadge} INVOICE
+                </span>
+              </div>
               {order.whatsAppOpened === 'Yes' && (
                 <span style={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: 700 }}>
                   ● WhatsApp Opened by {order.whatsAppSentBy || 'Staff'} on {order.lastWhatsAppDate} {order.lastWhatsAppTime}
@@ -105,8 +125,22 @@ export const TaxInvoicePrintModal = ({ order, isOpen, onClose }) => {
             </div>
 
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '1.25rem', fontWeight: 900, textTransform: 'uppercase', color: '#059669', border: '2px solid #059669', padding: '0.2rem 0.6rem', borderRadius: '4px' }}>
-                TAX INVOICE
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', border: '2px solid #059669', padding: '0.2rem 0.6rem', borderRadius: '4px' }}>
+                <span style={{ fontSize: '1.2rem', fontWeight: 900, textTransform: 'uppercase', color: '#059669' }}>
+                  TAX INVOICE
+                </span>
+                <span
+                  style={{
+                    background: isB2B ? '#1e40af' : '#059669',
+                    color: '#ffffff',
+                    fontWeight: 800,
+                    fontSize: '0.75rem',
+                    padding: '0.15rem 0.45rem',
+                    borderRadius: '3px'
+                  }}
+                >
+                  {invoiceTypeBadge}
+                </span>
               </div>
               <div style={{ fontSize: '0.85rem', marginTop: '0.4rem' }}>
                 Invoice No: <strong>INV-{order.id.replace('SO-', '')}</strong>
@@ -123,12 +157,34 @@ export const TaxInvoicePrintModal = ({ order, isOpen, onClose }) => {
           {/* Billed To / Shipped To Grid */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', border: '1px solid #000', padding: '0.85rem', borderRadius: '4px', marginBottom: '1.25rem', backgroundColor: '#fafafa' }}>
             <div>
-              <div style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: '#64748b', borderBottom: '1px solid #cbd5e1', paddingBottom: '0.2rem', marginBottom: '0.4rem' }}>
-                BILLED TO (BUYER DETAILS)
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #cbd5e1', paddingBottom: '0.2rem', marginBottom: '0.4rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: '#64748b' }}>
+                  BILLED TO (BUYER DETAILS)
+                </span>
+                <span
+                  style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
+                    padding: '0.1rem 0.35rem',
+                    borderRadius: '3px',
+                    background: isB2B ? '#dbeafe' : '#f1f5f9',
+                    color: isB2B ? '#1e40af' : '#475569',
+                    border: `1px solid ${isB2B ? '#93c5fd' : '#cbd5e1'}`
+                  }}
+                >
+                  {invoiceTypeBadge}
+                </span>
               </div>
               <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>{order.customerName}</div>
-              <div style={{ color: '#334155' }}>GSTIN: <strong style={{ color: '#1e40af' }}>{order.customerGstin || 'URP (Unregistered)'}</strong></div>
-              <div style={{ color: '#334155' }}>Mobile: {order.customerMobile}</div>
+              <div style={{ color: '#334155' }}>
+                GSTIN: {isB2B ? (
+                  <strong style={{ color: '#1e40af', fontSize: '0.88rem' }}>{order.customerGstin}</strong>
+                ) : (
+                  <strong style={{ color: '#64748b' }}>Not Available (Non-GST / URP)</strong>
+                )}
+              </div>
+              <div style={{ color: '#334155' }}>Customer GST Status: <strong>{isB2B ? 'Registered (B2B)' : 'Non-GST (B2C)'}</strong></div>
+              <div style={{ color: '#334155' }}>Mobile: {order.customerMobile || 'N/A'}</div>
               <div style={{ color: '#334155' }}>State Code: {order.customerState || 'Maharashtra (27)'}</div>
             </div>
             <div>

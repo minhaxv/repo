@@ -765,6 +765,153 @@ export const api = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to record outsource payment');
     return data;
+  },
+
+  // Customer Deletion
+  async deleteCustomer(id) {
+    const res = await fetch(`${API_BASE}/customers/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to delete customer');
+    return data;
+  },
+
+  // Suppliers / Outsource Vendors
+  async createSupplier(supplier) {
+    const res = await fetch(`${API_BASE}/suppliers`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(supplier)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to create supplier');
+    return data.supplier || data;
+  },
+  async updateSupplier(id, supplier) {
+    const res = await fetch(`${API_BASE}/suppliers/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(supplier)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to update supplier');
+    return data.supplier || data;
+  },
+  async deleteSupplier(id) {
+    const res = await fetch(`${API_BASE}/suppliers/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to delete supplier');
+    return data;
+  },
+
+  // Care-Of Persons
+  async createCareOfPerson(careOf) {
+    const res = await fetch(`${API_BASE}/care-of-persons`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(careOf)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to create care-of person');
+    return data.careOfPerson || data;
+  },
+  async updateCareOfPerson(id, careOf) {
+    const res = await fetch(`${API_BASE}/care-of-persons/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(careOf)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to update care-of person');
+    return data.careOfPerson || data;
+  },
+  async deleteCareOfPerson(id) {
+    const res = await fetch(`${API_BASE}/care-of-persons/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to delete care-of person');
+    return data;
+  },
+
+  // Sales Persons
+  async createSalesPerson(sp) {
+    const res = await fetch(`${API_BASE}/sales-persons`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(sp)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to create sales person');
+    return data.salesPerson || data;
+  },
+  async updateSalesPerson(id, sp) {
+    const res = await fetch(`${API_BASE}/sales-persons/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(sp)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to update sales person');
+    return data.salesPerson || data;
+  },
+  async deleteSalesPerson(id) {
+    const res = await fetch(`${API_BASE}/sales-persons/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to delete sales person');
+    return data;
+  },
+
+  // Purchase Orders
+  async createPurchaseOrder(po) {
+    const res = await fetch(`${API_BASE}/purchase-orders`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(po)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to create purchase order');
+    return data.purchaseOrder || data;
+  },
+  async updatePurchaseOrder(id, po) {
+    const res = await fetch(`${API_BASE}/purchase-orders/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(po)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to update purchase order');
+    return data.purchaseOrder || data;
+  },
+  async deletePurchaseOrder(id) {
+    const res = await fetch(`${API_BASE}/purchase-orders/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to delete purchase order');
+    return data;
+  },
+
+  // Database Reset (Admin Fresh Start)
+  async resetDatabase(confirmationCode = 'RESET ERP') {
+    const res = await fetch(`${API_BASE}/admin/reset-database`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ confirmationCode })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to reset database');
+    return data;
   }
 };
 

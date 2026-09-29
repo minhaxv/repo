@@ -1257,6 +1257,114 @@ export function runMigrations(db) {
     console.log(' -> Migration 015 applied: Outsource bills, bill-based single payment tracking, and demo BILL-125 ready.');
   });
 
+  // ----------------------------------------------------
+  // MIGRATION 016: Work-Order Based Outsource Billing & B2B/B2C Auto-Classification
+  // ----------------------------------------------------
+  applyMigration('016_outsource_work_order_billing_and_b2b_invoicing', (database) => {
+    // 1. Add bill tracking columns to outsource_jobs
+    try { database.prepare("ALTER TABLE outsource_jobs ADD COLUMN bill_id TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE outsource_jobs ADD COLUMN bill_number TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE outsource_jobs ADD COLUMN billing_status TEXT DEFAULT 'Unbilled'").run(); } catch(e) {}
+
+    // 2. Add invoice_type to sales_orders
+    try { database.prepare("ALTER TABLE sales_orders ADD COLUMN invoice_type TEXT DEFAULT 'B2C'").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_orders ADD COLUMN customer_gstin TEXT").run(); } catch(e) {}
+
+    // 3. Ensure document_sequences has BILL sequence
+    try {
+      database.prepare(`
+        INSERT OR IGNORE INTO document_sequences (id, doc_type, prefix, current_number, padding)
+        VALUES ('SEQ-BILL', 'BILL', 'BILL-', 125, 5)
+      `).run();
+    } catch(e) {}
+
+    // 4. Update sales_orders with customer GSTIN and auto-classification
+    const orders = database.prepare("SELECT id, customer_id FROM sales_orders").all();
+    for (const ord of orders) {
+      if (ord.customer_id) {
+        const cust = database.prepare("SELECT gst_number FROM customers WHERE id = ?").get(ord.customer_id);
+        const gstin = (cust?.gst_number || '').trim();
+        const isB2B = gstin.length >= 10 && !['URP', 'N/A', 'NONE', 'UNREGISTERED'].includes(gstin.toUpperCase());
+        database.prepare("UPDATE sales_orders SET customer_gstin = ?, invoice_type = ? WHERE id = ?")
+          .run(gstin || null, isB2B ? 'B2B' : 'B2C', ord.id);
+      }
+    }
+
+    // 5. Seed Work Orders for ABC Embroidery and other vendors in outsource_jobs
+    const abcVendor = database.prepare("SELECT id FROM suppliers WHERE name = 'ABC Embroidery' OR supplier_code = 'SUP-ABC-01'").get();
+    const vendorId = abcVendor ? abcVendor.id : 'SUP-ABC-01';
+
+    let validSO = database.prepare("SELECT id FROM sales_orders LIMIT 1").get();
+    if (!validSO) {
+      database.prepare(`
+        INSERT INTO sales_orders (id, order_number, order_date, status, production_status, subtotal, grand_total, invoice_type)
+        VALUES ('SO-DEFAULT-SEED', 'SO-DEFAULT-SEED', '2026-09-29', 'CONFIRMED', 'COMPLETED', 20000, 20000, 'B2C')
+      `).run();
+      validSO = { id: 'SO-DEFAULT-SEED' };
+    }
+    const defaultOrderId = validSO.id;
+
+    // Link already billed WO-001, WO-002, WO-003 to BILL-125
+    const existingWO1 = database.prepare("SELECT id FROM outsource_jobs WHERE outsource_number = 'WO-001'").get();
+    if (!existingWO1) {
+      database.prepare(`
+        INSERT INTO outsource_jobs (id, outsource_number, sales_order_id, supplier_id, supplier_name, work_description, quantity, outsource_cost, status, bill_id, bill_number, billing_status)
+        VALUES ('WO-001', 'WO-001', ?, ?, 'ABC Embroidery', 'Logo Embroidery for T-Shirts', 1, 5000, 'COMPLETED', 'BILL-125-DEMO', 'BILL-125', 'Billed')
+      `).run(defaultOrderId, vendorId);
+    }
+    const existingWO2 = database.prepare("SELECT id FROM outsource_jobs WHERE outsource_number = 'WO-002'").get();
+    if (!existingWO2) {
+      database.prepare(`
+        INSERT INTO outsource_jobs (id, outsource_number, sales_order_id, supplier_id, supplier_name, work_description, quantity, outsource_cost, status, bill_id, bill_number, billing_status)
+        VALUES ('WO-002', 'WO-002', ?, ?, 'ABC Embroidery', 'Gold Thread Border Patches', 1, 8000, 'COMPLETED', 'BILL-125-DEMO', 'BILL-125', 'Billed')
+      `).run(defaultOrderId, vendorId);
+    }
+    const existingWO3 = database.prepare("SELECT id FROM outsource_jobs WHERE outsource_number = 'WO-003'").get();
+    if (!existingWO3) {
+      database.prepare(`
+        INSERT INTO outsource_jobs (id, outsource_number, sales_order_id, supplier_id, supplier_name, work_description, quantity, outsource_cost, status, bill_id, bill_number, billing_status)
+        VALUES ('WO-003', 'WO-003', ?, ?, 'ABC Embroidery', 'Cap Visor Direct Embroidery', 1, 7000, 'COMPLETED', 'BILL-125-DEMO', 'BILL-125', 'Billed')
+      `).run(defaultOrderId, vendorId);
+    }
+
+    // Seed Unbilled Eligible Work Orders for ABC Embroidery
+    const existingWO4 = database.prepare("SELECT id FROM outsource_jobs WHERE outsource_number = 'WO-004'").get();
+    if (!existingWO4) {
+      database.prepare(`
+        INSERT INTO outsource_jobs (id, outsource_number, sales_order_id, supplier_id, supplier_name, work_description, quantity, outsource_cost, status, billing_status)
+        VALUES ('WO-004', 'WO-004', ?, ?, 'ABC Embroidery', 'Uniform Custom Sleeve Patches', 1, 4500, 'COMPLETED', 'Unbilled')
+      `).run(defaultOrderId, vendorId);
+    }
+    const existingWO5 = database.prepare("SELECT id FROM outsource_jobs WHERE outsource_number = 'WO-005'").get();
+    if (!existingWO5) {
+      database.prepare(`
+        INSERT INTO outsource_jobs (id, outsource_number, sales_order_id, supplier_id, supplier_name, work_description, quantity, outsource_cost, status, billing_status)
+        VALUES ('WO-005', 'WO-005', ?, ?, 'ABC Embroidery', 'Jacket Back Logo Embroidery', 1, 6000, 'COMPLETED', 'Unbilled')
+      `).run(defaultOrderId, vendorId);
+    }
+    const existingWO6 = database.prepare("SELECT id FROM outsource_jobs WHERE outsource_number = 'WO-006'").get();
+    if (!existingWO6) {
+      database.prepare(`
+        INSERT INTO outsource_jobs (id, outsource_number, sales_order_id, supplier_id, supplier_name, work_description, quantity, outsource_cost, status, billing_status)
+        VALUES ('WO-006', 'WO-006', ?, ?, 'ABC Embroidery', 'Apron Monogram Embroidery', 1, 7500, 'COMPLETED', 'Unbilled')
+      `).run(defaultOrderId, vendorId);
+    }
+
+    // Seed a work order for another vendor to test multi-vendor prevention
+    const otherVendor = database.prepare("SELECT id, name FROM suppliers WHERE id != ? LIMIT 1").get(vendorId);
+    if (otherVendor) {
+      const existingWO101 = database.prepare("SELECT id FROM outsource_jobs WHERE outsource_number = 'WO-101'").get();
+      if (!existingWO101) {
+        database.prepare(`
+          INSERT INTO outsource_jobs (id, outsource_number, sales_order_id, supplier_id, supplier_name, work_description, quantity, outsource_cost, status, billing_status)
+          VALUES ('WO-101', 'WO-101', ?, ?, ?, 'Acrylic Laser Cutting & Etching', 1, 3500, 'COMPLETED', 'Unbilled')
+        `).run(defaultOrderId, otherVendor.id, otherVendor.name);
+      }
+    }
+
+    console.log(' -> Migration 016 applied: Work order billing status, bill sequences, and B2B/B2C auto-classification initialized.');
+  });
+
   console.log('✅ All migrations processed successfully!');
 }
 

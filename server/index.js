@@ -289,62 +289,17 @@ function seedProductionDataIfEmpty() {
       console.log('✅ Production Processes Master seeded successfully!');
     }
 
-    // 3. Check production tasks
-    const taskCount = db.prepare('SELECT COUNT(*) as count FROM production_tasks').get().count;
-    if (taskCount === 0) {
-      console.log('📋 Seeding Multi-Task Production Work Logs...');
-      const insertTask = db.prepare(`
-        INSERT INTO production_tasks (
-          id, task_date, employee_id, employee_name, order_id, order_number, customer_name,
-          item_id, item_title, process_id, process_name, quantity, unit, start_time, end_time,
-          total_duration_minutes, status, priority, remarks, machine_id, machine_name, department,
-          production_location, original_qty, completed_qty, rejected_qty, rework_qty, final_qty,
-          qc_status, created_by, completed_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      const insertTimeLog = db.prepare(`
-        INSERT INTO production_task_time_logs (id, task_id, action, timestamp, logged_by, notes, elapsed_seconds)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      const taskTx = db.transaction(() => {
-        for (const t of initialProductionTasks) {
-          insertTask.run(
-            t.id, t.taskDate || new Date().toISOString().split('T')[0], t.employeeId, t.employeeName,
-            t.orderId, t.orderNumber, t.customerName || '', t.itemId || '', t.itemTitle || '',
-            t.processId || '', t.processName, Number(t.quantity || 1), t.unit || 'Nos',
-            t.startTime || '', t.endTime || '', Number(t.totalDurationMinutes || 0),
-            t.status || 'Pending', t.priority || 'Normal', t.remarks || '',
-            t.machineId || '', t.machineName || '', t.department || 'Production',
-            t.productionLocation || '', Number(t.originalQty || t.quantity || 1),
-            Number(t.completedQty || 0), Number(t.rejectedQty || 0), Number(t.reworkQty || 0),
-            Number(t.finalQty || t.quantity || 1), t.qcStatus || 'Pending',
-            t.createdBy || 'Admin User', t.completedBy || ''
-          );
-
-          if (t.timeLogs && Array.isArray(t.timeLogs)) {
-            for (let idx = 0; idx < t.timeLogs.length; idx++) {
-              const tl = t.timeLogs[idx];
-              insertTimeLog.run(
-                tl.id || `TL-${t.id}-${idx + 1}`, t.id, tl.action, tl.timestamp || new Date().toISOString(),
-                tl.loggedBy || t.employeeName, tl.notes || '', Number(tl.elapsedSeconds || 0)
-              );
-            }
-          }
-        }
-      });
-      taskTx();
-      console.log('✅ Multi-Task Production Work Logs seeded successfully!');
-    }
+    // 3. Note: Transactional production tasks are NOT auto-seeded to ensure fresh databases remain clean.
   } catch (err) {
     console.error('⚠️ Production seed warning:', err.message);
   }
 }
 
-// Perform seed checks on startup
-seedInitialDataIfEmpty();
-seedBiometricDataIfEmpty();
+// Perform seed checks on startup:
+// Auto-seeding of mock transactional records (customers, orders, bills, payments, tasks) is disabled
+// to guarantee that fresh/reset databases remain empty and newly created data persists permanently.
+// seedInitialDataIfEmpty();
+// seedBiometricDataIfEmpty();
 seedProductionDataIfEmpty();
 
 /* ==========================================================================
@@ -640,6 +595,23 @@ app.get('/api/all', authenticateToken, (req, res) => {
     const products = db.prepare('SELECT * FROM products ORDER BY name ASC').all();
     const productMaterialSpecs = db.prepare('SELECT * FROM product_specifications').all();
     const suppliers = db.prepare('SELECT * FROM suppliers ORDER BY name ASC').all();
+    const rawPurchaseOrders = db.prepare('SELECT * FROM purchase_orders ORDER BY order_date DESC').all();
+    const purchaseOrders = rawPurchaseOrders.map(po => {
+      let itemsList = [];
+      try {
+        itemsList = typeof po.items === 'string' ? JSON.parse(po.items || '[]') : (po.items || []);
+      } catch (e) {
+        itemsList = [];
+      }
+      return {
+        id: po.id,
+        vendorName: po.vendor_name,
+        orderDate: po.order_date,
+        status: po.status,
+        totalAmount: Number(po.total_amount || 0),
+        items: itemsList
+      };
+    });
     const salesPersons = db.prepare('SELECT * FROM sales_persons').all();
     const careOfPersons = db.prepare('SELECT * FROM care_of_persons').all();
     const employees = db.prepare('SELECT * FROM employees').all();
@@ -733,6 +705,8 @@ app.get('/api/all', authenticateToken, (req, res) => {
         billedByStaffId: o.billed_by_id || null,
         billedByRole: o.billed_by_role || null,
         billedAt: o.billed_at || null,
+        customerGstin: o.customer_gstin || null,
+        invoiceType: o.invoice_type || ((o.customer_gstin && o.customer_gstin.trim().length >= 10 && !['URP', 'N/A', 'NONE', 'UNREGISTERED'].includes(o.customer_gstin.trim().toUpperCase())) ? 'B2B' : 'B2C'),
         orderType: o.order_type || 'Direct',
         quotationStatus: o.quotation_status || null,
         convertedFromQuotation: Boolean(o.converted_from_quotation_id),
@@ -747,7 +721,31 @@ app.get('/api/all', authenticateToken, (req, res) => {
     });
 
     const jobWork = db.prepare('SELECT * FROM job_work ORDER BY created_at DESC').all();
-    const outsourceJobs = db.prepare('SELECT * FROM outsource_jobs ORDER BY created_at DESC').all();
+    const rawOutsourceJobs = db.prepare('SELECT * FROM outsource_jobs ORDER BY created_at DESC').all();
+    const outsourceJobs = rawOutsourceJobs.map(j => ({
+      id: j.id,
+      outsourceNumber: j.outsource_number || j.id,
+      salesOrderId: j.sales_order_id,
+      salesOrderItemId: j.sales_order_item_id,
+      jobCardId: j.job_card_id || j.outsource_number || j.id,
+      supplierId: j.supplier_id,
+      vendorId: j.supplier_id,
+      supplierName: j.supplier_name,
+      vendorName: j.supplier_name,
+      workDescription: j.work_description,
+      description: j.work_description,
+      quantity: Number(j.quantity || 1),
+      unit: j.unit || 'Nos',
+      outsourceCost: Number(j.outsource_cost || 0),
+      amount: Number(j.outsource_cost || 0),
+      status: j.status || 'PENDING',
+      billId: j.bill_id || null,
+      billNumber: j.bill_number || null,
+      billingStatus: j.billing_status || (j.bill_number ? 'Billed' : 'Unbilled'),
+      isEligible: (j.status || '').toUpperCase() !== 'CANCELLED' && (j.billing_status || '') !== 'Billed' && !j.bill_number,
+      createdAt: j.created_at,
+      updatedAt: j.updated_at
+    }));
     const workerJobIncentives = db.prepare('SELECT * FROM worker_job_incentives ORDER BY completed_at DESC').all();
     const payments = db.prepare('SELECT * FROM payments ORDER BY paid_date DESC').all();
 
@@ -989,6 +987,7 @@ app.get('/api/all', authenticateToken, (req, res) => {
         lastMaintenanceDate: m.last_maintenance_date
       })),
       expenses: db.prepare('SELECT * FROM expenses ORDER BY expense_date DESC').all(),
+      purchaseOrders,
       inventory: db.prepare('SELECT * FROM inventory ORDER BY name ASC').all(),
       inventoryTransactions: db.prepare('SELECT * FROM inventory_transactions ORDER BY created_at DESC LIMIT 100').all(),
       reworkTickets: db.prepare('SELECT * FROM rework_tickets ORDER BY created_at DESC').all(),
@@ -1525,6 +1524,461 @@ app.put('/api/customers/:id', (req, res) => {
     });
   } catch (err) {
     console.error("PUT /api/customers/:id Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE CUSTOMER
+app.delete('/api/customers/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    const existing = db.prepare('SELECT id FROM customers WHERE id = ?').get(id);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Customer not found' });
+    }
+    db.prepare('DELETE FROM customers WHERE id = ?').run(id);
+    res.json({ success: true, message: 'Customer deleted successfully', id });
+  } catch (err) {
+    console.error("DELETE /api/customers/:id Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// SUPPLIERS / OUTSOURCE VENDORS CRUD
+app.post('/api/suppliers', authenticateToken, (req, res) => {
+  try {
+    const s = req.body || {};
+    const id = s.id || `SUP-${Date.now().toString(36).toUpperCase()}`;
+    const code = s.code || s.supplier_code || id;
+    const name = (s.name || '').trim();
+    if (!name) return res.status(400).json({ success: false, error: 'Supplier name is required' });
+
+    db.prepare(`
+      INSERT INTO suppliers (
+        id, supplier_code, name, category, mobile, email, address, gstin, pending_payment, avg_turnaround_days, notes, active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, code, name, s.category || 'Vendor', s.mobile || '', s.email || '', s.address || '',
+      (s.gstin || '').trim().toUpperCase(), Number(s.pendingPayment || s.pending_payment || 0),
+      Number(s.avgTurnaroundDays || s.avg_turnaround_days || 2), s.notes || '', 1
+    );
+
+    const created = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(id);
+    res.json({
+      success: true,
+      supplier: {
+        ...created,
+        code: created.supplier_code,
+        pendingPayment: Number(created.pending_payment || 0),
+        avgTurnaroundDays: Number(created.avg_turnaround_days || 2)
+      }
+    });
+  } catch (err) {
+    console.error("POST /api/suppliers Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/suppliers/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    const s = req.body || {};
+    db.prepare(`
+      UPDATE suppliers SET
+        name = COALESCE(?, name),
+        category = COALESCE(?, category),
+        mobile = COALESCE(?, mobile),
+        email = COALESCE(?, email),
+        address = COALESCE(?, address),
+        gstin = COALESCE(?, gstin),
+        pending_payment = COALESCE(?, pending_payment),
+        avg_turnaround_days = COALESCE(?, avg_turnaround_days),
+        notes = COALESCE(?, notes),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(
+      s.name !== undefined ? (s.name || '').trim() : null,
+      s.category !== undefined ? s.category : null,
+      s.mobile !== undefined ? s.mobile : null,
+      s.email !== undefined ? s.email : null,
+      s.address !== undefined ? s.address : null,
+      s.gstin !== undefined ? (s.gstin || '').trim().toUpperCase() : null,
+      s.pendingPayment !== undefined ? Number(s.pendingPayment) : (s.pending_payment !== undefined ? Number(s.pending_payment) : null),
+      s.avgTurnaroundDays !== undefined ? Number(s.avgTurnaroundDays) : (s.avg_turnaround_days !== undefined ? Number(s.avg_turnaround_days) : null),
+      s.notes !== undefined ? s.notes : null,
+      id
+    );
+
+    const updated = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(id);
+    if (!updated) return res.status(404).json({ success: false, error: 'Supplier not found' });
+    res.json({
+      success: true,
+      supplier: {
+        ...updated,
+        code: updated.supplier_code,
+        pendingPayment: Number(updated.pending_payment || 0),
+        avgTurnaroundDays: Number(updated.avg_turnaround_days || 2)
+      }
+    });
+  } catch (err) {
+    console.error("PUT /api/suppliers/:id Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/suppliers/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    db.prepare('DELETE FROM suppliers WHERE id = ?').run(id);
+    res.json({ success: true, message: 'Supplier deleted successfully', id });
+  } catch (err) {
+    console.error("DELETE /api/suppliers/:id Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// CARE-OF PERSONS CRUD
+app.post('/api/care-of-persons', authenticateToken, (req, res) => {
+  try {
+    const co = req.body || {};
+    const id = co.id || `CO-${Date.now().toString(36).toUpperCase()}`;
+    const name = (co.name || '').trim();
+    if (!name) return res.status(400).json({ success: false, error: 'Care-Of name is required' });
+
+    db.prepare(`
+      INSERT INTO care_of_persons (id, name, mobile, email, commission_rate, active)
+      VALUES (?, ?, ?, ?, ?, 1)
+    `).run(id, name, co.mobile || '', co.email || '', Number(co.commissionRate || co.referralCommissionPct || 2.0));
+
+    const created = db.prepare('SELECT * FROM care_of_persons WHERE id = ?').get(id);
+    res.json({
+      success: true,
+      careOfPerson: {
+        ...created,
+        commissionRate: Number(created.commission_rate || 2.0),
+        referralCommissionPct: Number(created.commission_rate || 2.0)
+      }
+    });
+  } catch (err) {
+    console.error("POST /api/care-of-persons Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/care-of-persons/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    const co = req.body || {};
+    db.prepare(`
+      UPDATE care_of_persons SET
+        name = COALESCE(?, name),
+        mobile = COALESCE(?, mobile),
+        email = COALESCE(?, email),
+        commission_rate = COALESCE(?, commission_rate)
+      WHERE id = ?
+    `).run(
+      co.name !== undefined ? (co.name || '').trim() : null,
+      co.mobile !== undefined ? co.mobile : null,
+      co.email !== undefined ? co.email : null,
+      co.commissionRate !== undefined ? Number(co.commissionRate) : (co.referralCommissionPct !== undefined ? Number(co.referralCommissionPct) : null),
+      id
+    );
+
+    const updated = db.prepare('SELECT * FROM care_of_persons WHERE id = ?').get(id);
+    if (!updated) return res.status(404).json({ success: false, error: 'Care-Of person not found' });
+    res.json({
+      success: true,
+      careOfPerson: {
+        ...updated,
+        commissionRate: Number(updated.commission_rate || 2.0),
+        referralCommissionPct: Number(updated.commission_rate || 2.0)
+      }
+    });
+  } catch (err) {
+    console.error("PUT /api/care-of-persons/:id Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/care-of-persons/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    db.prepare('DELETE FROM care_of_persons WHERE id = ?').run(id);
+    res.json({ success: true, message: 'Care-Of person deleted successfully', id });
+  } catch (err) {
+    console.error("DELETE /api/care-of-persons/:id Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// SALES PERSONS CRUD
+app.post('/api/sales-persons', authenticateToken, (req, res) => {
+  try {
+    const sp = req.body || {};
+    const id = sp.id || `SP-${Date.now().toString(36).toUpperCase()}`;
+    const name = (sp.name || '').trim();
+    if (!name) return res.status(400).json({ success: false, error: 'Sales person name is required' });
+
+    db.prepare(`
+      INSERT INTO sales_persons (id, name, mobile, email, commission_rate, active)
+      VALUES (?, ?, ?, ?, ?, 1)
+    `).run(id, name, sp.mobile || '', sp.email || '', Number(sp.commissionRate || 3.5));
+
+    const created = db.prepare('SELECT * FROM sales_persons WHERE id = ?').get(id);
+    res.json({
+      success: true,
+      salesPerson: {
+        ...created,
+        commissionRate: Number(created.commission_rate || 3.5)
+      }
+    });
+  } catch (err) {
+    console.error("POST /api/sales-persons Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/sales-persons/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    const sp = req.body || {};
+    db.prepare(`
+      UPDATE sales_persons SET
+        name = COALESCE(?, name),
+        mobile = COALESCE(?, mobile),
+        email = COALESCE(?, email),
+        commission_rate = COALESCE(?, commission_rate)
+      WHERE id = ?
+    `).run(
+      sp.name !== undefined ? (sp.name || '').trim() : null,
+      sp.mobile !== undefined ? sp.mobile : null,
+      sp.email !== undefined ? sp.email : null,
+      sp.commissionRate !== undefined ? Number(sp.commissionRate) : null,
+      id
+    );
+
+    const updated = db.prepare('SELECT * FROM sales_persons WHERE id = ?').get(id);
+    if (!updated) return res.status(404).json({ success: false, error: 'Sales person not found' });
+    res.json({
+      success: true,
+      salesPerson: {
+        ...updated,
+        commissionRate: Number(updated.commission_rate || 3.5)
+      }
+    });
+  } catch (err) {
+    console.error("PUT /api/sales-persons/:id Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/sales-persons/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    db.prepare('DELETE FROM sales_persons WHERE id = ?').run(id);
+    res.json({ success: true, message: 'Sales person deleted successfully', id });
+  } catch (err) {
+    console.error("DELETE /api/sales-persons/:id Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PURCHASE ORDERS CRUD
+app.post('/api/purchase-orders', authenticateToken, (req, res) => {
+  try {
+    const po = req.body || {};
+    const id = po.id || `PO-${Date.now().toString(36).toUpperCase()}`;
+    const vendorName = (po.vendorName || po.vendor_name || '').trim();
+    const itemsJson = typeof po.items === 'string' ? po.items : JSON.stringify(po.items || []);
+
+    db.prepare(`
+      INSERT INTO purchase_orders (id, vendor_name, order_date, status, total_amount, items)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      vendorName,
+      po.orderDate || po.order_date || new Date().toISOString().split('T')[0],
+      po.status || 'Issued',
+      Number(po.totalAmount || po.total_amount || 0),
+      itemsJson
+    );
+
+    const created = db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(id);
+    res.json({
+      success: true,
+      purchaseOrder: {
+        id: created.id,
+        vendorName: created.vendor_name,
+        orderDate: created.order_date,
+        status: created.status,
+        totalAmount: Number(created.total_amount || 0),
+        items: JSON.parse(created.items || '[]')
+      }
+    });
+  } catch (err) {
+    console.error("POST /api/purchase-orders Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/purchase-orders/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    const po = req.body || {};
+    const itemsJson = po.items !== undefined ? (typeof po.items === 'string' ? po.items : JSON.stringify(po.items)) : null;
+
+    db.prepare(`
+      UPDATE purchase_orders SET
+        vendor_name = COALESCE(?, vendor_name),
+        order_date = COALESCE(?, order_date),
+        status = COALESCE(?, status),
+        total_amount = COALESCE(?, total_amount),
+        items = COALESCE(?, items)
+      WHERE id = ?
+    `).run(
+      po.vendorName || po.vendor_name || null,
+      po.orderDate || po.order_date || null,
+      po.status || null,
+      po.totalAmount !== undefined ? Number(po.totalAmount) : (po.total_amount !== undefined ? Number(po.total_amount) : null),
+      itemsJson,
+      id
+    );
+
+    const updated = db.prepare('SELECT * FROM purchase_orders WHERE id = ?').get(id);
+    if (!updated) return res.status(404).json({ success: false, error: 'Purchase order not found' });
+    res.json({
+      success: true,
+      purchaseOrder: {
+        id: updated.id,
+        vendorName: updated.vendor_name,
+        orderDate: updated.order_date,
+        status: updated.status,
+        totalAmount: Number(updated.total_amount || 0),
+        items: JSON.parse(updated.items || '[]')
+      }
+    });
+  } catch (err) {
+    console.error("PUT /api/purchase-orders/:id Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/purchase-orders/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    db.prepare('DELETE FROM purchase_orders WHERE id = ?').run(id);
+    res.json({ success: true, message: 'Purchase order deleted successfully', id });
+  } catch (err) {
+    console.error("DELETE /api/purchase-orders/:id Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ADMIN ONLY: RESET DATABASE TO CLEAN SLATE (PRESERVES SCHEMA, CONFIG, USERS, ROLES)
+app.post('/api/admin/reset-database', authenticateToken, async (req, res) => {
+  try {
+    const user = req.user;
+    const { confirmationCode } = req.body || {};
+
+    if (user && user.role !== 'Admin' && user.role !== 'Manager') {
+      return res.status(403).json({ success: false, error: 'Forbidden: Only Admin role can reset the ERP database.' });
+    }
+
+    if (confirmationCode !== 'RESET ERP') {
+      return res.status(400).json({
+        success: false,
+        error: 'Confirmation code mismatch. You must provide confirmationCode: "RESET ERP" to execute reset.'
+      });
+    }
+
+    // 1. Mandatory Pre-Reset Backup
+    const backupDir = path.join(__dirname, '..', 'database', 'backups');
+    if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupFilename = `pre_reset_backup_${timestamp}.sqlite`;
+    const backupPath = path.join(backupDir, backupFilename);
+
+    await db.backup(backupPath);
+    const stats = fs.statSync(backupPath);
+
+    // 2. Clear all transactional tables inside a safe, atomic transaction
+    const resetTx = db.transaction(() => {
+      // Order Line Items & Production Work Orders
+      db.prepare('DELETE FROM sales_order_items').run();
+      db.prepare('DELETE FROM job_work').run();
+      db.prepare('DELETE FROM outsource_jobs').run();
+      db.prepare('DELETE FROM sales_orders').run();
+
+      // Outsource Bills & Payments
+      db.prepare('DELETE FROM outsource_payments').run();
+      db.prepare('DELETE FROM outsource_bills').run();
+
+      // Receipts & Customer Payments
+      db.prepare('DELETE FROM payments').run();
+
+      // Master Customers, Suppliers, Products
+      db.prepare('DELETE FROM customers').run();
+      db.prepare('DELETE FROM suppliers').run();
+      db.prepare('DELETE FROM product_specifications').run();
+      db.prepare('DELETE FROM products').run();
+
+      // Purchase Orders
+      db.prepare('DELETE FROM purchase_orders').run();
+
+      // Inventory & Stock Movements
+      db.prepare('DELETE FROM inventory_transactions').run();
+      db.prepare('DELETE FROM inventory').run();
+
+      // Incentives, Tasks, Expenses
+      db.prepare('DELETE FROM worker_job_incentives').run();
+      db.prepare('DELETE FROM production_task_time_logs').run();
+      db.prepare('DELETE FROM production_tasks').run();
+      db.prepare('DELETE FROM expenses').run();
+
+      // Deliveries, Reworks, Audit Logs
+      db.prepare('DELETE FROM rework_tickets').run();
+      db.prepare('DELETE FROM delivery_items').run();
+      db.prepare('DELETE FROM delivery_notes').run();
+      db.prepare('DELETE FROM artwork_versions').run();
+
+      // Accounting Journals & Ledgers
+      db.prepare('DELETE FROM journal_entries').run();
+      db.prepare('DELETE FROM journal_vouchers').run();
+      db.prepare('DELETE FROM audit_logs').run();
+
+      // Reset Document Number Sequences to 0
+      try {
+        db.prepare('UPDATE document_sequences SET current_number = 0').run();
+      } catch (e) {}
+    });
+
+    resetTx();
+
+    // Checkpoint SQLite WAL to truncate WAL files
+    try {
+      db.pragma('wal_checkpoint(TRUNCATE)');
+    } catch (e) {}
+
+    // Log the audit event for reset
+    logAuditEvent(db, {
+      user,
+      action: 'DATABASE_RESET_FRESH_START',
+      module: 'SYSTEM',
+      recordId: 'DATABASE_RESET',
+      details: { backupFilename, preResetSizeBytes: stats.size }
+    });
+
+    res.json({
+      success: true,
+      message: 'ERP database successfully reset to clean slate. All transactional and demo data cleared.',
+      backup: {
+        filename: backupFilename,
+        sizeBytes: stats.size,
+        path: backupPath
+      }
+    });
+  } catch (err) {
+    console.error("POST /api/admin/reset-database Error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -4184,15 +4638,71 @@ app.get('/api/outsource-bills', authenticateToken, (req, res) => {
 // CREATE Outsource Bill (Bundles Multiple Work Orders into 1 Bill)
 app.post('/api/outsource-bills', authenticateToken, (req, res) => {
   try {
-    const { billNumber, vendorId, vendorName, billDate, workOrders = [], notes = '', allowDuplicate = false } = req.body;
-    if (!billNumber || !billNumber.trim()) {
-      return res.status(400).json({ success: false, error: 'Bill Number is required' });
+    let { billNumber, vendorId, vendorName, billDate, workOrders = [], notes = '', allowDuplicate = false } = req.body;
+
+    if (!workOrders || !Array.isArray(workOrders) || workOrders.length === 0) {
+      return res.status(400).json({ success: false, error: 'At least one eligible Work Order must be selected to create an Outsource Bill.' });
     }
+
+    // Auto-generate Bill Number if not provided
+    if (!billNumber || !billNumber.trim()) {
+      billNumber = generateNextSequence(db, 'BILL');
+    }
+
+    const trimmedBillNo = billNumber.trim();
+
+    // 1. Same Vendor Only Validation across all selected Work Orders
+    for (const wo of workOrders) {
+      const woVendorId = wo.vendorId || wo.supplierId;
+      if (woVendorId && vendorId && woVendorId !== vendorId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Work Orders from different vendors cannot be included in the same bill.'
+        });
+      }
+      if (!vendorId && woVendorId) {
+        vendorId = woVendorId;
+        vendorName = wo.vendorName || wo.supplierName || vendorName;
+      }
+    }
+
     if (!vendorId) {
       return res.status(400).json({ success: false, error: 'Vendor is required' });
     }
 
-    const trimmedBillNo = billNumber.trim();
+    // Lookup vendor details if name missing
+    if (!vendorName) {
+      const vObj = db.prepare('SELECT name FROM suppliers WHERE id = ?').get(vendorId);
+      vendorName = vObj ? vObj.name : 'Outsource Vendor';
+    }
+
+    // 2. Validate each Work Order against database (Prevent already billed or cancelled WOs)
+    for (const wo of workOrders) {
+      const woCode = wo.workOrder || wo.outsourceNumber || wo.jobCardId || wo.id;
+      if (woCode) {
+        const dbJob = db.prepare('SELECT id, billing_status, bill_number, supplier_id, status FROM outsource_jobs WHERE outsource_number = ? OR id = ? OR job_card_id = ?').get(woCode, woCode, woCode);
+        if (dbJob) {
+          if ((dbJob.supplier_id && dbJob.supplier_id !== vendorId)) {
+            return res.status(400).json({
+              success: false,
+              error: 'Work Orders from different vendors cannot be included in the same bill.'
+            });
+          }
+          if (dbJob.billing_status === 'Billed' || dbJob.bill_number) {
+            return res.status(400).json({
+              success: false,
+              error: `Work Order ${woCode} has already been billed under ${dbJob.bill_number || 'another bill'}. Duplicate billing is not allowed.`
+            });
+          }
+          if ((dbJob.status || '').toUpperCase() === 'CANCELLED') {
+            return res.status(400).json({
+              success: false,
+              error: `Work Order ${woCode} is cancelled and cannot be billed.`
+            });
+          }
+        }
+      }
+    }
 
     // Check duplicate Vendor + Bill Number
     const existing = db.prepare('SELECT id FROM outsource_bills WHERE bill_number = ? AND vendor_id = ?').get(trimmedBillNo, vendorId);
@@ -4218,6 +4728,20 @@ app.post('/api/outsource-bills', authenticateToken, (req, res) => {
 
       // Increase vendor pending_payment by bill total
       db.prepare('UPDATE suppliers SET pending_payment = pending_payment + ? WHERE id = ?').run(totalAmount, vendorId);
+
+      // Mark included Work Orders as Billed in outsource_jobs
+      const updateJobStmt = db.prepare(`
+        UPDATE outsource_jobs
+        SET bill_id = ?, bill_number = ?, billing_status = 'Billed', updated_at = CURRENT_TIMESTAMP
+        WHERE outsource_number = ? OR id = ? OR job_card_id = ?
+      `);
+
+      for (const wo of workOrders) {
+        const woCode = wo.workOrder || wo.outsourceNumber || wo.jobCardId || wo.id;
+        if (woCode) {
+          updateJobStmt.run(billId, trimmedBillNo, woCode, woCode, woCode);
+        }
+      }
 
       // Audit Log
       const auditId = `AUD-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;

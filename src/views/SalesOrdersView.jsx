@@ -699,6 +699,8 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
       customerName: selectedCust.name || '',
       customerMobile: selectedCust.mobile || '',
       customerState: selectedCust.state || 'Kerala',
+      customerGstin: selectedCust.gstin || selectedCust.gst_number || '',
+      invoiceType: (selectedCust.gstin && selectedCust.gstin.trim().length >= 10 && !['URP', 'N/A', 'NONE', 'UNREGISTERED'].includes(selectedCust.gstin.trim().toUpperCase())) ? 'B2B' : 'B2C',
       salesPersonId: orderHeader.salesPersonId || '',
       salesPersonName: sp?.name || 'House Sales',
       careOfId: orderHeader.careOfId || '',
@@ -1018,13 +1020,32 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
               </div>
 
               {/* Selected Customer Details Card */}
-              {selectedCust && (
+              {selectedCust && (() => {
+                const custGst = selectedCust.gstin || selectedCust.gst_number || '';
+                const isCustB2B = Boolean(custGst && custGst.trim().length >= 10 && !['URP', 'N/A', 'NONE', 'UNREGISTERED'].includes(custGst.trim().toUpperCase()));
+                const invoiceTypeBadge = isCustB2B ? 'B2B' : 'B2C';
+
+                return (
                 <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '0.82rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
                         <span style={{ fontWeight: 800, color: '#0f172a', fontSize: '1rem' }}>
                           {selectedCust.name || 'Unnamed Customer'}
+                        </span>
+                        <span
+                          style={{
+                            padding: '0.15rem 0.5rem',
+                            borderRadius: '4px',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            letterSpacing: '0.5px',
+                            background: isCustB2B ? '#1e40af' : '#059669',
+                            color: '#ffffff'
+                          }}
+                          title={`Invoice Type: ${invoiceTypeBadge} (Auto-classified from Customer GSTIN)`}
+                        >
+                          {invoiceTypeBadge}
                         </span>
                         <span className="badge badge-blue" style={{ fontSize: '0.72rem', fontWeight: 700 }}>
                           {selectedCust.type || 'Regular'}
@@ -1035,15 +1056,21 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                           </span>
                         )}
                       </div>
-                      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.2rem', color: '#334155' }}>
+                      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.2rem', color: '#334155', alignItems: 'center' }}>
                         <span>📱 <strong>{selectedCust.mobile || 'No Mobile'}</strong></span>
                         {selectedCust.additionalMobiles && selectedCust.additionalMobiles.length > 0 && (
                           <span style={{ color: '#64748b' }}>
                             (Alt: {selectedCust.additionalMobiles.join(', ')})
                           </span>
                         )}
-                        {selectedCust.gstin && (
-                          <span>GSTIN: <strong>{selectedCust.gstin}</strong></span>
+                        {isCustB2B ? (
+                          <span style={{ background: '#dbeafe', color: '#1e40af', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: 700 }}>
+                            GSTIN: <strong>{custGst}</strong>
+                          </span>
+                        ) : (
+                          <span style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                            Customer GST Status: <strong>Non-GST (B2C)</strong>
+                          </span>
                         )}
                       </div>
                     </div>
@@ -1168,7 +1195,8 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                     </div>
                   )}
                 </div>
-              )}
+                );
+              })()}
             </div>
           </div>
 
@@ -2147,8 +2175,41 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                         <td>{order.orderDate}</td>
                         <td style={{ fontWeight: 600, color: '#d97706' }}>{order.deliveryDate}</td>
                         <td>
-                          <div style={{ fontWeight: 700 }}>{order.customerName}</div>
-                          <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{order.customerMobile}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 700 }}>{order.customerName}</span>
+                            {(() => {
+                              const gstin = order.customerGstin || '';
+                              const isB2B = Boolean(
+                                order.invoiceType === 'B2B' ||
+                                (gstin && gstin.trim().length >= 10 && !['URP', 'N/A', 'NONE', 'UNREGISTERED'].includes(gstin.trim().toUpperCase()))
+                              );
+                              return (
+                                <span
+                                  style={{
+                                    fontSize: '0.65rem',
+                                    fontWeight: 800,
+                                    padding: '0.1rem 0.35rem',
+                                    borderRadius: '3px',
+                                    letterSpacing: '0.4px',
+                                    background: isB2B ? '#dbeafe' : '#f1f5f9',
+                                    color: isB2B ? '#1e40af' : '#475569',
+                                    border: `1px solid ${isB2B ? '#93c5fd' : '#cbd5e1'}`
+                                  }}
+                                  title={isB2B ? `B2B Customer (GSTIN: ${gstin})` : 'B2C Customer (Non-GST)'}
+                                >
+                                  {isB2B ? 'B2B' : 'B2C'}
+                                </span>
+                              );
+                            })()}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                            {order.customerMobile}
+                            {order.customerGstin && (
+                              <span style={{ marginLeft: '4px', fontFamily: 'var(--font-mono)', color: '#1e40af', fontWeight: 600 }}>
+                                • {order.customerGstin}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td>
                           <div style={{ fontWeight: 600, color: '#1e293b' }}>{order.salesPersonName || 'House Sales'}</div>

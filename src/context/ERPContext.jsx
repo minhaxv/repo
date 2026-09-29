@@ -63,70 +63,25 @@ export const ERPProvider = ({ children }) => {
     return USER_ROLES.ADMIN;
   });
 
-  const [customers, setCustomers] = useState(() => initialCustomers || []);
-  const [salesOrders, setSalesOrders] = useState(() => initialSalesOrders || []);
-  const [products, setProducts] = useState(() => initialProducts || []);
-  const [productMaterialSpecs, setProductMaterialSpecs] = useState(() => initialProductMaterialSpecs || []);
-  const [vendors, setVendors] = useState(() => initialVendors || []);
+  const [customers, setCustomers] = useState(() => []);
+  const [salesOrders, setSalesOrders] = useState(() => []);
+  const [products, setProducts] = useState(() => []);
+  const [productMaterialSpecs, setProductMaterialSpecs] = useState(() => []);
+  const [vendors, setVendors] = useState(() => []);
   const [employees, setEmployees] = useState(() => initialEmployees || []);
   const [designers, setDesigners] = useState(() => initialDesigners || []);
-  const [salesPersons, setSalesPersons] = useState(() => initialSalesPersons || []);
-  const [careOfPersons, setCareOfPersons] = useState(() => initialCareOfPersons || []);
+  const [salesPersons, setSalesPersons] = useState(() => []);
+  const [careOfPersons, setCareOfPersons] = useState(() => []);
   const [workers, setWorkers] = useState(() => initialWorkers || []);
-  const [attendanceRecords, setAttendanceRecords] = useState(() => initialAttendance || []);
-  const [payrollRecords, setPayrollRecords] = useState(() => initialPayroll || []);
-  const [workerJobIncentives, setWorkerJobIncentives] = useState(() => initialWorkerJobIncentives || []);
-  const [inventory, setInventory] = useState(() => initialInventory || []);
-  const [purchaseOrders, setPurchaseOrders] = useState(() => initialPurchaseOrders || []);
-  const [payments, setPayments] = useState(() => initialPayments || []);
-  const [outsourceBills, setOutsourceBills] = useState(() => [
-    {
-      id: 'BILL-125-DEMO',
-      billNumber: 'BILL-125',
-      vendorId: 'SUP-ABC-01',
-      vendorName: 'ABC Embroidery',
-      billDate: '2026-04-01',
-      totalAmount: 20000,
-      paidAmount: 5000,
-      outstandingAmount: 15000,
-      status: 'Partially Paid',
-      workOrderCount: 3,
-      workOrders: [
-        { workOrder: 'WO-001', jobCardId: 'WO-001', orderId: 'SO-1001', description: 'Logo Embroidery for T-Shirts', amount: 5000 },
-        { workOrder: 'WO-002', jobCardId: 'WO-002', orderId: 'SO-1002', description: 'Gold Thread Border Patches', amount: 8000 },
-        { workOrder: 'WO-003', jobCardId: 'WO-003', orderId: 'SO-1003', description: 'Cap Visor Direct Embroidery', amount: 7000 }
-      ],
-      payments: [
-        {
-          id: 'PAY-000101',
-          billId: 'BILL-125-DEMO',
-          billNumber: 'BILL-125',
-          vendorId: 'SUP-ABC-01',
-          vendorName: 'ABC Embroidery',
-          amount: 5000,
-          paymentMethod: 'Cash',
-          refNo: 'CASH/APR-01',
-          paymentDate: '2026-04-01',
-          notes: 'Initial advance payment on bill receipt'
-        }
-      ],
-      notes: 'Consolidated April embroidery work orders'
-    }
-  ]);
-  const [outsourcePayments, setOutsourcePayments] = useState(() => [
-    {
-      id: 'PAY-000101',
-      billId: 'BILL-125-DEMO',
-      billNumber: 'BILL-125',
-      vendorId: 'SUP-ABC-01',
-      vendorName: 'ABC Embroidery',
-      amount: 5000,
-      paymentMethod: 'Cash',
-      refNo: 'CASH/APR-01',
-      paymentDate: '2026-04-01',
-      notes: 'Initial advance payment on bill receipt'
-    }
-  ]);
+  const [attendanceRecords, setAttendanceRecords] = useState(() => []);
+  const [payrollRecords, setPayrollRecords] = useState(() => []);
+  const [workerJobIncentives, setWorkerJobIncentives] = useState(() => []);
+  const [inventory, setInventory] = useState(() => []);
+  const [purchaseOrders, setPurchaseOrders] = useState(() => []);
+  const [payments, setPayments] = useState(() => []);
+  const [outsourceBills, setOutsourceBills] = useState(() => []);
+  const [outsourcePayments, setOutsourcePayments] = useState(() => []);
+  const [outsourceJobs, setOutsourceJobs] = useState(() => []);
   const [orderAuditLogs, setOrderAuditLogs] = useState(() => initialOrderAuditLogs || []);
   const [machines, setMachines] = useState(() => initialMachines || []);
   const [workflows, setWorkflows] = useState(() => initialWorkflows || []);
@@ -211,13 +166,13 @@ export const ERPProvider = ({ children }) => {
             }
           });
         }
-        if (data.customers) setCustomers(data.customers);
-        if (data.products) setProducts(data.products);
-        if (data.productMaterialSpecs) setProductMaterialSpecs(data.productMaterialSpecs);
-        if (data.vendors) setVendors(data.vendors);
-        if (data.suppliers && (!data.vendors || data.vendors.length === 0)) setVendors(data.suppliers);
-        if (data.salesPersons) setSalesPersons(data.salesPersons);
-        if (data.careOfPersons) setCareOfPersons(data.careOfPersons);
+        setCustomers(data.customers || []);
+        setProducts(data.products || []);
+        setProductMaterialSpecs(data.productMaterialSpecs || []);
+        setVendors(data.vendors || data.suppliers || []);
+        setSalesPersons(data.salesPersons || []);
+        setCareOfPersons(data.careOfPersons || []);
+        if (data.purchaseOrders) setPurchaseOrders(data.purchaseOrders || []);
         if (data.employees) {
           setEmployees(data.employees);
           const designStaff = data.employees.filter(e => 
@@ -233,20 +188,21 @@ export const ERPProvider = ({ children }) => {
         }
         if (data.biometricDevices) setBiometricDevices(data.biometricDevices);
         if (data.biometricUsers) setBiometricUsers(data.biometricUsers);
-        if (data.salesOrders) setSalesOrders(data.salesOrders);
-        if (data.workerJobIncentives) setWorkerJobIncentives(data.workerJobIncentives);
-        if (data.payments) setPayments(data.payments);
-        if (data.outsourceBills) setOutsourceBills(data.outsourceBills);
-        if (data.outsourcePayments) setOutsourcePayments(data.outsourcePayments);
-        if (data.productionProcesses && data.productionProcesses.length > 0) setProductionProcesses(data.productionProcesses);
-        if (data.productionTasks && data.productionTasks.length > 0) setProductionTasks(data.productionTasks);
+        setSalesOrders(data.salesOrders || []);
+        setWorkerJobIncentives(data.workerJobIncentives || []);
+        setPayments(data.payments || []);
+        setOutsourceBills(data.outsourceBills || []);
+        setOutsourcePayments(data.outsourcePayments || []);
+        setOutsourceJobs(data.outsourceJobs || []);
+        if (data.productionProcesses) setProductionProcesses(data.productionProcesses);
+        setProductionTasks(data.productionTasks || []);
         if (data.machines) setMachines(data.machines);
-        if (data.expenses) setExpenses(data.expenses);
-        if (data.inventory) setInventory(data.inventory);
-        if (data.inventoryTransactions) setInventoryTransactions(data.inventoryTransactions);
-        if (data.reworkTickets) setReworkTickets(data.reworkTickets);
-        if (data.auditLogs) setAuditLogs(data.auditLogs);
-        if (data.deliveryNotes) setDeliveries(data.deliveryNotes);
+        setExpenses(data.expenses || []);
+        setInventory(data.inventory || []);
+        setInventoryTransactions(data.inventoryTransactions || []);
+        setReworkTickets(data.reworkTickets || []);
+        setAuditLogs(data.auditLogs || []);
+        setDeliveries(data.deliveryNotes || []);
         if (data.users) setUsersList(data.users);
       }
     } catch (err) {
@@ -587,6 +543,12 @@ export const ERPProvider = ({ children }) => {
       console.warn("Supabase care_of_persons insert exception:", err);
     }
 
+    try {
+      await api.createCareOfPerson(uiCareOf);
+    } catch (err) {
+      console.warn("api.createCareOfPerson exception:", err);
+    }
+
     setCareOfPersons((prev) => {
       const updated = [uiCareOf, ...prev.filter(c => c.id !== uiCareOf.id)];
       try { localStorage.setItem('stitch_erp_care_of_persons', JSON.stringify(updated)); } catch (e) {}
@@ -624,6 +586,12 @@ export const ERPProvider = ({ children }) => {
       console.warn("Supabase care_of_persons update exception:", err);
     }
 
+    try {
+      await api.updateCareOfPerson(id, updatedData);
+    } catch (err) {
+      console.warn("api.updateCareOfPerson exception:", err);
+    }
+
     setCareOfPersons((prev) => {
       const updated = prev.map((co) =>
         co.id === id ? {
@@ -648,6 +616,13 @@ export const ERPProvider = ({ children }) => {
     } catch (err) {
       console.warn("Supabase care_of_persons delete exception:", err);
     }
+
+    try {
+      await api.deleteCareOfPerson(id);
+    } catch (err) {
+      console.warn("api.deleteCareOfPerson exception:", err);
+    }
+
     setCareOfPersons((prev) => {
       const updated = prev.filter((co) => co.id !== id);
       try { localStorage.setItem('stitch_erp_care_of_persons', JSON.stringify(updated)); } catch (e) {}
@@ -663,6 +638,7 @@ export const ERPProvider = ({ children }) => {
       id: newId,
       name: spData.name,
       mobile: spData.mobile || '',
+      email: spData.email || '',
       target: parseFloat(spData.target) || 500000,
       achieved: 0,
       commissionRate: parseFloat(spData.commissionRate) || 3.5
@@ -675,6 +651,12 @@ export const ERPProvider = ({ children }) => {
       }
     } catch (err) {
       console.warn("Supabase sales_persons insert exception:", err);
+    }
+
+    try {
+      await api.createSalesPerson(newSP);
+    } catch (err) {
+      console.warn("api.createSalesPerson exception:", err);
     }
 
     setSalesPersons((prev) => {
@@ -701,6 +683,12 @@ export const ERPProvider = ({ children }) => {
       console.warn("Supabase sales_persons update exception:", err);
     }
 
+    try {
+      await api.updateSalesPerson(id, updatedData);
+    } catch (err) {
+      console.warn("api.updateSalesPerson exception:", err);
+    }
+
     setSalesPersons((prev) => {
       const updated = prev.map((sp) => (sp.id === id ? { ...sp, ...updatedData } : sp));
       try { localStorage.setItem('stitch_erp_sales_persons', JSON.stringify(updated)); } catch (e) {}
@@ -719,6 +707,13 @@ export const ERPProvider = ({ children }) => {
     } catch (err) {
       console.warn("Supabase sales_persons delete exception:", err);
     }
+
+    try {
+      await api.deleteSalesPerson(id);
+    } catch (err) {
+      console.warn("api.deleteSalesPerson exception:", err);
+    }
+
     setSalesPersons((prev) => {
       const updated = prev.filter((sp) => sp.id !== id);
       try { localStorage.setItem('stitch_erp_sales_persons', JSON.stringify(updated)); } catch (e) {}
@@ -860,6 +855,13 @@ export const ERPProvider = ({ children }) => {
     } catch (err) {
       console.warn("Supabase customer delete exception:", err);
     }
+
+    try {
+      await api.deleteCustomer(id);
+    } catch (err) {
+      console.warn("api.deleteCustomer exception:", err);
+    }
+
     setCustomers((prev) => {
       const updated = prev.filter((c) => c.id !== id);
       try { localStorage.setItem('stitch_erp_customers', JSON.stringify(updated)); } catch (e) {}
@@ -989,6 +991,12 @@ export const ERPProvider = ({ children }) => {
       }
     } catch (err) {
       console.warn("Supabase vendor insert exception:", err);
+    }
+
+    try {
+      await api.createSupplier(uiVendor);
+    } catch (err) {
+      console.warn("api.createSupplier exception:", err);
     }
 
     setVendors((prev) => [uiVendor, ...prev.filter(v => v.id !== uiVendor.id)]);
@@ -1200,6 +1208,13 @@ export const ERPProvider = ({ children }) => {
     } catch (err) {
       console.warn("Supabase vendor update exception:", err);
     }
+
+    try {
+      await api.updateSupplier(id, updatedData);
+    } catch (err) {
+      console.warn("api.updateSupplier exception:", err);
+    }
+
     setVendors((prev) => prev.map((v) => (v.id === id ? { ...v, ...updatedData } : v)));
     return true;
   };
@@ -1213,6 +1228,13 @@ export const ERPProvider = ({ children }) => {
     } catch (err) {
       console.warn("Supabase vendor delete exception:", err);
     }
+
+    try {
+      await api.deleteSupplier(id);
+    } catch (err) {
+      console.warn("api.deleteSupplier exception:", err);
+    }
+
     setVendors((prev) => prev.filter((v) => v.id !== id));
     return true;
   };
@@ -2259,6 +2281,14 @@ export const ERPProvider = ({ children }) => {
       if (billData.vendorId) {
         setVendors(prev => prev.map(v => v.id === billData.vendorId ? { ...v, pendingPayment: (v.pendingPayment || 0) + totalAmount } : v));
       }
+      // Update outsourceJobs local state
+      const billedWoCodes = (billData.workOrders || []).map(w => w.workOrder || w.outsourceNumber || w.jobCardId || w.id);
+      setOutsourceJobs(prev => prev.map(j => {
+        if (billedWoCodes.includes(j.outsourceNumber) || billedWoCodes.includes(j.id) || billedWoCodes.includes(j.jobCardId)) {
+          return { ...j, billId: newBill.id, billNumber: billData.billNumber, billingStatus: 'Billed', isEligible: false };
+        }
+        return j;
+      }));
       return { success: true, billId: newBill.id, billNumber: billData.billNumber };
     }
   };
@@ -3680,6 +3710,49 @@ export const ERPProvider = ({ children }) => {
     return res;
   };
 
+  const addPurchaseOrder = async (poData) => {
+    try {
+      const created = await api.createPurchaseOrder(poData);
+      setPurchaseOrders(prev => [created, ...prev.filter(p => p.id !== created.id)]);
+      return created;
+    } catch (err) {
+      console.warn("api.createPurchaseOrder exception:", err);
+      const fallback = { ...poData, id: poData.id || `PO-${Date.now()}` };
+      setPurchaseOrders(prev => [fallback, ...prev.filter(p => p.id !== fallback.id)]);
+      return fallback;
+    }
+  };
+
+  const updatePurchaseOrder = async (id, updatedData) => {
+    try {
+      const updated = await api.updatePurchaseOrder(id, updatedData);
+      setPurchaseOrders(prev => prev.map(p => p.id === id ? { ...p, ...updated } : p));
+      return updated;
+    } catch (err) {
+      console.warn("api.updatePurchaseOrder exception:", err);
+      setPurchaseOrders(prev => prev.map(p => p.id === id ? { ...p, ...updatedData } : p));
+      return true;
+    }
+  };
+
+  const deletePurchaseOrder = async (id) => {
+    try {
+      await api.deletePurchaseOrder(id);
+    } catch (err) {
+      console.warn("api.deletePurchaseOrder exception:", err);
+    }
+    setPurchaseOrders(prev => prev.filter(p => p.id !== id));
+    return true;
+  };
+
+  const resetDatabase = async (confirmationCode = 'RESET ERP') => {
+    const res = await api.resetDatabase(confirmationCode);
+    if (res && res.success) {
+      await fetchAllERPData();
+    }
+    return res;
+  };
+
   return (
     <ERPContext.Provider
       value={{
@@ -3777,11 +3850,17 @@ export const ERPProvider = ({ children }) => {
         setInventory,
         purchaseOrders,
         setPurchaseOrders,
+        addPurchaseOrder,
+        updatePurchaseOrder,
+        deletePurchaseOrder,
+        resetDatabase,
         payments,
         outsourceBills,
         setOutsourceBills,
         outsourcePayments,
         setOutsourcePayments,
+        outsourceJobs,
+        setOutsourceJobs,
         createOutsourceBill,
         recordOutsourcePayment,
         followUps,

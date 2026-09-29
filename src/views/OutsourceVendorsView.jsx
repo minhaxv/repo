@@ -29,6 +29,7 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
     salesOrders,
     outsourceBills = [],
     outsourcePayments = [],
+    outsourceJobs = [],
     createOutsourceBill,
     recordOutsourcePayment,
     updateVendorBill,
@@ -46,6 +47,9 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
   const [searchBillQuery, setSearchBillQuery] = useState('');
   const [isCreateVendorOpen, setIsCreateVendorOpen] = useState(false);
   const [editingVendor, setEditingVendor] = useState(null);
+
+  // Checkbox selection of Work Orders for Outsource Bill creation
+  const [selectedWorkOrderIds, setSelectedWorkOrderIds] = useState([]);
 
   // Modals state
   const [viewingBill, setViewingBill] = useState(null);
@@ -66,15 +70,14 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
   const [paymentError, setPaymentError] = useState('');
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
-  // Create Bill Form State
+  // Create Bill Form State (Work Order Based)
   const [createBillForm, setCreateBillForm] = useState({
     vendorId: '',
+    vendorName: '',
     billNumber: '',
     billDate: new Date().toISOString().split('T')[0],
     notes: '',
-    workOrders: [
-      { workOrder: '', description: '', amount: '' }
-    ]
+    selectedWoIds: []
   });
   const [createBillError, setCreateBillError] = useState('');
   const [isSubmittingBill, setIsSubmittingBill] = useState(false);
@@ -97,53 +100,105 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
     PRODUCTION_STATUS.DELIVERED
   ];
 
-  // Extract all outsourced product line items (Product-Based Job Work)
-  const outsourcedProductJobs = useMemo(() => {
+  // Extract and unify all Outsource Work Orders (Database outsource_jobs + Product Line Items)
+  const allWorkOrders = useMemo(() => {
     const list = [];
+    const seenCodes = new Set();
+
+    // 1. First include all authoritative outsource_jobs rows
+    (outsourceJobs || []).forEach((j) => {
+      const woCode = j.outsourceNumber || j.jobCardId || j.id;
+      seenCodes.add(woCode);
+      const isEligible = (j.status || '').toUpperCase() !== 'CANCELLED' && (j.billingStatus || '') !== 'Billed' && !j.billNumber;
+      list.push({
+        id: j.id,
+        workOrder: woCode,
+        jobCardId: j.jobCardId || woCode,
+        orderId: j.salesOrderId || 'SO-DIRECT',
+        customerName: j.customerName || 'Direct Outsource',
+        vendorId: j.vendorId || j.supplierId,
+        vendorName: j.vendorName || j.supplierName || 'Outsource Vendor',
+        description: j.workDescription || j.description || 'Outsource Work',
+        amount: Number(j.outsourceCost || j.amount || 0),
+        status: j.status || 'COMPLETED',
+        billingStatus: j.billingStatus || (j.billNumber ? 'Billed' : 'Unbilled'),
+        billId: j.billId || null,
+        billNumber: j.billNumber || null,
+        isEligible,
+        deliveryDate: j.deliveryDate || '2026-04-10'
+      });
+    });
+
+    // 2. Also incorporate line items from sales orders not already in outsource_jobs
     (salesOrders || []).forEach((o) => {
       (o.items || []).forEach((it, idx) => {
         if (Array.isArray(it.outsourceJobs) && it.outsourceJobs.length > 0) {
           it.outsourceJobs.forEach((job, jIdx) => {
             if (job.vendorId) {
               const jcId = `${it.jobCardId || `JC-${o.id.split('-').pop()}-${idx + 1}`}-${jIdx + 1}`;
-              list.push({
-                jobCardId: jcId,
-                orderId: o.id,
-                customerName: o.customerName,
-                orderDate: o.orderDate,
-                deliveryDate: it.deliveryDate || o.deliveryDate,
-                item: {
-                  ...it,
+              if (!seenCodes.has(jcId)) {
+                seenCodes.add(jcId);
+                const isBilled = Boolean(it.vendorPaymentStatus === 'Paid' || it.vendorBillNo || it.billNumber);
+                const isCancelled = o.productionStatus === 'Cancelled';
+                list.push({
+                  id: jcId,
+                  workOrder: jcId,
+                  jobCardId: jcId,
+                  orderId: o.id,
+                  customerName: o.customerName,
                   vendorId: job.vendorId,
-                  vendorName: job.vendorName,
-                  processName: job.processName || 'Outsource Work',
-                  estimatedVendorCost: parseFloat(job.estCost) || 0,
-                  actualVendorBill: parseFloat(job.actualVendorBill) || 0
-                }
-              });
+                  vendorName: job.vendorName || 'Outsource Vendor',
+                  description: `${it.productName} - ${job.processName || 'Outsource Work'}`,
+                  amount: parseFloat(job.actualVendorBill) || parseFloat(job.estCost) || 0,
+                  status: it.productionStatus || o.productionStatus || 'IN PRODUCTION',
+                  billingStatus: isBilled ? 'Billed' : 'Unbilled',
+                  billId: it.billId || null,
+                  billNumber: it.vendorBillNo || null,
+                  isEligible: !isBilled && !isCancelled,
+                  deliveryDate: it.deliveryDate || o.deliveryDate
+                });
+              }
             }
           });
         } else if (it.outsource || it.vendorId) {
           const jcId = it.jobCardId || `JC-${o.id.split('-').pop()}-${idx + 1}`;
-          list.push({
-            jobCardId: jcId,
-            orderId: o.id,
-            customerName: o.customerName,
-            orderDate: o.orderDate,
-            deliveryDate: it.deliveryDate || o.deliveryDate,
-            item: it
-          });
+          if (!seenCodes.has(jcId)) {
+            seenCodes.add(jcId);
+            const isBilled = Boolean(it.vendorPaymentStatus === 'Paid' || it.vendorBillNo);
+            const isCancelled = o.productionStatus === 'Cancelled';
+            list.push({
+              id: jcId,
+              workOrder: jcId,
+              jobCardId: jcId,
+              orderId: o.id,
+              customerName: o.customerName,
+              vendorId: it.vendorId,
+              vendorName: it.vendorName || 'Outsource Vendor',
+              description: it.productName || 'Outsource Work',
+              amount: parseFloat(it.actualVendorBill) || parseFloat(it.estimatedVendorCost) || 0,
+              status: it.productionStatus || o.productionStatus || 'IN PRODUCTION',
+              billingStatus: isBilled ? 'Billed' : 'Unbilled',
+              billId: it.billId || null,
+              billNumber: it.vendorBillNo || null,
+              isEligible: !isBilled && !isCancelled,
+              deliveryDate: it.deliveryDate || o.deliveryDate
+            });
+          }
         }
       });
     });
+
     return list;
-  }, [salesOrders]);
+  }, [outsourceJobs, salesOrders]);
 
   const filteredJobs = useMemo(() => {
     return vendorFilter === 'ALL'
-      ? outsourcedProductJobs
-      : outsourcedProductJobs.filter((j) => j.item.vendorId === vendorFilter);
-  }, [outsourcedProductJobs, vendorFilter]);
+      ? allWorkOrders
+      : allWorkOrders.filter((j) => j.vendorId === vendorFilter);
+  }, [allWorkOrders, vendorFilter]);
+
+  // Backwards compatibility alias
+  const outsourcedProductJobs = allWorkOrders;
 
   // Filtered Bills
   const filteredBills = useMemo(() => {
@@ -288,48 +343,98 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
     }
   };
 
-  // Create Bill Handlers
-  const handleOpenCreateBill = () => {
-    const defaultVendor = (vendors || [])[0]?.id || '';
+  // Auto-generate Bill Number for Outsource Bill
+  const getNextBillNumber = () => {
+    const billNums = (outsourceBills || [])
+      .map(b => {
+        const m = (b.billNumber || '').match(/BILL-(\d+)/i);
+        return m ? parseInt(m[1], 10) : 0;
+      })
+      .filter(n => !isNaN(n));
+    const maxNum = billNums.length > 0 ? Math.max(...billNums, 125) : 125;
+    return `BILL-${String(maxNum + 1).padStart(5, '0')}`;
+  };
+
+  // Open Create Outsource Bill Modal (pre-populating selected work orders if any)
+  const handleOpenCreateBill = (preSelectedWoIds = []) => {
+    const woIdsToUse = preSelectedWoIds.length > 0 ? preSelectedWoIds : selectedWorkOrderIds;
+    const selectedWOs = allWorkOrders.filter(w => woIdsToUse.includes(w.id) || woIdsToUse.includes(w.workOrder));
+
+    // Determine vendor from pre-selection or default
+    let defaultVendor = '';
+    let defaultVendorName = '';
+    if (selectedWOs.length > 0) {
+      defaultVendor = selectedWOs[0].vendorId;
+      defaultVendorName = selectedWOs[0].vendorName;
+    } else {
+      defaultVendor = (vendors || [])[0]?.id || '';
+      defaultVendorName = (vendors || [])[0]?.name || '';
+    }
+
     setCreateBillForm({
       vendorId: defaultVendor,
-      billNumber: '',
+      vendorName: defaultVendorName,
+      billNumber: getNextBillNumber(),
       billDate: new Date().toISOString().split('T')[0],
       notes: '',
-      workOrders: [
-        { workOrder: 'WO-001', description: 'Outsource Printing / Finishing', amount: '' }
-      ]
+      selectedWoIds: selectedWOs.map(w => w.id)
     });
     setCreateBillError('');
     setIsCreateBillOpen(true);
   };
 
-  const handleAddWorkOrderRow = () => {
-    setCreateBillForm((prev) => ({
-      ...prev,
-      workOrders: [
-        ...prev.workOrders,
-        { workOrder: `WO-00${prev.workOrders.length + 1}`, description: '', amount: '' }
-      ]
-    }));
+  // Toggle selection of a Work Order with SAME VENDOR enforcement
+  const handleToggleWorkOrderSelection = (wo) => {
+    if (!wo.isEligible) {
+      alert(`Work Order ${wo.workOrder} is ${wo.billingStatus === 'Billed' ? 'already billed' : 'not eligible for billing'}.`);
+      return;
+    }
+
+    const isAlreadySelected = selectedWorkOrderIds.includes(wo.id) || selectedWorkOrderIds.includes(wo.workOrder);
+
+    if (isAlreadySelected) {
+      setSelectedWorkOrderIds(prev => prev.filter(id => id !== wo.id && id !== wo.workOrder));
+    } else {
+      // Check vendor compatibility: All selected Work Orders must belong to the same vendor
+      const currentlySelectedWOs = allWorkOrders.filter(w => selectedWorkOrderIds.includes(w.id) || selectedWorkOrderIds.includes(w.workOrder));
+      if (currentlySelectedWOs.length > 0) {
+        const firstVendorId = currentlySelectedWOs[0].vendorId;
+        if (wo.vendorId && firstVendorId && wo.vendorId !== firstVendorId) {
+          alert('Work Orders from different vendors cannot be included in the same bill.\n\nPlease select Work Orders for the same vendor or clear the current selection.');
+          return;
+        }
+      }
+      setSelectedWorkOrderIds(prev => [...prev, wo.id]);
+    }
   };
 
-  const handleRemoveWorkOrderRow = (index) => {
-    if (createBillForm.workOrders.length <= 1) return;
-    setCreateBillForm((prev) => ({
-      ...prev,
-      workOrders: prev.workOrders.filter((_, i) => i !== index)
-    }));
-  };
-
-  const handleWorkOrderRowChange = (index, field, value) => {
-    setCreateBillForm((prev) => {
-      const updated = [...prev.workOrders];
-      updated[index] = { ...updated[index], [field]: value };
-      return { ...prev, workOrders: updated };
+  // Toggle Work Order selection inside the Create Bill Modal
+  const handleToggleModalWoSelection = (wo) => {
+    if (!wo.isEligible && !createBillForm.selectedWoIds.includes(wo.id)) {
+      return;
+    }
+    setCreateBillForm(prev => {
+      const isSelected = prev.selectedWoIds.includes(wo.id);
+      const newSelected = isSelected
+        ? prev.selectedWoIds.filter(id => id !== wo.id)
+        : [...prev.selectedWoIds, wo.id];
+      return { ...prev, selectedWoIds: newSelected };
     });
   };
 
+  // Handle vendor change inside the Create Bill modal
+  const handleVendorChangeInCreateBill = (newVendorId) => {
+    const vObj = (vendors || []).find(v => v.id === newVendorId);
+    setCreateBillForm(prev => ({
+      ...prev,
+      vendorId: newVendorId,
+      vendorName: vObj?.name || 'Outsource Vendor',
+      selectedWoIds: [] // reset selection when vendor changes
+    }));
+    setCreateBillError('');
+  };
+
+  // Save Outsource Bill (Work Order Based)
   const handleSaveCreateBill = async (e) => {
     e.preventDefault();
     if (!createBillForm.vendorId) {
@@ -337,7 +442,7 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
       return;
     }
     if (!createBillForm.billNumber || !createBillForm.billNumber.trim()) {
-      setCreateBillError('Please enter a Bill Number.');
+      setCreateBillError('Please enter or generate a Bill Number.');
       return;
     }
 
@@ -355,18 +460,39 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
       return;
     }
 
-    const validWOs = (createBillForm.workOrders || [])
-      .map((wo, i) => ({
-        workOrder: wo.workOrder.trim() || `WO-00${i + 1}`,
-        description: wo.description.trim() || 'Job Work',
-        amount: Number(wo.amount) || 0
-      }))
-      .filter((wo) => wo.amount > 0);
-
-    if (validWOs.length === 0) {
-      setCreateBillError('Please enter at least 1 Work Order with an amount greater than ₹0.');
+    // Selected Work Orders
+    const selectedWOs = allWorkOrders.filter(w => createBillForm.selectedWoIds.includes(w.id));
+    if (selectedWOs.length === 0) {
+      setCreateBillError('Please select at least one eligible Work Order for this bill.');
       return;
     }
+
+    // Verify all selected belong to the chosen vendor
+    const mismatchedVendor = selectedWOs.find(w => w.vendorId && w.vendorId !== createBillForm.vendorId);
+    if (mismatchedVendor) {
+      setCreateBillError('Work Orders from different vendors cannot be included in the same bill.');
+      return;
+    }
+
+    // Verify no already billed or cancelled WOs
+    const ineligibleWo = selectedWOs.find(w => !w.isEligible);
+    if (ineligibleWo) {
+      setCreateBillError(`Work Order ${ineligibleWo.workOrder} is already billed or cancelled.`);
+      return;
+    }
+
+    const billPayloadWOs = selectedWOs.map(w => ({
+      workOrder: w.workOrder,
+      jobCardId: w.jobCardId || w.workOrder,
+      orderId: w.orderId,
+      customerName: w.customerName,
+      vendorId: w.vendorId,
+      vendorName: w.vendorName,
+      description: w.description || 'Embroidery / Job Work',
+      amount: Number(w.amount) || 0
+    }));
+
+    const totalBillAmt = billPayloadWOs.reduce((s, w) => s + w.amount, 0);
 
     setIsSubmittingBill(true);
     setCreateBillError('');
@@ -375,15 +501,17 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
       const selectedVendorObj = (vendors || []).find((v) => v.id === createBillForm.vendorId);
       await createOutsourceBill({
         vendorId: createBillForm.vendorId,
-        vendorName: selectedVendorObj?.name || 'Outsource Vendor',
+        vendorName: selectedVendorObj?.name || createBillForm.vendorName || 'Outsource Vendor',
         billNumber: trimmedNo,
         billDate: createBillForm.billDate,
         notes: createBillForm.notes,
-        workOrders: validWOs
+        workOrders: billPayloadWOs
       });
 
-      alert(`Outsource Bill "${trimmedNo}" with ${validWOs.length} Work Orders created successfully!`);
+      alert(`Outsource Bill "${trimmedNo}" created successfully with ${billPayloadWOs.length} Work Orders totaling ₹${totalBillAmt.toLocaleString('en-IN')}!`);
       setIsCreateBillOpen(false);
+      setSelectedWorkOrderIds([]);
+      setActiveTab('bills');
     } catch (err) {
       setCreateBillError(err.message || 'Failed to create Outsource Bill.');
     } finally {
@@ -801,92 +929,211 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 2: OUTSOURCED WORK ORDERS / JOB CARDS REGISTER                        */}
+      {/* TAB 2: OUTSOURCED WORK ORDERS / JOB CARDS REGISTER (WORK ORDER BILLING)   */}
       {/* ========================================================================= */}
       {activeTab === 'jobs' && (
-        <div className="card" style={{ padding: 0 }}>
-          <div
-            className="card-header"
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '1rem 1.25rem'
-            }}
-          >
-            <div className="card-title">
-              <Scissors size={18} color="#7c3aed" /> Outsourced Work Orders & Job Cards
-            </div>
-            <span className="badge badge-violet">{filteredJobs.length} Outsourced Products</span>
-          </div>
+        <div style={{ position: 'relative' }}>
+          {/* Floating Action Bar when Work Orders are Selected */}
+          {selectedWorkOrderIds.length > 0 && (() => {
+            const selectedWOs = allWorkOrders.filter(w => selectedWorkOrderIds.includes(w.id) || selectedWorkOrderIds.includes(w.workOrder));
+            const selectedTotal = selectedWOs.reduce((s, w) => s + w.amount, 0);
+            const vendorName = selectedWOs[0]?.vendorName || 'Selected Vendor';
 
-          <div className="table-responsive">
-            <table className="erp-table">
-              <thead>
-                <tr>
-                  <th>Job Card #</th>
-                  <th>SO #</th>
-                  <th>Customer</th>
-                  <th>Outsourced Product</th>
-                  <th>Assigned Vendor</th>
-                  <th>Delivery Date</th>
-                  <th>Est. Cost</th>
-                  <th>Actual Bill</th>
-                  <th>Stage Status</th>
-                  <th style={{ textAlign: 'center' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredJobs.length === 0 ? (
+            return (
+              <div
+                style={{
+                  position: 'sticky',
+                  top: '10px',
+                  zIndex: 20,
+                  marginBottom: '1rem',
+                  padding: '0.85rem 1.25rem',
+                  background: 'linear-gradient(135deg, #1e1b4b, #312e81)',
+                  color: '#ffffff',
+                  borderRadius: '10px',
+                  boxShadow: '0 8px 20px rgba(49, 46, 129, 0.25)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{ background: '#4338ca', padding: '0.4rem 0.75rem', borderRadius: '6px', fontWeight: 800, fontSize: '0.9rem' }}>
+                    {selectedWOs.length} Work Order{selectedWOs.length > 1 ? 's' : ''} Selected
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.85rem', color: '#c7d2fe' }}>Vendor: </span>
+                    <strong style={{ fontSize: '0.95rem', color: '#ffffff' }}>{vendorName}</strong>
+                    <span style={{ margin: '0 0.5rem', color: '#818cf8' }}>•</span>
+                    <span style={{ fontSize: '0.85rem', color: '#c7d2fe' }}>Total Bill Amount: </span>
+                    <strong style={{ fontSize: '1.1rem', color: '#34d399' }}>₹{selectedTotal.toLocaleString('en-IN')}</strong>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <button
+                    onClick={() => setSelectedWorkOrderIds([])}
+                    className="btn btn-sm"
+                    style={{ background: 'rgba(255,255,255,0.15)', color: '#ffffff', border: 'none', fontWeight: 600 }}
+                  >
+                    Clear Selection
+                  </button>
+                  <button
+                    onClick={() => handleOpenCreateBill(selectedWorkOrderIds)}
+                    className="btn btn-sm"
+                    style={{
+                      background: '#10b981',
+                      color: '#ffffff',
+                      border: 'none',
+                      fontWeight: 800,
+                      padding: '0.45rem 1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    <Receipt size={16} /> Create Outsource Bill ({selectedWOs.length})
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="card" style={{ padding: 0 }}>
+            <div
+              className="card-header"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '1rem 1.25rem'
+              }}
+            >
+              <div>
+                <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Scissors size={18} color="#7c3aed" /> Outsourced Work Orders & Job Cards
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+                  Select eligible Work Orders from the same vendor to bundle into one Outsource Bill.
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <span className="badge badge-violet">{filteredJobs.length} Work Orders</span>
+                <button
+                  onClick={() => handleOpenCreateBill()}
+                  className="btn btn-sm btn-primary"
+                  style={{ background: '#7c3aed', borderColor: '#7c3aed', fontWeight: 700 }}
+                >
+                  <Receipt size={14} /> + Create Outsource Bill
+                </button>
+              </div>
+            </div>
+
+            <div className="table-responsive">
+              <table className="erp-table">
+                <thead>
                   <tr>
-                    <td colSpan="10" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                      No outsourced product jobs found for this selection.
-                    </td>
+                    <th style={{ width: '40px', textAlign: 'center' }}>Select</th>
+                    <th>Work Order #</th>
+                    <th>SO #</th>
+                    <th>Customer</th>
+                    <th>Work Description</th>
+                    <th>Vendor / Worker</th>
+                    <th>Amount</th>
+                    <th>Billing Status</th>
+                    <th>Production Stage</th>
+                    <th style={{ textAlign: 'center' }}>Action</th>
                   </tr>
-                ) : (
-                  filteredJobs.map((job, idx) => (
-                    <tr key={idx}>
-                      <td style={{ fontWeight: 800, color: '#7c3aed' }}>{job.jobCardId}</td>
-                      <td style={{ fontWeight: 700, color: '#1e40af' }}>{job.orderId}</td>
-                      <td style={{ fontWeight: 700 }}>{job.customerName}</td>
-                      <td>
-                        <div style={{ fontWeight: 800, color: '#0f172a' }}>{job.item.productName}</div>
-                        <div style={{ fontSize: '0.74rem', color: '#475569' }}>
-                          Size: {job.item.width && job.item.height ? `${job.item.width}×${job.item.height} ${job.item.unit}` : job.item.unit} | Qty: {job.item.qty}
-                        </div>
-                      </td>
-                      <td>
-                        <span className="badge badge-violet">{job.item.vendorName || 'Outsource Vendor'}</span>
-                      </td>
-                      <td style={{ fontWeight: 700, color: '#d97706' }}>{job.deliveryDate}</td>
-                      <td>₹{job.item.estimatedVendorCost || 0}</td>
-                      <td style={{ fontWeight: 800, color: '#0f172a' }}>₹{job.item.actualVendorBill || 0}</td>
-                      <td>
-                        <select
-                          className="form-select form-select-sm"
-                          style={{ fontSize: '0.74rem', fontWeight: 800 }}
-                          value={job.item.productionStatus || PRODUCTION_STATUS.OUTSOURCE}
-                          onChange={(e) => updateItemProductionStatus(job.orderId, job.item.id, e.target.value)}
-                        >
-                          {statuses.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <button
-                          onClick={() => handleOpenLegacyBillModal(job)}
-                          className="btn btn-sm btn-secondary"
-                          style={{ fontSize: '0.75rem' }}
-                        >
-                          <Calculator size={13} /> Reconcile
-                        </button>
+                </thead>
+                <tbody>
+                  {filteredJobs.length === 0 ? (
+                    <tr>
+                      <td colSpan="10" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                        No outsourced work orders found for this selection.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    filteredJobs.map((job, idx) => {
+                      const isSelected = selectedWorkOrderIds.includes(job.id) || selectedWorkOrderIds.includes(job.workOrder);
+                      const isBilled = job.billingStatus === 'Billed';
+                      return (
+                        <tr
+                          key={job.id || idx}
+                          style={{
+                            background: isSelected ? 'rgba(124, 58, 237, 0.05)' : undefined
+                          }}
+                        >
+                          <td style={{ textAlign: 'center' }}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              disabled={!job.isEligible}
+                              onChange={() => handleToggleWorkOrderSelection(job)}
+                              style={{ width: '16px', height: '16px', cursor: job.isEligible ? 'pointer' : 'not-allowed' }}
+                              title={job.isEligible ? 'Select for Outsource Bill' : 'Already billed or cancelled'}
+                            />
+                          </td>
+                          <td style={{ fontWeight: 800, color: '#7c3aed' }}>{job.workOrder || job.jobCardId}</td>
+                          <td style={{ fontWeight: 700, color: '#1e40af' }}>{job.orderId}</td>
+                          <td style={{ fontWeight: 700 }}>{job.customerName || 'Direct Customer'}</td>
+                          <td>
+                            <div style={{ fontWeight: 700, color: '#0f172a' }}>{job.description}</div>
+                            {job.deliveryDate && (
+                              <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                Due: {job.deliveryDate}
+                              </div>
+                            )}
+                          </td>
+                          <td>
+                            <span className="badge badge-violet">{job.vendorName || 'Outsource Vendor'}</span>
+                          </td>
+                          <td style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.92rem' }}>
+                            ₹{Number(job.amount || 0).toLocaleString('en-IN')}
+                          </td>
+                          <td>
+                            {isBilled ? (
+                              <span className="badge badge-emerald" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                <CheckCircle2 size={11} /> Billed {job.billNumber ? `(${job.billNumber})` : ''}
+                              </span>
+                            ) : (
+                              <span className="badge badge-amber" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                <Clock size={11} /> Unbilled / Eligible
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            <span className="badge badge-blue">{job.status}</span>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            {job.isEligible ? (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenCreateBill([job.id])}
+                                className="btn btn-sm btn-primary"
+                                style={{
+                                  fontSize: '0.74rem',
+                                  padding: '0.25rem 0.55rem',
+                                  background: '#7c3aed',
+                                  borderColor: '#7c3aed'
+                                }}
+                              >
+                                <Receipt size={12} /> Create Bill
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                                {isBilled ? 'Billed' : 'Ineligible'}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -1501,10 +1748,7 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
                     <select
                       className="form-select"
                       value={createBillForm.vendorId}
-                      onChange={(e) => {
-                        setCreateBillForm({ ...createBillForm, vendorId: e.target.value });
-                        setCreateBillError('');
-                      }}
+                      onChange={(e) => handleVendorChangeInCreateBill(e.target.value)}
                       required
                     >
                       <option value="">[ Select Vendor ]</option>
@@ -1520,7 +1764,7 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. BILL-125, INV-990"
+                      placeholder="e.g. BILL-00126"
                       className="form-control"
                       value={createBillForm.billNumber}
                       onChange={(e) => {
@@ -1543,88 +1787,126 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
                   />
                 </div>
 
-                {/* Work Orders List Input */}
-                <div className="form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-                    <label className="form-label" style={{ fontWeight: 700, margin: 0 }}>
-                      Work Orders Included in this Bill:
-                    </label>
-                    <button
-                      type="button"
-                      onClick={handleAddWorkOrderRow}
-                      className="btn btn-sm btn-secondary"
-                      style={{ fontSize: '0.72rem', padding: '0.15rem 0.45rem' }}
-                    >
-                      + Add Work Order
-                    </button>
-                  </div>
+                {/* Available Work Orders Checklist for Selected Vendor */}
+                {(() => {
+                  const vendorWOs = allWorkOrders.filter(w => w.vendorId === createBillForm.vendorId);
+                  const eligibleWOs = vendorWOs.filter(w => w.isEligible || createBillForm.selectedWoIds.includes(w.id));
+                  const selectedWOs = allWorkOrders.filter(w => createBillForm.selectedWoIds.includes(w.id));
+                  const totalBillAmt = selectedWOs.reduce((s, w) => s + (Number(w.amount) || 0), 0);
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                    {createBillForm.workOrders.map((wo, index) => (
-                      <div key={index} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 100px 30px', gap: '0.4rem', alignItems: 'center' }}>
-                        <input
-                          type="text"
-                          placeholder="e.g. WO-001"
-                          className="form-control form-control-sm"
-                          value={wo.workOrder}
-                          onChange={(e) => handleWorkOrderRowChange(index, 'workOrder', e.target.value)}
-                          required
-                        />
-                        <input
-                          type="text"
-                          placeholder="Work description / process..."
-                          className="form-control form-control-sm"
-                          value={wo.description}
-                          onChange={(e) => handleWorkOrderRowChange(index, 'description', e.target.value)}
-                        />
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder="₹ Amount"
-                          className="form-control form-control-sm"
-                          style={{ textAlign: 'right', fontWeight: 700 }}
-                          value={wo.amount}
-                          onChange={(e) => handleWorkOrderRowChange(index, 'amount', e.target.value)}
-                          required
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveWorkOrderRow(index)}
-                          disabled={createBillForm.workOrders.length <= 1}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: createBillForm.workOrders.length <= 1 ? '#cbd5e1' : '#e11d48',
-                            cursor: createBillForm.workOrders.length <= 1 ? 'default' : 'pointer',
-                            fontSize: '1rem',
-                            padding: 0
-                          }}
-                        >
-                          ✕
-                        </button>
+                  return (
+                    <>
+                      <div className="form-group">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                          <label className="form-label" style={{ fontWeight: 700, margin: 0 }}>
+                            Select Work Orders to Include:
+                          </label>
+                          <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                            {eligibleWOs.length} available for this vendor
+                          </span>
+                        </div>
+
+                        {!createBillForm.vendorId ? (
+                          <div style={{ padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', textAlign: 'center', color: '#94a3b8', fontSize: '0.82rem' }}>
+                            Please select a vendor above to view available work orders.
+                          </div>
+                        ) : eligibleWOs.length === 0 ? (
+                          <div style={{ padding: '1rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', textAlign: 'center', color: '#b91c1c', fontSize: '0.82rem' }}>
+                            No unbilled or eligible Work Orders found for this vendor.
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '180px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+                            {eligibleWOs.map(wo => {
+                              const isChecked = createBillForm.selectedWoIds.includes(wo.id);
+                              return (
+                                <label
+                                  key={wo.id}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '0.5rem 0.75rem',
+                                    background: isChecked ? '#f5f3ff' : '#f8fafc',
+                                    border: isChecked ? '1px solid #7c3aed' : '1px solid #e2e8f0',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.82rem',
+                                    transition: 'all 0.15s'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => handleToggleModalWoSelection(wo)}
+                                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                    />
+                                    <div>
+                                      <strong style={{ color: '#7c3aed' }}>{wo.workOrder || wo.jobCardId}</strong>
+                                      <span style={{ margin: '0 0.35rem', color: '#94a3b8' }}>—</span>
+                                      <span style={{ color: '#334155' }}>{wo.description}</span>
+                                      {wo.orderId && <span style={{ marginLeft: '0.35rem', color: '#64748b', fontSize: '0.72rem' }}>({wo.orderId})</span>}
+                                    </div>
+                                  </div>
+                                  <div style={{ fontWeight: 800, color: '#0f172a' }}>
+                                    ₹{Number(wo.amount || 0).toLocaleString('en-IN')}
+                                  </div>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
 
-                  <div
-                    style={{
-                      marginTop: '0.5rem',
-                      padding: '0.5rem 0.75rem',
-                      background: '#f8fafc',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '6px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      fontWeight: 800,
-                      fontSize: '0.88rem'
-                    }}
-                  >
-                    <span>Total Bill Amount ({createBillForm.workOrders.length} Work Orders):</span>
-                    <span style={{ color: '#7c3aed' }}>
-                      ₹{createBillForm.workOrders.reduce((sum, wo) => sum + (Number(wo.amount) || 0), 0).toLocaleString('en-IN')}
-                    </span>
-                  </div>
-                </div>
+                      {/* Selected Work Orders Summary Table */}
+                      <div className="form-group" style={{ marginTop: '0.25rem' }}>
+                        <label className="form-label" style={{ fontWeight: 700, marginBottom: '0.35rem' }}>
+                          Selected Work Orders ({selectedWOs.length}):
+                        </label>
+                        {selectedWOs.length === 0 ? (
+                          <div style={{ padding: '0.75rem', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '6px', textAlign: 'center', color: '#64748b', fontSize: '0.8rem' }}>
+                            No work orders selected yet. Check one or more above.
+                          </div>
+                        ) : (
+                          <div style={{ border: '1px solid #e2e8f0', borderRadius: '6px', overflow: 'hidden' }}>
+                            <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                              <thead>
+                                <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
+                                  <th style={{ padding: '0.4rem 0.6rem', textAlign: 'left' }}>Work Order</th>
+                                  <th style={{ padding: '0.4rem 0.6rem', textAlign: 'left' }}>Description</th>
+                                  <th style={{ padding: '0.4rem 0.6rem', textAlign: 'right' }}>Amount</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedWOs.map((wo, i) => (
+                                  <tr key={i} style={{ borderBottom: '1px solid #f8fafc' }}>
+                                    <td style={{ padding: '0.4rem 0.6rem', fontWeight: 700, color: '#7c3aed' }}>
+                                      {wo.workOrder || wo.jobCardId}
+                                    </td>
+                                    <td style={{ padding: '0.4rem 0.6rem', color: '#475569' }}>
+                                      {wo.description}
+                                    </td>
+                                    <td style={{ padding: '0.4rem 0.6rem', textAlign: 'right', fontWeight: 700 }}>
+                                      ₹{Number(wo.amount || 0).toLocaleString('en-IN')}
+                                    </td>
+                                  </tr>
+                                ))}
+                                <tr style={{ background: '#f8fafc', fontWeight: 800, borderTop: '2px solid #e2e8f0' }}>
+                                  <td colSpan="2" style={{ padding: '0.5rem 0.6rem', color: '#0f172a' }}>
+                                    Total ({selectedWOs.length} Work Order{selectedWOs.length > 1 ? 's' : ''}):
+                                  </td>
+                                  <td style={{ padding: '0.5rem 0.6rem', textAlign: 'right', color: '#7c3aed', fontSize: '0.95rem' }}>
+                                    ₹{totalBillAmt.toLocaleString('en-IN')}
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
 
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 600 }}>Notes / Remarks</label>
@@ -1651,9 +1933,9 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
                   type="submit"
                   className="btn btn-primary"
                   style={{ background: '#7c3aed', borderColor: '#7c3aed', fontWeight: 800 }}
-                  disabled={isSubmittingBill}
+                  disabled={isSubmittingBill || createBillForm.selectedWoIds.length === 0}
                 >
-                  <Check size={16} /> {isSubmittingBill ? 'Saving Bill...' : 'Save Outsource Bill'}
+                  <Check size={16} /> {isSubmittingBill ? 'Saving Bill...' : `Create Bill (${createBillForm.selectedWoIds.length} Work Orders)`}
                 </button>
               </div>
             </form>
