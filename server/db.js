@@ -59,6 +59,10 @@ export function initDatabase() {
       customer_type TEXT DEFAULT 'Retail',
       notes TEXT,
       outstanding REAL DEFAULT 0,
+      opening_balance REAL DEFAULT 0,
+      opening_balance_type TEXT DEFAULT 'Receivable',
+      opening_balance_date TEXT,
+      opening_balance_notes TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
@@ -502,6 +506,10 @@ export function initDatabase() {
   try { db.prepare("ALTER TABLE employees ADD COLUMN designation TEXT").run(); } catch(e) {}
   try { db.prepare("ALTER TABLE employees ADD COLUMN status TEXT DEFAULT 'Active'").run(); } catch(e) {}
   try { db.prepare("ALTER TABLE customers ADD COLUMN additional_mobiles TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE customers ADD COLUMN opening_balance REAL DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE customers ADD COLUMN opening_balance_type TEXT DEFAULT 'Receivable'").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE customers ADD COLUMN opening_balance_date TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE customers ADD COLUMN opening_balance_notes TEXT").run(); } catch(e) {}
   try { db.prepare("ALTER TABLE sales_orders ADD COLUMN billed_by_staff TEXT").run(); } catch(e) {}
   try { db.prepare("ALTER TABLE sales_orders ADD COLUMN billed_by_id TEXT").run(); } catch(e) {}
   try { db.prepare("ALTER TABLE sales_orders ADD COLUMN billed_by_role TEXT").run(); } catch(e) {}

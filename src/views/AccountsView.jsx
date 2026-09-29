@@ -145,8 +145,8 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
 
   // Calculate General Ledger & Statements from Live Persistent State
   const ledgerList = useMemo(() => {
-    return calculateGeneralLedger(journals, salesOrders, payments, inventory);
-  }, [journals, salesOrders, payments, inventory]);
+    return calculateGeneralLedger(journals, salesOrders, payments, inventory, customers);
+  }, [journals, salesOrders, payments, inventory, customers]);
 
   const trialBalance = useMemo(() => {
     if (backendStatements.trialBalance && backendStatements.trialBalance.accounts?.length > 0) {

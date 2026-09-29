@@ -76,7 +76,7 @@ export const initialJournalVouchers = [
 /**
  * Calculate General Ledger Accounts & Balances
  */
-export const calculateGeneralLedger = (journals = [], salesOrders = [], payments = [], inventory = []) => {
+export const calculateGeneralLedger = (journals = [], salesOrders = [], payments = [], inventory = [], customers = []) => {
   const accountMap = new Map();
 
   const getAccount = (name, group) => {
@@ -95,12 +95,16 @@ export const calculateGeneralLedger = (journals = [], salesOrders = [], payments
 
   // 1. Post from Explicit Journal Vouchers
   journals.forEach(jv => {
-    jv.entries.forEach(entry => {
-      const acc = getAccount(entry.account);
-      if (entry.type === 'DEBIT') {
-        acc.totalDebit += entry.amount;
+    (jv.entries || []).forEach(entry => {
+      const accName = entry.account || entry.accountName || 'General Account';
+      const acc = getAccount(accName, entry.accountGroup || entry.group);
+      const eType = (entry.type || entry.entryType || 'DEBIT').toUpperCase();
+      const amt = Number(entry.amount || 0);
+
+      if (eType === 'DEBIT') {
+        acc.totalDebit += amt;
       } else {
-        acc.totalCredit += entry.amount;
+        acc.totalCredit += amt;
       }
       acc.entries.push({
         id: jv.id,
@@ -108,10 +112,49 @@ export const calculateGeneralLedger = (journals = [], salesOrders = [], payments
         voucherType: jv.voucherType,
         refNo: jv.refNo,
         narration: jv.narration,
-        type: entry.type,
-        amount: entry.amount
+        type: eType,
+        amount: amt
       });
     });
+  });
+
+  // 2. Synthesize Opening Balance for Customers (if not already posted as explicit JV)
+  (customers || []).forEach(cust => {
+    const opAmount = Number(cust.openingBalance ?? cust.opening_balance ?? 0);
+    if (opAmount > 0) {
+      const hasExistingJv = journals.some(j => 
+        (j.refNo === `OB-${cust.code || cust.id}` || j.id === `OB-${cust.id}` || (j.narration && j.narration.includes(cust.name) && j.voucherType === 'Opening Balance'))
+      );
+      if (!hasExistingJv) {
+        const isReceivable = (cust.openingBalanceType || cust.opening_balance_type || 'Receivable') === 'Receivable';
+        const custAccount = `Accounts Receivable (${cust.name || 'Customer'})`;
+        const equityAccount = 'Opening Balance Equity';
+
+        const drAcc = getAccount(isReceivable ? custAccount : equityAccount, isReceivable ? ACCOUNT_GROUPS.ASSETS : ACCOUNT_GROUPS.EQUITY);
+        drAcc.totalDebit += opAmount;
+        drAcc.entries.push({
+          id: `OB-${cust.id}`,
+          date: cust.openingBalanceDate || cust.opening_balance_date || '2026-04-01',
+          voucherType: 'Opening Balance',
+          refNo: cust.openingBalanceNotes || `OB-${cust.code || cust.id}`,
+          narration: `Opening Balance for ${cust.name}`,
+          type: 'DEBIT',
+          amount: opAmount
+        });
+
+        const crAcc = getAccount(isReceivable ? equityAccount : `Accounts Payable (${cust.name || 'Customer'})`, isReceivable ? ACCOUNT_GROUPS.EQUITY : ACCOUNT_GROUPS.LIABILITIES);
+        crAcc.totalCredit += opAmount;
+        crAcc.entries.push({
+          id: `OB-${cust.id}-OFF`,
+          date: cust.openingBalanceDate || cust.opening_balance_date || '2026-04-01',
+          voucherType: 'Opening Balance',
+          refNo: cust.openingBalanceNotes || `OB-${cust.code || cust.id}`,
+          narration: `Opening balance offset for ${cust.name}`,
+          type: 'CREDIT',
+          amount: opAmount
+        });
+      }
+    }
   });
 
   // 2. Synthesize Accounts from Real Sales Orders & Customer Outstanding

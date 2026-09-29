@@ -395,6 +395,25 @@ export const ERPProvider = ({ children }) => {
       ? rawAddMobiles.map(m => String(m).trim()).filter(Boolean)
       : (typeof rawAddMobiles === 'string' ? rawAddMobiles.split(',').map(m => m.trim()).filter(Boolean) : []);
 
+    const openingBalance = Math.max(0, parseFloat(customerData.openingBalance || customerData.opening_balance) || 0);
+    const openingBalanceType = customerData.openingBalanceType || customerData.opening_balance_type || 'Receivable';
+    const openingBalanceDate = customerData.openingBalanceDate || customerData.opening_balance_date || new Date().toISOString().split('T')[0];
+    const openingBalanceNotes = customerData.openingBalanceNotes || customerData.opening_balance_notes || customerData.openingBalanceRef || '';
+
+    // Automatically calculate initial outstanding balance from opening balance
+    // If opening balance > 0, include it in the customer's outstanding amount.
+    // Receivable increases outstanding (+); Payable credits/decreases outstanding (-).
+    let initialOutstanding = customerData.outstanding !== undefined ? parseFloat(customerData.outstanding) : 
+      (customerData.outstandingAmount !== undefined ? parseFloat(customerData.outstandingAmount) : NaN);
+    
+    if (isNaN(initialOutstanding) || initialOutstanding === 0) {
+      if (openingBalance > 0) {
+        initialOutstanding = openingBalanceType === 'Receivable' ? openingBalance : -openingBalance;
+      } else {
+        initialOutstanding = 0;
+      }
+    }
+
     const uiCustomer = {
       id: newId,
       code: newCode,
@@ -407,7 +426,11 @@ export const ERPProvider = ({ children }) => {
       address: customerData.address || '',
       state: customerData.state || 'Maharashtra (27)',
       creditLimit: parseFloat(customerData.creditLimit) || 0,
-      outstanding: parseFloat(customerData.outstanding) || 0,
+      outstanding: initialOutstanding,
+      openingBalance: openingBalance,
+      openingBalanceType: openingBalanceType,
+      openingBalanceDate: openingBalanceDate,
+      openingBalanceNotes: openingBalanceNotes,
       totalOrders: parseInt(customerData.totalOrders, 10) || 0,
       careOfId: customerData.careOfId || '',
       careOfName: customerData.careOfName || '',
@@ -436,6 +459,10 @@ export const ERPProvider = ({ children }) => {
           state: uiCustomer.state,
           credit_limit: uiCustomer.creditLimit,
           outstanding: uiCustomer.outstanding,
+          opening_balance: uiCustomer.openingBalance,
+          opening_balance_type: uiCustomer.openingBalanceType,
+          opening_balance_date: uiCustomer.openingBalanceDate,
+          opening_balance_notes: uiCustomer.openingBalanceNotes,
           total_orders: uiCustomer.totalOrders,
           care_of_id: uiCustomer.careOfId,
           care_of_name: uiCustomer.careOfName,
@@ -449,7 +476,10 @@ export const ERPProvider = ({ children }) => {
     }
 
     try {
-      await api.createCustomer(uiCustomer);
+      const res = await api.createCustomer(uiCustomer);
+      if (res && res.outstanding !== undefined) {
+        setCustomers((prev) => prev.map(c => c.id === uiCustomer.id ? { ...c, outstanding: res.outstanding } : c));
+      }
     } catch (err) {
       console.warn("api.createCustomer exception, using persistent local state:", err);
     }
@@ -652,6 +682,24 @@ export const ERPProvider = ({ children }) => {
       dbUpdate.outstanding = parseFloat(updatedData.outstandingAmount) || 0;
       delete dbUpdate.outstandingAmount;
     }
+    if (updatedData.openingBalance !== undefined || updatedData.opening_balance !== undefined) {
+      const obVal = Math.max(0, parseFloat(updatedData.openingBalance !== undefined ? updatedData.openingBalance : updatedData.opening_balance) || 0);
+      const obType = updatedData.openingBalanceType || updatedData.opening_balance_type || 'Receivable';
+      dbUpdate.opening_balance = obVal;
+      dbUpdate.opening_balance_type = obType;
+      if (updatedData.openingBalanceDate !== undefined) dbUpdate.opening_balance_date = updatedData.openingBalanceDate;
+      if (updatedData.openingBalanceNotes !== undefined) dbUpdate.opening_balance_notes = updatedData.openingBalanceNotes;
+
+      // Recalculate customer's outstanding amount:
+      // Formula: Opening Balance + Sales/Invoiced Amount − Payments − Credits/Adjustments = Outstanding
+      const signedOpening = obType === 'Payable' ? -obVal : obVal;
+      const cOrders = (salesOrders || []).filter(o => (o.customerId === id || o.customer_id === id) && o.productionStatus !== 'Quotation');
+      const totalInv = cOrders.reduce((sum, o) => sum + Number(o.grandTotal || o.grand_total || 0), 0);
+      const cPayments = (payments || []).filter(p => p.customerId === id || p.customer_id === id || p.customerName === updatedData.name);
+      const totalPaid = cPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+      const recalculatedOutstanding = Number((signedOpening + totalInv - totalPaid).toFixed(2));
+      dbUpdate.outstanding = recalculatedOutstanding;
+    }
     if (updatedData.totalOrders !== undefined) {
       dbUpdate.total_orders = parseInt(updatedData.totalOrders, 10) || 0;
       delete dbUpdate.totalOrders;
@@ -690,8 +738,12 @@ export const ERPProvider = ({ children }) => {
               ...c,
               ...updatedData,
               additionalMobiles: additionalMobiles !== undefined ? additionalMobiles : (c.additionalMobiles || []),
+              openingBalance: dbUpdate.opening_balance !== undefined ? dbUpdate.opening_balance : c.openingBalance,
+              openingBalanceType: dbUpdate.opening_balance_type !== undefined ? dbUpdate.opening_balance_type : c.openingBalanceType,
+              openingBalanceDate: dbUpdate.opening_balance_date !== undefined ? dbUpdate.opening_balance_date : c.openingBalanceDate,
+              openingBalanceNotes: dbUpdate.opening_balance_notes !== undefined ? dbUpdate.opening_balance_notes : c.openingBalanceNotes,
               creditLimit: dbUpdate.credit_limit ?? c.creditLimit ?? c.credit_limit,
-              outstanding: dbUpdate.outstanding ?? c.outstanding,
+              outstanding: dbUpdate.outstanding !== undefined ? dbUpdate.outstanding : c.outstanding,
               careOfId: dbUpdate.care_of_id ?? c.careOfId,
               careOfName: dbUpdate.care_of_name ?? c.careOfName
             }

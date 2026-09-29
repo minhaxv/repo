@@ -848,6 +848,10 @@ app.get('/api/all', authenticateToken, (req, res) => {
           additionalMobiles: Array.isArray(addMobiles) ? addMobiles : [],
           outstandingAmount: Number(c.outstanding),
           creditLimit: Number(c.credit_limit || 50000),
+          openingBalance: Number(c.opening_balance || 0),
+          openingBalanceType: c.opening_balance_type || 'Receivable',
+          openingBalanceDate: c.opening_balance_date || null,
+          openingBalanceNotes: c.opening_balance_notes || '',
           version: c.version || 1
         };
       }),
@@ -1207,13 +1211,67 @@ app.post('/api/customers', (req, res) => {
     const c = req.body;
     const id = c.id || `CUST-${Date.now()}`;
     const addMobiles = Array.isArray(c.additionalMobiles) ? JSON.stringify(c.additionalMobiles) : (c.additionalMobiles ? JSON.stringify([c.additionalMobiles]) : '[]');
+    
+    // Opening balance parameters
+    const openingBalance = Math.max(0, Number(c.openingBalance || c.opening_balance || 0));
+    const openingBalanceType = c.openingBalanceType || c.opening_balance_type || 'Receivable';
+    const openingBalanceDate = c.openingBalanceDate || c.opening_balance_date || new Date().toISOString().split('T')[0];
+    const openingBalanceNotes = c.openingBalanceNotes || c.opening_balance_notes || c.openingBalanceRef || '';
+
+    // Automatically calculate initial outstanding amount:
+    // If opening balance > 0, include it in the customer's outstanding amount.
+    // Receivable increases outstanding (+); Payable credits/decreases outstanding (-).
+    let initialOutstanding = Number(c.outstandingAmount !== undefined ? c.outstandingAmount : (c.outstanding !== undefined ? c.outstanding : 0));
+    if (openingBalance > 0 && initialOutstanding === 0) {
+      initialOutstanding = openingBalanceType === 'Receivable' ? openingBalance : -openingBalance;
+    }
+
     db.prepare(`
-      INSERT INTO customers (id, customer_code, name, mobile, additional_mobiles, email, address, gst_number, customer_type, notes, outstanding)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO customers (
+        id, customer_code, name, mobile, additional_mobiles, email, address, gst_number, customer_type, notes,
+        outstanding, opening_balance, opening_balance_type, opening_balance_date, opening_balance_notes
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      id, c.code || id, c.name, c.mobile || '', addMobiles, c.email || '', c.address || '', c.gstin || c.gstNumber || '', c.customerType || 'Retail', c.notes || '', Number(c.outstandingAmount || c.outstanding || 0)
+      id, c.code || id, c.name, c.mobile || '', addMobiles, c.email || '', c.address || '',
+      c.gstin || c.gstNumber || '', c.customerType || c.type || 'Retail', c.notes || '',
+      initialOutstanding, openingBalance, openingBalanceType, openingBalanceDate, openingBalanceNotes
     );
-    res.json({ success: true, customerId: id });
+
+    // Create Opening Balance double-entry ledger entry if opening balance > 0
+    if (openingBalance > 0) {
+      const existingJv = db.prepare("SELECT id FROM journal_vouchers WHERE reference_type = 'CUSTOMER_OPENING_BALANCE' AND reference_id = ?").get(id);
+      if (!existingJv) {
+        const custDisplayName = c.name || 'Customer';
+        const isReceivable = openingBalanceType === 'Receivable';
+        const entries = isReceivable
+          ? [
+              { accountName: `Accounts Receivable (${custDisplayName})`, accountGroup: 'Assets', entryType: 'DEBIT', amount: openingBalance, customerId: id, notes: openingBalanceNotes || 'Customer Opening Balance' },
+              { accountName: 'Opening Balance Equity', accountGroup: 'Capital & Equity', entryType: 'CREDIT', amount: openingBalance, customerId: id, notes: 'Opening Balance Offset Equity' }
+            ]
+          : [
+              { accountName: 'Opening Balance Equity', accountGroup: 'Capital & Equity', entryType: 'DEBIT', amount: openingBalance, customerId: id, notes: 'Opening Balance Offset Equity' },
+              { accountName: `Accounts Payable (${custDisplayName})`, accountGroup: 'Liabilities', entryType: 'CREDIT', amount: openingBalance, customerId: id, notes: openingBalanceNotes || 'Customer Opening Credit' }
+            ];
+
+        try {
+          postDoubleEntryJournal(db, {
+            voucherType: 'Opening Balance',
+            date: openingBalanceDate,
+            refNo: openingBalanceNotes || `OB-${c.code || id}`,
+            referenceType: 'CUSTOMER_OPENING_BALANCE',
+            referenceId: id,
+            narration: openingBalanceNotes || `Opening balance for customer ${custDisplayName} (${openingBalanceType})`,
+            createdByName: 'System / User',
+            entries
+          });
+        } catch (jvErr) {
+          console.warn("Could not post opening balance journal voucher:", jvErr.message);
+        }
+      }
+    }
+
+    res.json({ success: true, customerId: id, outstanding: initialOutstanding });
   } catch (err) {
     console.error("POST /api/customers Error:", err);
     res.status(500).json({ success: false, error: err.message });
@@ -1225,7 +1283,95 @@ app.put('/api/customers/:id', (req, res) => {
   try {
     const { id } = req.params;
     const c = req.body;
-    const addMobiles = Array.isArray(c.additionalMobiles) ? JSON.stringify(c.additionalMobiles) : (c.additionalMobiles ? JSON.stringify([c.additionalMobiles]) : '[]');
+    const addMobiles = Array.isArray(c.additionalMobiles) ? JSON.stringify(c.additionalMobiles) : (c.additionalMobiles ? JSON.stringify([c.additionalMobiles]) : undefined);
+
+    // Fetch existing customer to check if opening balance was modified
+    const existing = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Customer not found' });
+    }
+
+    const hasNewOpeningBalance = c.openingBalance !== undefined || c.opening_balance !== undefined;
+    const openingBalance = hasNewOpeningBalance ? Math.max(0, Number(c.openingBalance !== undefined ? c.openingBalance : c.opening_balance)) : Number(existing.opening_balance || 0);
+    const openingBalanceType = (c.openingBalanceType || c.opening_balance_type || existing.opening_balance_type || 'Receivable');
+    const openingBalanceDate = (c.openingBalanceDate || c.opening_balance_date || existing.opening_balance_date || new Date().toISOString().split('T')[0]);
+    const openingBalanceNotes = (c.openingBalanceNotes !== undefined ? c.openingBalanceNotes : (c.opening_balance_notes !== undefined ? c.opening_balance_notes : (existing.opening_balance_notes || '')));
+
+    // If opening balance was changed, update corresponding ledger entry and recalculate outstanding
+    if (hasNewOpeningBalance) {
+      // 1. Remove previous opening balance voucher (and entries) to prevent duplicate opening balance entries
+      const existingJvs = db.prepare("SELECT id FROM journal_vouchers WHERE reference_type = 'CUSTOMER_OPENING_BALANCE' AND reference_id = ?").all(id);
+      for (const jv of existingJvs) {
+        db.prepare("DELETE FROM journal_entries WHERE voucher_id = ?").run(jv.id);
+        db.prepare("DELETE FROM journal_vouchers WHERE id = ?").run(jv.id);
+      }
+
+      // 2. If opening balance > 0, post updated double-entry journal voucher
+      if (openingBalance > 0) {
+        const custDisplayName = c.name || existing.name || 'Customer';
+        const isReceivable = openingBalanceType === 'Receivable';
+        const entries = isReceivable
+          ? [
+              { accountName: `Accounts Receivable (${custDisplayName})`, accountGroup: 'Assets', entryType: 'DEBIT', amount: openingBalance, customerId: id, notes: openingBalanceNotes || 'Customer Opening Balance' },
+              { accountName: 'Opening Balance Equity', accountGroup: 'Capital & Equity', entryType: 'CREDIT', amount: openingBalance, customerId: id, notes: 'Opening Balance Offset Equity' }
+            ]
+          : [
+              { accountName: 'Opening Balance Equity', accountGroup: 'Capital & Equity', entryType: 'DEBIT', amount: openingBalance, customerId: id, notes: 'Opening Balance Offset Equity' },
+              { accountName: `Accounts Payable (${custDisplayName})`, accountGroup: 'Liabilities', entryType: 'CREDIT', amount: openingBalance, customerId: id, notes: openingBalanceNotes || 'Customer Opening Credit' }
+            ];
+
+        try {
+          postDoubleEntryJournal(db, {
+            voucherType: 'Opening Balance',
+            date: openingBalanceDate,
+            refNo: openingBalanceNotes || `OB-${existing.customer_code || id}`,
+            referenceType: 'CUSTOMER_OPENING_BALANCE',
+            referenceId: id,
+            narration: openingBalanceNotes || `Opening balance for customer ${custDisplayName} (${openingBalanceType})`,
+            createdByName: 'System / User',
+            entries
+          });
+        } catch (jvErr) {
+          console.warn("Could not re-post opening balance journal voucher:", jvErr.message);
+        }
+      }
+
+      // 3. Recalculate customer's outstanding amount:
+      // Formula: Opening Balance + Sales/Invoiced Amount − Payments − Credits/Adjustments = Outstanding
+      const orders = db.prepare("SELECT grand_total, balance_amount FROM sales_orders WHERE customer_id = ? AND production_status != 'Quotation'").all(id);
+      const totalInvoiced = orders.reduce((sum, o) => sum + Number(o.grand_total || 0), 0);
+      const payments = db.prepare("SELECT amount FROM payments WHERE customer_id = ?").all(id);
+      const totalPayments = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+      const signedOpening = openingBalanceType === 'Payable' ? -openingBalance : openingBalance;
+      const recalculatedOutstanding = Number((signedOpening + totalInvoiced - totalPayments).toFixed(2));
+
+      db.prepare(`
+        UPDATE customers SET
+          name = COALESCE(?, name),
+          mobile = COALESCE(?, mobile),
+          additional_mobiles = COALESCE(?, additional_mobiles),
+          email = COALESCE(?, email),
+          address = COALESCE(?, address),
+          gst_number = COALESCE(?, gst_number),
+          customer_type = COALESCE(?, customer_type),
+          notes = COALESCE(?, notes),
+          opening_balance = ?,
+          opening_balance_type = ?,
+          opening_balance_date = ?,
+          opening_balance_notes = ?,
+          outstanding = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(
+        c.name, c.mobile, addMobiles, c.email, c.address, c.gstin || c.gstNumber, c.type || c.customerType, c.notes,
+        openingBalance, openingBalanceType, openingBalanceDate, openingBalanceNotes, recalculatedOutstanding, id
+      );
+
+      return res.json({ success: true, outstanding: recalculatedOutstanding, openingBalance });
+    }
+
+    // Normal update without opening balance change
     db.prepare(`
       UPDATE customers SET
         name = COALESCE(?, name),
@@ -1240,8 +1386,10 @@ app.put('/api/customers/:id', (req, res) => {
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
-      c.name, c.mobile, addMobiles, c.email, c.address, c.gstin || c.gstNumber, c.type || c.customerType, c.notes, c.outstandingAmount !== undefined ? Number(c.outstandingAmount) : (c.outstanding !== undefined ? Number(c.outstanding) : null), id
+      c.name, c.mobile, addMobiles, c.email, c.address, c.gstin || c.gstNumber, c.type || c.customerType, c.notes,
+      c.outstandingAmount !== undefined ? Number(c.outstandingAmount) : (c.outstanding !== undefined ? Number(c.outstanding) : null), id
     );
+
     res.json({ success: true });
   } catch (err) {
     console.error("PUT /api/customers/:id Error:", err);
@@ -2261,8 +2409,12 @@ app.get('/api/customers/reconciliation', authenticateToken, (req, res) => {
       const totalPayments = Number(payments.reduce((sum, p) => sum + Number(p.amount || 0), 0).toFixed(2));
       const storedBalance = Number(c.outstanding || 0);
 
-      // Historical opening balance prior to current system orders
-      const openingBalance = Number((storedBalance - totalOrderBalance).toFixed(2));
+      // Authoritative opening balance from customer record (or fallback to historical diff)
+      const openingBalVal = Number(c.opening_balance || 0);
+      const isPayable = c.opening_balance_type === 'Payable';
+      const openingBalance = openingBalVal > 0
+        ? (isPayable ? -openingBalVal : openingBalVal)
+        : Number((storedBalance - totalOrderBalance).toFixed(2));
       const calculatedClosing = Number((openingBalance + totalOrderBalance).toFixed(2));
       const variance = Number((storedBalance - calculatedClosing).toFixed(2));
 

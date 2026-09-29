@@ -720,8 +720,12 @@ export function runMigrations(db) {
     try { database.prepare("ALTER TABLE sales_orders ADD COLUMN converted_by TEXT").run(); } catch(e) {}
     try { database.prepare("ALTER TABLE sales_orders ADD COLUMN credit_limit_override INTEGER DEFAULT 0").run(); } catch(e) {}
 
-    // 5. Extend Customers with Credit Limit
+    // 5. Extend Customers with Credit Limit & Opening Balance
     try { database.prepare("ALTER TABLE customers ADD COLUMN credit_limit REAL DEFAULT 50000").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE customers ADD COLUMN opening_balance REAL DEFAULT 0").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE customers ADD COLUMN opening_balance_type TEXT DEFAULT 'Receivable'").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE customers ADD COLUMN opening_balance_date TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE customers ADD COLUMN opening_balance_notes TEXT").run(); } catch(e) {}
 
     // Ensure UNASSIGNED pool employee exists for available tasks
     database.prepare(`

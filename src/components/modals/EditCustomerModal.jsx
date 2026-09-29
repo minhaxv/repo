@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useERP } from '../../context/ERPContext';
 import { CUSTOMER_TYPES } from '../../types';
-import { X, UserCheck, Phone, PhoneCall, Plus, Trash2, Mail, MapPin, Hash, Check, Building } from 'lucide-react';
+import { X, UserCheck, Phone, PhoneCall, Plus, Trash2, Mail, MapPin, Hash, Check, Building, Wallet } from 'lucide-react';
 import CreateCareOfModal from './CreateCareOfModal';
 import { SearchableSelect } from '../common/SearchableSelect';
 
@@ -22,6 +22,13 @@ export const EditCustomerModal = ({ isOpen, onClose, customer }) => {
     careOfId: ''
   });
   const [additionalMobiles, setAdditionalMobiles] = useState([]);
+
+  // Opening Balance State
+  const [enableOpeningBalance, setEnableOpeningBalance] = useState(false);
+  const [openingBalance, setOpeningBalance] = useState('');
+  const [openingBalanceType, setOpeningBalanceType] = useState('Receivable');
+  const [openingBalanceDate, setOpeningBalanceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [openingBalanceNotes, setOpeningBalanceNotes] = useState('');
 
   useEffect(() => {
     if (isOpen && customer) {
@@ -48,6 +55,14 @@ export const EditCustomerModal = ({ isOpen, onClose, customer }) => {
         careOfId: customer.careOfId ?? customer.care_of_id ?? ''
       });
       setAdditionalMobiles(Array.isArray(addMobiles) ? addMobiles : []);
+
+      const custOpening = Number(customer.openingBalance ?? customer.opening_balance ?? 0);
+      setEnableOpeningBalance(custOpening > 0);
+      setOpeningBalance(custOpening > 0 ? String(custOpening) : '');
+      setOpeningBalanceType(customer.openingBalanceType || customer.opening_balance_type || 'Receivable');
+      setOpeningBalanceDate(customer.openingBalanceDate || customer.opening_balance_date || customer.createdAt || new Date().toISOString().split('T')[0]);
+      setOpeningBalanceNotes(customer.openingBalanceNotes || customer.opening_balance_notes || '');
+
       setErrorMsg('');
       setIsSubmitting(false);
     }
@@ -87,6 +102,22 @@ export const EditCustomerModal = ({ isOpen, onClose, customer }) => {
       return;
     }
 
+    if (enableOpeningBalance) {
+      const numAmount = parseFloat(openingBalance);
+      if (isNaN(numAmount) || numAmount <= 0) {
+        setErrorMsg('Opening Balance Amount is required and must be greater than ₹0.');
+        return;
+      }
+      if (!openingBalanceType) {
+        setErrorMsg('Balance Type is required.');
+        return;
+      }
+      if (!openingBalanceDate) {
+        setErrorMsg('Opening Balance Date is required.');
+        return;
+      }
+    }
+
     try {
       setIsSubmitting(true);
       const selectedCareOf = (careOfPersons || []).find((co) => co.id === formData.careOfId);
@@ -96,7 +127,11 @@ export const EditCustomerModal = ({ isOpen, onClose, customer }) => {
         mobile: cleanMobile,
         additionalMobiles: cleanExtra,
         careOfId: formData.careOfId,
-        careOfName: selectedCareOf?.name || ''
+        careOfName: selectedCareOf?.name || '',
+        openingBalance: enableOpeningBalance ? Math.max(0, parseFloat(openingBalance) || 0) : 0,
+        openingBalanceType: enableOpeningBalance ? openingBalanceType : 'Receivable',
+        openingBalanceDate: enableOpeningBalance ? openingBalanceDate : null,
+        openingBalanceNotes: enableOpeningBalance ? openingBalanceNotes.trim() : ''
       });
       onClose();
     } catch (err) {
@@ -328,6 +363,176 @@ export const EditCustomerModal = ({ isOpen, onClose, customer }) => {
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 disabled={isSubmitting}
               ></textarea>
+            </div>
+
+            {/* OPENING BALANCE EDITING SECTION */}
+            <div
+              style={{
+                gridColumn: 'span 2',
+                background: enableOpeningBalance ? '#f0f7ff' : '#f8fafc',
+                border: enableOpeningBalance ? '1.5px solid #93c5fd' : '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '1rem',
+                transition: 'all 0.2s ease',
+                marginTop: '0.25rem'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', cursor: 'pointer', userSelect: 'none', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    id="edit-enable-opening-balance"
+                    checked={enableOpeningBalance}
+                    onChange={(e) => setEnableOpeningBalance(e.target.checked)}
+                    disabled={isSubmitting}
+                    style={{ width: '18px', height: '18px', accentColor: '#2563eb', cursor: 'pointer' }}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <Wallet size={18} color={enableOpeningBalance ? '#2563eb' : '#64748b'} />
+                    <span style={{ fontWeight: 800, fontSize: '0.95rem', color: enableOpeningBalance ? '#1e40af' : '#1e293b' }}>
+                      Opening Balance
+                    </span>
+                  </div>
+                </label>
+                <span style={{ fontSize: '0.74rem', color: enableOpeningBalance ? '#2563eb' : '#64748b', fontWeight: 600 }}>
+                  {enableOpeningBalance ? 'Modifying will update the ledger entry and recalculate outstanding' : 'Check to set or adjust customer opening balance'}
+                </span>
+              </div>
+
+              {enableOpeningBalance && (
+                <div style={{ marginTop: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.85rem' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: '0.8rem', color: '#1e293b' }}>
+                        Opening Balance Amount *
+                      </label>
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <span style={{ position: 'absolute', left: '10px', fontWeight: 800, color: '#64748b', fontSize: '0.95rem' }}>₹</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          className="form-control"
+                          style={{ paddingLeft: '26px', fontWeight: 700, fontSize: '0.95rem' }}
+                          placeholder="e.g. 25000"
+                          value={openingBalance}
+                          onChange={(e) => setOpeningBalance(e.target.value)}
+                          required={enableOpeningBalance}
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: '0.8rem', color: '#1e293b' }}>
+                        Balance Type *
+                      </label>
+                      <select
+                        className="form-select"
+                        value={openingBalanceType}
+                        onChange={(e) => setOpeningBalanceType(e.target.value)}
+                        disabled={isSubmitting}
+                        style={{ fontWeight: 600 }}
+                      >
+                        <option value="Receivable">Receivable (Customer owes money)</option>
+                        <option value="Payable">Payable (Advance credit / You owe customer)</option>
+                      </select>
+                    </div>
+
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: '0.8rem', color: '#1e293b' }}>
+                        Opening Balance Date *
+                      </label>
+                      <input
+                        type="date"
+                        className="form-control"
+                        value={openingBalanceDate}
+                        onChange={(e) => setOpeningBalanceDate(e.target.value)}
+                        required={enableOpeningBalance}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: '0.8rem', color: '#1e293b' }}>
+                        Reference / Note (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="e.g. Old balance, migration bill #102"
+                        value={openingBalanceNotes}
+                        onChange={(e) => setOpeningBalanceNotes(e.target.value)}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Dynamic Recalculated Outstanding Preview */}
+                  {(() => {
+                    const parsedAmount = Math.max(0, parseFloat(openingBalance) || 0);
+                    const isPayable = openingBalanceType === 'Payable';
+                    const signedOpening = isPayable ? -parsedAmount : parsedAmount;
+                    const oldOpening = Number(customer.openingBalance ?? customer.opening_balance ?? 0);
+                    const oldSigned = (customer.openingBalanceType || customer.opening_balance_type) === 'Payable' ? -oldOpening : oldOpening;
+                    const currentOutstanding = Number(customer.outstanding ?? customer.outstandingAmount ?? 0);
+                    const estimatedNewOutstanding = Number((currentOutstanding - oldSigned + signedOpening).toFixed(2));
+
+                    return (
+                      <div
+                        style={{
+                          background: '#ffffff',
+                          border: '1px solid #bfdbfe',
+                          borderRadius: '6px',
+                          padding: '0.75rem 1rem',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: '0.75rem',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                        }}
+                      >
+                        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <div>
+                            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                              Opening Balance
+                            </div>
+                            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+                              ₹{parsedAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: isPayable ? '#d97706' : '#2563eb', marginLeft: '0.35rem' }}>
+                                ({openingBalanceType})
+                              </span>
+                            </div>
+                          </div>
+
+                          <div style={{ borderLeft: '1px solid #e2e8f0', height: '32px' }}></div>
+
+                          <div>
+                            <div style={{ fontSize: '0.7rem', color: '#2563eb', fontWeight: 800, textTransform: 'uppercase' }}>
+                              Updated Outstanding
+                            </div>
+                            <div
+                              style={{
+                                fontSize: '1.15rem',
+                                fontWeight: 900,
+                                color: estimatedNewOutstanding > 0 ? '#e11d48' : (estimatedNewOutstanding < 0 ? '#059669' : '#0f172a')
+                              }}
+                            >
+                              {estimatedNewOutstanding < 0 ? '- ' : ''}₹{Math.abs(estimatedNewOutstanding).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', textAlign: 'right' }}>
+                          <div style={{ fontWeight: 600, color: '#0f172a' }}>Synchronizes Journal Voucher & Ledger</div>
+                          <div style={{ color: '#2563eb' }}>Prevents duplicate opening balance entries</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
           </div>
 

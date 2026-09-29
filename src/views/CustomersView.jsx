@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useERP } from '../context/ERPContext';
 import { CUSTOMER_TYPES } from '../types';
 import { CreateCustomerModal } from '../components/modals/CreateCustomerModal';
 import EditCustomerModal from '../components/modals/EditCustomerModal';
-import { Users, UserPlus, Search, Phone, Mail, Building, AlertTriangle, ShieldCheck, FileText, ShoppingCart, CreditCard, Clock, CheckCircle2, X, Edit, UserCheck } from 'lucide-react';
+import { Users, UserPlus, Search, Phone, Mail, Building, AlertTriangle, ShieldCheck, FileText, ShoppingCart, CreditCard, Clock, CheckCircle2, X, Edit, UserCheck, Wallet, BookOpen, Download, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import { formatINR } from '../utils/reportEngine';
 
 export const CustomersView = ({ onNavigate }) => {
   const { customers, deleteCustomer, salesOrders, payments, careOfPersons } = useERP();
@@ -12,6 +13,7 @@ export const CustomersView = ({ onNavigate }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCust, setEditingCust] = useState(null);
   const [historyCust, setHistoryCust] = useState(null);
+  const [historyTab, setHistoryTab] = useState('statement');
 
   const handleCreateForCust = (cust, type = 'Direct') => {
     if (onNavigate) {
@@ -57,14 +59,81 @@ export const CustomersView = ({ onNavigate }) => {
 
   const totalOutstanding = (customers || []).reduce((acc, c) => acc + (Number(c.outstanding ?? c.outstandingAmount) || 0), 0);
 
+  const activeHistoryCustomer = historyCust ? (customers || []).find((c) => c.id === historyCust.id) || historyCust : null;
+
   // Customer History Calculations
-  const customerOrders = historyCust
-    ? (salesOrders || []).filter((o) => o.customerId === historyCust.id || o.customerName === historyCust.name)
+  const customerOrders = activeHistoryCustomer
+    ? (salesOrders || []).filter((o) => o.customerId === activeHistoryCustomer.id || o.customerName === activeHistoryCustomer.name)
     : [];
 
-  const customerPayments = historyCust
-    ? (payments || []).filter((p) => p.customerName === historyCust.name || (p.orderId && customerOrders.some((o) => o.id === p.orderId)))
+  const customerPayments = activeHistoryCustomer
+    ? (payments || []).filter((p) => p.customerName === activeHistoryCustomer.name || (p.orderId && customerOrders.some((o) => o.id === p.orderId)))
     : [];
+
+  // Chronological Customer Account Ledger Statement
+  const customerLedgerStatement = useMemo(() => {
+    if (!activeHistoryCustomer) return [];
+    const entries = [];
+
+    // 1. Opening Balance Entry
+    const opAmount = Number(activeHistoryCustomer.openingBalance ?? activeHistoryCustomer.opening_balance ?? 0);
+    const opType = activeHistoryCustomer.openingBalanceType || activeHistoryCustomer.opening_balance_type || 'Receivable';
+    const isPayable = opType === 'Payable';
+
+    if (opAmount > 0) {
+      entries.push({
+        id: `OB-${activeHistoryCustomer.id}`,
+        date: activeHistoryCustomer.openingBalanceDate || activeHistoryCustomer.opening_balance_date || activeHistoryCustomer.createdAt || '2026-04-01',
+        voucherType: 'Opening Balance',
+        badgeClass: 'badge-purple',
+        refNo: activeHistoryCustomer.openingBalanceNotes || activeHistoryCustomer.opening_balance_notes || `OB-${activeHistoryCustomer.code || activeHistoryCustomer.id}`,
+        narration: `Initial Opening Balance (${opType})${activeHistoryCustomer.openingBalanceNotes ? ' — ' + activeHistoryCustomer.openingBalanceNotes : ''}`,
+        debit: !isPayable ? opAmount : 0,
+        credit: isPayable ? opAmount : 0
+      });
+    }
+
+    // 2. Sales Orders & Invoices
+    (customerOrders || []).forEach((o) => {
+      entries.push({
+        id: o.id,
+        date: o.orderDate || '2026-04-01',
+        voucherType: 'Sales Invoice',
+        badgeClass: 'badge-blue',
+        refNo: o.id,
+        narration: `Tax Invoice for Order ${o.id} (${(o.items || []).length || 1} items)`,
+        debit: Number(o.grandTotal || 0),
+        credit: 0
+      });
+    });
+
+    // 3. Payment Receipts
+    (customerPayments || []).forEach((p) => {
+      entries.push({
+        id: p.id,
+        date: p.date || p.paid_date || '2026-04-01',
+        voucherType: 'Payment Receipt',
+        badgeClass: 'badge-emerald',
+        refNo: p.id,
+        narration: `Payment received via ${p.method || 'Cash'}${p.orderId ? ' for ' + p.orderId : ''}`,
+        debit: 0,
+        credit: Number(p.amount || 0)
+      });
+    });
+
+    // Sort chronologically ascending
+    entries.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    // Compute Running Outstanding Balance
+    let running = 0;
+    return entries.map((item) => {
+      running = Number((running + item.debit - item.credit).toFixed(2));
+      return {
+        ...item,
+        runningBalance: running
+      };
+    });
+  }, [activeHistoryCustomer, customerOrders, customerPayments]);
 
   return (
     <div className="view-container">
@@ -233,7 +302,12 @@ export const CustomersView = ({ onNavigate }) => {
                     <td style={{ fontFamily: 'var(--font-mono)' }}>{c.gstin || 'Unregistered'}</td>
                     <td>{c.state || 'Maharashtra (27)'}</td>
                     <td style={{ fontWeight: 800, color: (c.outstanding ?? c.outstandingAmount ?? 0) > 0 ? '#e11d48' : '#059669' }}>
-                      ₹{Number(c.outstanding ?? c.outstandingAmount ?? 0).toLocaleString()}
+                      <div>₹{Number(c.outstanding ?? c.outstandingAmount ?? 0).toLocaleString()}</div>
+                      {Number(c.openingBalance ?? c.opening_balance ?? 0) > 0 && (
+                        <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>
+                          OB: ₹{Number(c.openingBalance ?? c.opening_balance ?? 0).toLocaleString()} ({c.openingBalanceType || c.opening_balance_type || 'Dr'})
+                        </div>
+                      )}
                     </td>
                     <td>₹{Number(c.creditLimit ?? c.credit_limit ?? 0).toLocaleString()}</td>
                     <td style={{ fontWeight: 700 }}>{Number(c.totalOrders ?? c.total_orders ?? 0)}</td>
@@ -314,146 +388,263 @@ export const CustomersView = ({ onNavigate }) => {
 
             <div className="modal-body" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               {/* Account Summary Header Card */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem', background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.85rem', background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                 <div>
                   <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>ACCOUNT CODE</div>
-                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0f172a' }}>{historyCust.code || historyCust.id}</div>
+                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0f172a' }}>{activeHistoryCustomer.code || activeHistoryCustomer.id}</div>
                 </div>
                 <div>
                   <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>CONTACT NUMBERS & EMAIL</div>
                   <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                    <span>📱 {historyCust.mobile}</span>
+                    <span>📱 {activeHistoryCustomer.mobile}</span>
                     <span className="badge badge-blue" style={{ fontSize: '0.62rem', padding: '0.05rem 0.3rem' }}>Primary</span>
                   </div>
-                  {(() => {
-                    let extra = [];
-                    if (historyCust.additionalMobiles) {
-                      extra = Array.isArray(historyCust.additionalMobiles) ? historyCust.additionalMobiles : [historyCust.additionalMobiles];
-                    } else if (historyCust.additional_mobiles) {
-                      try {
-                        extra = typeof historyCust.additional_mobiles === 'string' ? JSON.parse(historyCust.additional_mobiles) : historyCust.additional_mobiles;
-                      } catch (e) {
-                        extra = [historyCust.additional_mobiles];
-                      }
-                    }
-                    const cleanExtra = (extra || []).filter(Boolean);
-                    if (cleanExtra.length === 0) return null;
-                    return (
-                      <div style={{ fontSize: '0.74rem', color: '#475569', marginTop: '0.2rem', display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
-                        {cleanExtra.map((em, idx) => (
-                          <span key={idx} className="badge badge-slate" style={{ fontSize: '0.66rem' }}>
-                            📞 {em}
-                          </span>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                  {historyCust.email && <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.2rem' }}>✉️ {historyCust.email}</div>}
+                  {activeHistoryCustomer.email && <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.2rem' }}>✉️ {activeHistoryCustomer.email}</div>}
                 </div>
                 <div>
                   <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>GSTIN & STATE</div>
-                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e40af' }}>{historyCust.gstin || 'Unregistered'}</div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{historyCust.state}</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e40af' }}>{activeHistoryCustomer.gstin || 'Unregistered'}</div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{activeHistoryCustomer.state}</div>
                 </div>
-                <div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>OUTSTANDING BALANCE</div>
-                  <div style={{ fontWeight: 900, fontSize: '1.2rem', color: (historyCust.outstanding ?? historyCust.outstandingAmount ?? 0) > 0 ? '#e11d48' : '#059669' }}>
-                    ₹{Number(historyCust.outstanding ?? historyCust.outstandingAmount ?? 0).toLocaleString()}
+
+                {/* Opening Balance Card with Edit Action */}
+                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.5rem 0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <Wallet size={12} color="#2563eb" /> OPENING BALANCE
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setEditingCust(activeHistoryCustomer)}
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: '0.1rem 0.35rem', fontSize: '0.68rem', height: 'auto', display: 'inline-flex', alignItems: 'center', gap: '2px' }}
+                      title="Edit Opening Balance"
+                    >
+                      <Edit size={10} /> Edit
+                    </button>
+                  </div>
+                  <div style={{ fontWeight: 800, fontSize: '1rem', color: '#1e40af', marginTop: '0.15rem' }}>
+                    ₹{Number(activeHistoryCustomer.openingBalance ?? activeHistoryCustomer.opening_balance ?? 0).toLocaleString()}
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b', marginLeft: '0.3rem' }}>
+                      ({activeHistoryCustomer.openingBalanceType || activeHistoryCustomer.opening_balance_type || 'Receivable'})
+                    </span>
+                  </div>
+                  {activeHistoryCustomer.openingBalanceDate && (
+                    <div style={{ fontSize: '0.67rem', color: '#64748b' }}>
+                      Date: {activeHistoryCustomer.openingBalanceDate}
+                    </div>
+                  )}
+                </div>
+
+                {/* Outstanding Balance */}
+                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.5rem 0.75rem' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>CURRENT OUTSTANDING</div>
+                  <div style={{ fontWeight: 900, fontSize: '1.2rem', color: (activeHistoryCustomer.outstanding ?? activeHistoryCustomer.outstandingAmount ?? 0) > 0 ? '#e11d48' : '#059669', marginTop: '0.15rem' }}>
+                    ₹{Number(activeHistoryCustomer.outstanding ?? activeHistoryCustomer.outstandingAmount ?? 0).toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: '0.67rem', color: '#64748b' }}>
+                    Live Ledger Balance
                   </div>
                 </div>
               </div>
 
-              {/* Linked Sales Orders & Invoices */}
-              <div>
-                <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <ShoppingCart size={16} color="#2563eb" /> Linked Sales Orders & Invoices ({customerOrders.length})
-                </h4>
-                <div className="table-responsive" style={{ maxHeight: '220px', overflowY: 'auto' }}>
-                  <table className="erp-table">
-                    <thead>
-                      <tr>
-                        <th>Order ID</th>
-                        <th>Order Date</th>
-                        <th>Grand Total</th>
-                        <th>Advance</th>
-                        <th>Balance</th>
-                        <th>Payment Status</th>
-                        <th>Production Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {customerOrders.length === 0 ? (
-                        <tr>
-                          <td colSpan="7" style={{ textAlign: 'center', padding: '1.25rem', color: '#94a3b8' }}>
-                            No sales orders recorded for this customer yet.
-                          </td>
-                        </tr>
-                      ) : (
-                        customerOrders.map((o) => (
-                          <tr key={o.id}>
-                            <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, color: '#2563eb' }}>{o.id}</td>
-                            <td>{o.orderDate}</td>
-                            <td style={{ fontWeight: 800 }}>₹{Number(o.grandTotal || 0).toLocaleString()}</td>
-                            <td style={{ color: '#059669', fontWeight: 700 }}>₹{Number(o.advanceAmount || 0).toLocaleString()}</td>
-                            <td style={{ color: Number(o.balanceAmount || 0) > 0 ? '#e11d48' : '#059669', fontWeight: 800 }}>
-                              ₹{Number(o.balanceAmount || 0).toLocaleString()}
-                            </td>
-                            <td>
-                              <span className={`badge ${o.paymentStatus === 'Paid' ? 'badge-emerald' : 'badge-amber'}`}>
-                                {o.paymentStatus}
-                              </span>
-                            </td>
-                            <td>
-                              <span className="badge badge-sky">{o.productionStatus || 'New'}</span>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+              {/* History Sub-Navigation Tabs */}
+              <div style={{ display: 'flex', gap: '0.35rem', borderBottom: '2px solid #e2e8f0', paddingBottom: '0.2rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setHistoryTab('statement')}
+                  className={`btn btn-sm ${historyTab === 'statement' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}
+                >
+                  <BookOpen size={14} /> Full Account Statement ({customerLedgerStatement.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryTab('orders')}
+                  className={`btn btn-sm ${historyTab === 'orders' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                >
+                  <ShoppingCart size={14} /> Sales Orders & Invoices ({customerOrders.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryTab('payments')}
+                  className={`btn btn-sm ${historyTab === 'payments' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                >
+                  <CreditCard size={14} /> Payments Received ({customerPayments.length})
+                </button>
               </div>
 
-              {/* Linked Payments Received */}
-              <div>
-                <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <CreditCard size={16} color="#059669" /> Payments Received History ({customerPayments.length})
-                </h4>
-                <div className="table-responsive" style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                  <table className="erp-table">
-                    <thead>
-                      <tr>
-                        <th>Payment Ref</th>
-                        <th>Date</th>
-                        <th>Order Ref</th>
-                        <th>Amount Paid</th>
-                        <th>Payment Method</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {customerPayments.length === 0 ? (
+              {/* TAB 1: FULL ACCOUNT STATEMENT / CHRONOLOGICAL LEDGER */}
+              {historyTab === 'statement' && (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                      Formula: <strong>Opening Balance + Sales/Invoiced Amount − Payments = Outstanding</strong>
+                    </div>
+                  </div>
+
+                  <div className="table-responsive" style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                    <table className="erp-table">
+                      <thead>
                         <tr>
-                          <td colSpan="6" style={{ textAlign: 'center', padding: '1.25rem', color: '#94a3b8' }}>
-                            No payment vouchers recorded for this customer yet.
-                          </td>
+                          <th>Date</th>
+                          <th>Transaction / Type</th>
+                          <th>Ref #</th>
+                          <th>Particulars / Narration</th>
+                          <th style={{ textAlign: 'right' }}>Debit (Dr)</th>
+                          <th style={{ textAlign: 'right' }}>Credit (Cr)</th>
+                          <th style={{ textAlign: 'right' }}>Running Balance</th>
                         </tr>
-                      ) : (
-                        customerPayments.map((p) => (
-                          <tr key={p.id}>
-                            <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#64748b' }}>{p.id}</td>
-                            <td>{p.date}</td>
-                            <td style={{ fontWeight: 700, color: '#2563eb' }}>{p.orderId || p.order_id || 'Direct'}</td>
-                            <td style={{ fontWeight: 900, color: '#059669' }}>₹{Number(p.amount || 0).toLocaleString()}</td>
-                            <td><span className="badge badge-purple">{p.method}</span></td>
-                            <td><span className="badge badge-emerald">Verified</span></td>
+                      </thead>
+                      <tbody>
+                        {customerLedgerStatement.length === 0 ? (
+                          <tr>
+                            <td colSpan="7" style={{ textAlign: 'center', padding: '1.5rem', color: '#94a3b8' }}>
+                              No account transactions recorded for this customer yet.
+                            </td>
                           </tr>
-                        ))
+                        ) : (
+                          customerLedgerStatement.map((entry, idx) => (
+                            <tr key={`${entry.id}-${idx}`} style={{ backgroundColor: entry.voucherType === 'Opening Balance' ? '#f0fdf4' : undefined }}>
+                              <td style={{ fontWeight: 600 }}>{entry.date}</td>
+                              <td>
+                                <span className={`badge ${entry.badgeClass}`}>
+                                  {entry.voucherType}
+                                </span>
+                              </td>
+                              <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#2563eb' }}>{entry.refNo}</td>
+                              <td style={{ fontSize: '0.82rem', color: '#334155' }}>{entry.narration}</td>
+                              <td style={{ textAlign: 'right', fontWeight: 700, color: entry.debit > 0 ? '#1e40af' : '#94a3b8' }}>
+                                {entry.debit > 0 ? formatINR(entry.debit) : '—'}
+                              </td>
+                              <td style={{ textAlign: 'right', fontWeight: 700, color: entry.credit > 0 ? '#059669' : '#94a3b8' }}>
+                                {entry.credit > 0 ? formatINR(entry.credit) : '—'}
+                              </td>
+                              <td style={{ textAlign: 'right', fontWeight: 900, color: entry.runningBalance > 0 ? '#e11d48' : '#059669' }}>
+                                {formatINR(entry.runningBalance)}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                      {customerLedgerStatement.length > 0 && (
+                        <tfoot>
+                          <tr style={{ background: '#f8fafc', fontWeight: 800, borderTop: '2px solid #cbd5e1' }}>
+                            <td colSpan="4">TOTAL CUMULATIVE SUMMARY</td>
+                            <td style={{ textAlign: 'right', color: '#1e40af' }}>
+                              {formatINR(customerLedgerStatement.reduce((sum, e) => sum + e.debit, 0))}
+                            </td>
+                            <td style={{ textAlign: 'right', color: '#059669' }}>
+                              {formatINR(customerLedgerStatement.reduce((sum, e) => sum + e.credit, 0))}
+                            </td>
+                            <td style={{ textAlign: 'right', color: '#e11d48', fontSize: '1rem', fontWeight: 900 }}>
+                              {formatINR(activeHistoryCustomer.outstanding ?? activeHistoryCustomer.outstandingAmount ?? 0)}
+                            </td>
+                          </tr>
+                        </tfoot>
                       )}
-                    </tbody>
-                  </table>
+                    </table>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* TAB 2: LINKED SALES ORDERS & INVOICES */}
+              {historyTab === 'orders' && (
+                <div>
+                  <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <ShoppingCart size={16} color="#2563eb" /> Linked Sales Orders & Invoices ({customerOrders.length})
+                  </h4>
+                  <div className="table-responsive" style={{ maxHeight: '240px', overflowY: 'auto' }}>
+                    <table className="erp-table">
+                      <thead>
+                        <tr>
+                          <th>Order ID</th>
+                          <th>Order Date</th>
+                          <th>Grand Total</th>
+                          <th>Advance</th>
+                          <th>Balance</th>
+                          <th>Payment Status</th>
+                          <th>Production Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {customerOrders.length === 0 ? (
+                          <tr>
+                            <td colSpan="7" style={{ textAlign: 'center', padding: '1.25rem', color: '#94a3b8' }}>
+                              No sales orders recorded for this customer yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          customerOrders.map((o) => (
+                            <tr key={o.id}>
+                              <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, color: '#2563eb' }}>{o.id}</td>
+                              <td>{o.orderDate}</td>
+                              <td style={{ fontWeight: 800 }}>₹{Number(o.grandTotal || 0).toLocaleString()}</td>
+                              <td style={{ color: '#059669', fontWeight: 700 }}>₹{Number(o.advanceAmount || 0).toLocaleString()}</td>
+                              <td style={{ color: Number(o.balanceAmount || 0) > 0 ? '#e11d48' : '#059669', fontWeight: 800 }}>
+                                ₹{Number(o.balanceAmount || 0).toLocaleString()}
+                              </td>
+                              <td>
+                                <span className={`badge ${o.paymentStatus === 'Paid' ? 'badge-emerald' : 'badge-amber'}`}>
+                                  {o.paymentStatus}
+                                </span>
+                              </td>
+                              <td>
+                                <span className="badge badge-sky">{o.productionStatus || 'New'}</span>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: LINKED PAYMENTS RECEIVED */}
+              {historyTab === 'payments' && (
+                <div>
+                  <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <CreditCard size={16} color="#059669" /> Payments Received History ({customerPayments.length})
+                  </h4>
+                  <div className="table-responsive" style={{ maxHeight: '240px', overflowY: 'auto' }}>
+                    <table className="erp-table">
+                      <thead>
+                        <tr>
+                          <th>Payment Ref</th>
+                          <th>Date</th>
+                          <th>Order Ref</th>
+                          <th>Amount Paid</th>
+                          <th>Payment Method</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {customerPayments.length === 0 ? (
+                          <tr>
+                            <td colSpan="6" style={{ textAlign: 'center', padding: '1.25rem', color: '#94a3b8' }}>
+                              No payment vouchers recorded for this customer yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          customerPayments.map((p) => (
+                            <tr key={p.id}>
+                              <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#64748b' }}>{p.id}</td>
+                              <td>{p.date}</td>
+                              <td style={{ fontWeight: 700, color: '#2563eb' }}>{p.orderId || p.order_id || 'Direct'}</td>
+                              <td style={{ fontWeight: 900, color: '#059669' }}>₹{Number(p.amount || 0).toLocaleString()}</td>
+                              <td><span className="badge badge-purple">{p.method}</span></td>
+                              <td><span className="badge badge-emerald">Verified</span></td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="modal-footer" style={{ padding: '0.85rem 1.25rem', display: 'flex', justifyContent: 'flex-end' }}>
