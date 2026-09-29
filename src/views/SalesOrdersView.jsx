@@ -1205,31 +1205,38 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
               </button>
             </div>
 
-            <div className="table-responsive" style={{ overflowX: 'auto', overflowY: 'visible', minHeight: '160px' }}>
-              <table className="erp-table" style={{ width: '100%' }}>
+            <div className="table-responsive" style={{ overflowX: 'auto', overflowY: 'visible', minHeight: '180px' }}>
+              <table className="erp-table">
                 <thead>
                   <tr>
-                    <th style={{ width: '32px' }}>#</th>
-                    <th style={{ minWidth: '240px' }}>Product</th>
-                    <th style={{ width: '90px', textAlign: 'right' }}>Qty</th>
-                    <th style={{ width: '105px', textAlign: 'right' }}>Rate (₹)</th>
-                    <th style={{ width: '115px', textAlign: 'right' }}>Amount (₹)</th>
-                    <th style={{ width: '135px' }}>Target Delivery</th>
-                    <th style={{ width: '110px', textAlign: 'right' }}>Costing (₹)</th>
-                    <th style={{ width: '36px' }}></th>
+                    <th style={{ width: '30px' }}>#</th>
+                    <th style={{ minWidth: '320px', width: '340px' }}>Product & Specification</th>
+                    <th style={{ width: '65px' }}>Qty</th>
+                    <th style={{ width: '120px' }}>Delivery Date</th>
+                    <th style={{ width: '80px' }}>Design?</th>
+                    <th style={{ width: '110px' }}>Outsource?</th>
+                    <th style={{ width: '120px' }}>Est. Cost Price (₹) / Internal</th>
+                    <th style={{ width: '85px' }}>Selling Rate (₹)</th>
+                    <th style={{ width: '70px' }}>GST %</th>
+                    <th style={{ width: '110px' }}>Amount (₹)</th>
+                    <th style={{ width: '30px' }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((item, idx) => {
                     const calc = calculateItemAmount(item);
+                    const productSpecs = (productMaterialSpecs || []).filter(
+                      (s) => s.productId === item.productId || (s.productName && s.productName === item.productName)
+                    );
                     const isCustomItem = item.isCustom || (item.productName && item.productName.includes('Custom'));
+                    const activeSpec = productSpecs.find((s) => s.id === item.specId || (s.specName && item.material === s.specName)) || productSpecs.find((s) => s.isDefault) || productSpecs[0];
 
                     return (
                       <tr key={item.id || idx}>
-                        <td style={{ fontWeight: 700, color: '#64748b' }}>{idx + 1}</td>
+                        <td style={{ fontWeight: 700 }}>{idx + 1}</td>
 
-                        {/* Product Column */}
-                        <td style={{ minWidth: '240px' }}>
+                        {/* Product Selector with SearchableSelect */}
+                        <td style={{ minWidth: '320px' }}>
                           <SearchableSelect
                             type="product"
                             size="sm"
@@ -1239,10 +1246,23 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                             onChange={(p) => {
                               if (!p) {
                                 const newItems = [...items];
-                                newItems[idx] = { ...newItems[idx], productName: '', productId: '' };
+                                newItems[idx] = {
+                                  ...newItems[idx],
+                                  productName: '',
+                                  productId: '',
+                                  specId: '',
+                                  specName: '',
+                                  sellingRate: '',
+                                  estimatedCost: '',
+                                  internalEstOutsourceCost: ''
+                                };
                                 setItems(newItems);
                                 return;
                               }
+                              const pSpecs = (productMaterialSpecs || []).filter((s) => s.productId === p.id && s.status !== 'Inactive');
+                              const defSpec = pSpecs.find((s) => s.isDefault) || pSpecs[0];
+                              const defaultCost = defSpec ? defSpec.costPrice : (p?.estimatedCost ?? p?.estimated_cost ?? items[idx]?.estimatedCost ?? 0);
+
                               const newItems = [...items];
                               const isCustom = p?.isCustom || (p.name || '').includes('Custom');
                               newItems[idx] = {
@@ -1250,20 +1270,57 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                                 productName: p.name,
                                 productId: p.id || '',
                                 isCustom: isCustom,
-                                // Zero-default rule: do NOT auto-populate selling rate or estimated cost
-                                sellingRate: newItems[idx].sellingRate || '',
-                                estimatedCost: newItems[idx].estimatedCost || '',
-                                unit: p?.unit || newItems[idx].unit || 'Pcs',
-                                material: p?.defaultMaterial || p?.default_material || newItems[idx].material || '',
-                                description: newItems[idx].description || p?.description || '',
-                                gstRate: p?.gstRate || newItems[idx].gstRate || 18,
-                                hsnCode: p?.hsnCode || '9989'
+                                specId: defSpec?.id || '',
+                                specName: defSpec?.specName || '',
+                                sellingRate: defSpec ? defSpec.sellingPrice : (p?.defaultRate ?? p?.sellingPrice ?? p?.selling_price ?? newItems[idx].sellingRate ?? ''),
+                                estimatedCost: defaultCost,
+                                internalEstOutsourceCost: defaultCost,
+                                unit: defSpec ? defSpec.unit : (p?.unit || newItems[idx].unit || 'Pcs'),
+                                material: defSpec ? (defSpec.materialName || defSpec.specName) : (p?.defaultMaterial || newItems[idx].material || ''),
+                                description: defSpec ? (defSpec.description || defSpec.specName) : (newItems[idx].description || p?.description || ''),
+                                gstRate: defSpec ? defSpec.gstRate : (p?.gstRate || newItems[idx].gstRate || 18),
+                                hsnCode: defSpec ? defSpec.hsnCode : (p?.hsnCode || '9989')
                               };
                               setItems(newItems);
                             }}
                             placeholder="Select Product..."
                             searchPlaceholder="Search product name..."
                           />
+
+                          {/* Dynamic Material Specification Dropdown */}
+                          {productSpecs.length > 0 && (
+                            <select
+                              className="form-select form-select-sm"
+                              style={{ marginTop: '4px', background: '#eff6ff', borderColor: '#93c5fd', fontWeight: 700, color: '#1e40af' }}
+                              value={activeSpec?.id || ''}
+                              onChange={(e) => {
+                                const selectedSpec = productSpecs.find((s) => s.id === e.target.value);
+                                if (selectedSpec) {
+                                  const newItems = [...items];
+                                  newItems[idx] = {
+                                    ...newItems[idx],
+                                    specId: selectedSpec.id,
+                                    specName: selectedSpec.specName,
+                                    sellingRate: selectedSpec.sellingPrice,
+                                    estimatedCost: selectedSpec.costPrice,
+                                    internalEstOutsourceCost: selectedSpec.costPrice,
+                                    unit: selectedSpec.unit,
+                                    material: selectedSpec.materialName || selectedSpec.specName,
+                                    description: selectedSpec.description || selectedSpec.specName,
+                                    gstRate: selectedSpec.gstRate,
+                                    hsnCode: selectedSpec.hsnCode
+                                  };
+                                  setItems(newItems);
+                                }
+                              }}
+                            >
+                              {productSpecs.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  Spec: {s.specName} (₹{s.sellingPrice}/{s.unit}){s.isDefault ? ' ★ Default' : ''}
+                                </option>
+                              ))}
+                            </select>
+                          )}
 
                           {/* Free-text Custom Item Name if Custom Job */}
                           {isCustomItem && (
@@ -1281,92 +1338,25 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                             />
                           )}
 
-                          {/* Optional Collapsible Dimensions / Notes */}
-                          <div style={{ marginTop: '3px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newItems = [...items];
-                                newItems[idx]._showDetails = !newItems[idx]._showDetails;
-                                setItems(newItems);
-                              }}
-                              style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '0.72rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
-                            >
-                              {item._showDetails ? 'Hide Specs' : '+ Specs / Notes'}
-                            </button>
-                            {item.unit && item.unit.startsWith('Sq') && !item._showDetails && (item.width || item.height) && (
-                              <span style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: 600 }}>
-                                {item.width} × {item.height} {item.unit}
-                              </span>
-                            )}
-                          </div>
-
-                          {item._showDetails && (
-                            <div style={{ marginTop: '4px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                <input
-                                  type="number"
-                                  className="form-control form-control-sm"
-                                  style={{ width: '50px', fontSize: '0.72rem' }}
-                                  placeholder="W"
-                                  value={item.width || ''}
-                                  onChange={(e) => {
-                                    const newItems = [...items];
-                                    newItems[idx].width = e.target.value;
-                                    setItems(newItems);
-                                  }}
-                                />
-                                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>×</span>
-                                <input
-                                  type="number"
-                                  className="form-control form-control-sm"
-                                  style={{ width: '50px', fontSize: '0.72rem' }}
-                                  placeholder="H"
-                                  value={item.height || ''}
-                                  onChange={(e) => {
-                                    const newItems = [...items];
-                                    newItems[idx].height = e.target.value;
-                                    setItems(newItems);
-                                  }}
-                                />
-                                <select
-                                  className="form-select form-select-sm"
-                                  style={{ width: '70px', fontSize: '0.72rem' }}
-                                  value={item.unit || 'Sq.Ft'}
-                                  onChange={(e) => {
-                                    const newItems = [...items];
-                                    newItems[idx].unit = e.target.value;
-                                    setItems(newItems);
-                                  }}
-                                >
-                                  <option value="Sq.Ft">Sq.Ft</option>
-                                  <option value="Sq.Inch">Sq.In</option>
-                                  <option value="Pcs">Pcs</option>
-                                  <option value="Nos">Nos</option>
-                                </select>
-                              </div>
-                              <input
-                                type="text"
-                                className="form-control form-control-sm"
-                                style={{ fontSize: '0.72rem', flex: 1, minWidth: '130px' }}
-                                placeholder="Notes / specs..."
-                                value={item.description || ''}
-                                onChange={(e) => {
-                                  const newItems = [...items];
-                                  newItems[idx].description = e.target.value;
-                                  setItems(newItems);
-                                }}
-                              />
-                            </div>
-                          )}
+                          <input
+                            type="text"
+                            className="form-control form-control-sm"
+                            style={{ marginTop: '3px' }}
+                            placeholder="Item notes / specifications..."
+                            value={item.description || ''}
+                            onChange={(e) => {
+                              const newItems = [...items];
+                              newItems[idx].description = e.target.value;
+                              setItems(newItems);
+                            }}
+                          />
                         </td>
 
-                        {/* Qty Column (Empty by default) */}
+                        {/* Quantity */}
                         <td>
                           <input
                             type="number"
                             className="form-control form-control-sm"
-                            style={{ textAlign: 'right' }}
                             placeholder="Qty"
                             value={item.qty ?? ''}
                             onChange={(e) => {
@@ -1377,12 +1367,175 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                           />
                         </td>
 
-                        {/* Rate Column (Empty by default) */}
+                        {/* Line Item Target Delivery Date */}
+                        <td>
+                          <input
+                            type="date"
+                            className="form-control form-control-sm"
+                            style={{ fontSize: '0.72rem', fontWeight: 600, color: '#d97706' }}
+                            value={item.deliveryDate || orderHeader.deliveryDate || ''}
+                            onChange={(e) => {
+                              const newItems = [...items];
+                              newItems[idx].deliveryDate = e.target.value;
+                              setItems(newItems);
+                            }}
+                          />
+                        </td>
+
+                        {/* Design Required (Default NO, Optional Designer) */}
+                        <td>
+                          <select
+                            className="form-select form-select-sm"
+                            value={item.designerRequired || item.designRequired || 'NO'}
+                            onChange={(e) => {
+                              const newItems = [...items];
+                              newItems[idx].designerRequired = e.target.value;
+                              newItems[idx].designRequired = e.target.value;
+                              setItems(newItems);
+                            }}
+                          >
+                            <option value="NO">NO (No Design Required)</option>
+                            <option value="YES">YES (Design Required)</option>
+                          </select>
+                          {(item.designerRequired === 'YES' || item.designRequired === 'YES') && (
+                            <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              <SearchableSelect
+                                type="designer"
+                                size="sm"
+                                options={
+                                  (employees || []).filter(e => e.department === 'Design' || e.role === 'Designer').length > 0
+                                    ? (employees || []).filter(e => e.department === 'Design' || e.role === 'Designer')
+                                    : designers
+                                }
+                                value={item.designerId || ''}
+                                onChange={(d) => {
+                                  const newItems = [...items];
+                                  newItems[idx].designerId = d?.id || '';
+                                  newItems[idx].designerName = d?.name || '';
+                                  setItems(newItems);
+                                }}
+                                placeholder="⚡ Unassigned (Design Queue)"
+                                searchPlaceholder="Search designer by name..."
+                                onAddNew={() => {
+                                  setCreateEmpDept('Design');
+                                  setEmpTargetType('designer');
+                                  setEmpTargetIndex(idx);
+                                  setIsCreateEmpModalOpen(true);
+                                }}
+                                addNewLabel="+ Create New Designer"
+                              />
+
+                              {/* Priority Dropdown */}
+                              <select
+                                className="form-select form-select-sm"
+                                style={{ fontSize: '0.72rem' }}
+                                value={item.jobPriority || 'Normal'}
+                                onChange={(e) => {
+                                  const newItems = [...items];
+                                  newItems[idx].jobPriority = e.target.value;
+                                  setItems(newItems);
+                                }}
+                              >
+                                <option value="Normal">Priority: Normal</option>
+                                <option value="High">Priority: High ⚠️</option>
+                                <option value="Urgent">Priority: Urgent 🚨</option>
+                                <option value="Low">Priority: Low</option>
+                              </select>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Outsource */}
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <input
+                              type="checkbox"
+                              checked={item.outsource || false}
+                              onChange={(e) => {
+                                const newItems = [...items];
+                                newItems[idx].outsource = e.target.checked;
+                                if (e.target.checked && (!newItems[idx].outsourceJobs || newItems[idx].outsourceJobs.length === 0)) {
+                                  newItems[idx].outsourceJobs = [{
+                                    id: 1,
+                                    vendorId: vendors[0]?.id || '',
+                                    vendorName: vendors[0]?.name || '',
+                                    processName: 'Printing / Job Work',
+                                    estCost: newItems[idx].internalEstOutsourceCost || 0,
+                                    notes: ''
+                                  }];
+                                  newItems[idx].vendorId = vendors[0]?.id || '';
+                                  newItems[idx].vendorName = vendors[0]?.name || '';
+                                }
+                                setItems(newItems);
+                              }}
+                            />
+                            <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Outsource</span>
+                          </div>
+                          {item.outsource && (
+                            <div style={{ marginTop: '3px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              <SearchableSelect
+                                type="vendor"
+                                size="sm"
+                                options={vendors || []}
+                                value={item.vendorId || ''}
+                                onChange={(v) => {
+                                  const newItems = [...items];
+                                  newItems[idx].vendorId = v?.id || '';
+                                  newItems[idx].vendorName = v?.name || '';
+                                  if (newItems[idx].outsourceJobs && newItems[idx].outsourceJobs.length > 0) {
+                                    newItems[idx].outsourceJobs[0].vendorId = v?.id || '';
+                                    newItems[idx].outsourceJobs[0].vendorName = v?.name || '';
+                                  }
+                                  setItems(newItems);
+                                }}
+                                placeholder="Select Vendor..."
+                                searchPlaceholder="Search vendor by name, city, services..."
+                                onAddNew={() => {
+                                  setActiveVendorTargetIndex(idx);
+                                  setIsCreateVendorModalOpen(true);
+                                }}
+                                addNewLabel="+ Create New Outsource Vendor"
+                              />
+
+                              <button
+                                type="button"
+                                onClick={() => openMultiVendorModal(idx)}
+                                className="btn btn-outline btn-xs"
+                                style={{ fontSize: '0.68rem', fontWeight: 700, borderColor: '#7c3aed', color: '#7c3aed', background: '#faf5ff', padding: '1px 4px' }}
+                              >
+                                <Building2 size={11} style={{ marginRight: '2px' }} />
+                                {item.outsourceJobs && item.outsourceJobs.length > 1
+                                  ? `🏬 ${item.outsourceJobs.length} Vendors (₹${item.internalEstOutsourceCost})`
+                                  : '+ Assign 1 or More Vendors'}
+                              </button>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Internal Est Outsource Cost (Reference Only) */}
                         <td>
                           <input
                             type="number"
                             className="form-control form-control-sm"
-                            style={{ textAlign: 'right' }}
+                            style={{ borderColor: '#8b5cf6', background: '#faf5ff', fontWeight: 600 }}
+                            placeholder="₹ Est Cost"
+                            value={item.internalEstOutsourceCost ?? ''}
+                            onChange={(e) => {
+                              const newItems = [...items];
+                              newItems[idx].internalEstOutsourceCost = e.target.value;
+                              setItems(newItems);
+                            }}
+                          />
+                          <span style={{ fontSize: '0.62rem', color: '#7c3aed', fontWeight: 600, display: 'block', marginTop: '1px' }}>
+                            Internal Ref Only
+                          </span>
+                        </td>
+
+                        {/* Selling Rate */}
+                        <td>
+                          <input
+                            type="number"
+                            className="form-control form-control-sm"
                             placeholder="Rate"
                             value={item.sellingRate ?? ''}
                             onChange={(e) => {
@@ -1393,61 +1546,41 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                           />
                         </td>
 
-                        {/* Amount Column (Empty/Uncalculated until both Qty and Rate are provided) */}
-                        <td style={{ textAlign: 'right' }}>
-                          {calc.isCalculated ? (
-                            <div>
-                              <div style={{ fontWeight: 800, color: '#1e40af', fontSize: '0.88rem' }}>
-                                ₹{Number(calc.grossLineTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </div>
-                              {orderHeader.taxMode && orderHeader.taxMode.includes('ITR') && (
-                                <span style={{ fontSize: '0.66rem', color: '#64748b' }}>
-                                  Taxable: ₹{Number(calc.taxableVal).toFixed(2)}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span style={{ color: '#94a3b8', fontWeight: 600, fontSize: '0.88rem' }}>—</span>
-                          )}
-                        </td>
-
-                        {/* Target Delivery (Empty by default) */}
+                        {/* GST % */}
                         <td>
-                          <input
-                            type="date"
-                            className="form-control form-control-sm"
-                            value={item.deliveryDate || ''}
+                          <select
+                            className="form-select form-select-sm"
+                            value={item.gstRate || 18}
                             onChange={(e) => {
                               const newItems = [...items];
-                              newItems[idx].deliveryDate = e.target.value;
+                              newItems[idx].gstRate = e.target.value;
                               setItems(newItems);
                             }}
-                          />
+                          >
+                            <option value={18}>18%</option>
+                            <option value={12}>12%</option>
+                            <option value={5}>5%</option>
+                            <option value={0}>0%</option>
+                          </select>
                         </td>
 
-                        {/* Costing (Empty by default) */}
+                        {/* Amount */}
                         <td>
-                          <input
-                            type="number"
-                            className="form-control form-control-sm"
-                            style={{ textAlign: 'right' }}
-                            placeholder="Cost"
-                            value={item.estimatedCost ?? ''}
-                            onChange={(e) => {
-                              const newItems = [...items];
-                              newItems[idx].estimatedCost = e.target.value;
-                              setItems(newItems);
-                            }}
-                          />
+                          <div style={{ fontWeight: 800, color: '#1e40af', fontSize: '0.88rem' }}>
+                            ₹{Number(calc.grossLineTotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </div>
+                          <span style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                            Taxable: ₹{Number(calc.taxableVal ?? 0).toFixed(1)}
+                          </span>
                         </td>
 
-                        {/* Remove Row Button */}
+                        {/* Remove */}
                         <td>
                           <button
                             type="button"
                             onClick={() => removeProductRow(idx)}
                             className="btn-secondary btn-icon"
-                            style={{ border: 'none', color: '#f43f5e', padding: '4px' }}
+                            style={{ border: 'none', color: '#f43f5e' }}
                             title="Remove Item"
                           >
                             <Trash2 size={16} />
