@@ -63,6 +63,46 @@ export const ERPProvider = ({ children }) => {
     return USER_ROLES.ADMIN;
   });
 
+  // Clean Slate Enforcer: ensure all previous mock/test browser data is completely purged
+  (() => {
+    try {
+      const DATA_VERSION_KEY = 'stitch_erp_clean_slate_ver';
+      const CURRENT_CLEAN_VERSION = 'v2026_clean_slate_fresh';
+      if (typeof window !== 'undefined' && localStorage.getItem(DATA_VERSION_KEY) !== CURRENT_CLEAN_VERSION) {
+        const keysToRemove = [
+          'stitch_erp_customers',
+          'stitch_erp_sales_orders',
+          'stitch_erp_products',
+          'stitch_erp_product_material_specs',
+          'stitch_erp_vendors',
+          'stitch_erp_employees',
+          'stitch_erp_designers',
+          'stitch_erp_workers',
+          'stitch_erp_sales_persons',
+          'stitch_erp_care_of_persons',
+          'stitch_erp_purchase_orders',
+          'stitch_erp_payments',
+          'stitch_erp_outsource_bills',
+          'stitch_erp_outsource_payments',
+          'stitch_erp_outsource_jobs',
+          'stitch_erp_expenses',
+          'stitch_erp_inventory',
+          'stitch_erp_machines',
+          'stitch_erp_production_tasks',
+          'stitch_erp_order_audit_logs',
+          'stitch_erp_attendance_records',
+          'stitch_erp_payroll_records',
+          'stitch_erp_worker_job_incentives',
+          'stitch_erp_workflows',
+          'stitch_erp_wastage_records',
+          'stitch_erp_follow_ups'
+        ];
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+        localStorage.setItem(DATA_VERSION_KEY, CURRENT_CLEAN_VERSION);
+      }
+    } catch (e) {}
+  })();
+
   const loadStorage = (key, fallback = []) => {
     try {
       const saved = localStorage.getItem(`stitch_erp_${key}`);
