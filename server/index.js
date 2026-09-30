@@ -1962,8 +1962,12 @@ app.post('/api/admin/reset-database', authenticateToken, async (req, res) => {
       db.prepare('DELETE FROM sales_persons').run();
       db.prepare('DELETE FROM care_of_persons').run();
 
-      // Employees & Users (Preserve only Admin)
-      db.prepare("DELETE FROM employees WHERE role != 'Admin' AND id != 'EMP-ADM-01'").run();
+      // Employees & Users (Preserve Admin and System UNASSIGNED Pool)
+      db.prepare("DELETE FROM employees WHERE role != 'Admin' AND id NOT IN ('EMP-ADM-01', 'UNASSIGNED')").run();
+      db.prepare(`
+        INSERT OR IGNORE INTO employees (id, code, name, role, department, status)
+        VALUES ('UNASSIGNED', 'EMP-POOL', 'Available Work Pool', 'Production', 'Production', 'Active')
+      `).run();
       db.prepare("DELETE FROM users WHERE username != 'admin'").run();
       db.prepare("DELETE FROM employee_process_permissions WHERE user_id NOT IN (SELECT id FROM users)").run();
 

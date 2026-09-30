@@ -1921,8 +1921,8 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
               )}
 
               <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.75rem' }}>
-                <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }}>
-                  <Check size={18} /> {editingOrderId ? '💾 Save & Log Order Revision' : 'Confirm Order & Auto-Generate Job Cards'}
+                <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={isSavingOrder}>
+                  <Check size={18} /> {isSavingOrder ? 'Saving Order...' : (editingOrderId ? '💾 Save & Log Order Revision' : 'Confirm Order & Auto-Generate Job Cards')}
                 </button>
               </div>
             </div>

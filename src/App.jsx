@@ -61,16 +61,70 @@ const MainAppContent = () => {
     localStorage.setItem('erp_sidebar_collapsed_desktop', String(nextVal));
   };
 
-  // Handle cross-module navigation helper
+  const [productionParams, setProductionParams] = useState({ stageFilter: 'ALL', viewType: 'kanban' });
+  const [employeeTaskParams, setEmployeeTaskParams] = useState({ staffTab: 'my_work' });
+  const [hrTab, setHrTab] = useState('attendance');
+  const [userTab, setUserTab] = useState('users');
+  const [settingsTab, setSettingsTab] = useState('profile');
+  const [outsourceTab, setOutsourceTab] = useState('outsource-jobs');
+
+  // Handle cross-module navigation helper with single canonical mapping
   const handleNavigate = (tab, params = {}) => {
-    if (tab === 'quotations') {
+    let canonicalTab = tab;
+    
+    // Canonical Route Alias Resolution: ONE feature -> ONE page
+    if (tab === 'job-cards' || tab === 'job-orders') {
+      canonicalTab = 'production';
+      setProductionParams({ stageFilter: 'ALL', viewType: 'list', ...params });
+    } else if (tab === 'printing-dept') {
+      canonicalTab = 'production';
+      setProductionParams({ stageFilter: 'Printing', viewType: 'kanban', ...params });
+    } else if (tab === 'finishing-dept') {
+      canonicalTab = 'production';
+      setProductionParams({ stageFilter: 'Finishing', viewType: 'kanban', ...params });
+    } else if (tab === 'qc-dept') {
+      canonicalTab = 'production';
+      setProductionParams({ stageFilter: 'Quality Check', viewType: 'kanban', ...params });
+    } else if (tab === 'my-work') {
+      canonicalTab = 'employee-tasks';
+      setEmployeeTaskParams({ staffTab: 'my_work', ...params });
+    } else if (tab === 'available-work') {
+      canonicalTab = 'employee-tasks';
+      setEmployeeTaskParams({ staffTab: 'available', ...params });
+    } else if (tab === 'machines-admin') {
+      canonicalTab = 'machines';
+    } else if (tab === 'suppliers') {
+      canonicalTab = 'vendors';
+      setOutsourceTab('vendors');
+    } else if (tab === 'outsource-bills' || tab === 'outsource-jobs' || tab === 'outsource-payments') {
+      canonicalTab = 'outsource-jobs';
+      setOutsourceTab(tab);
+    } else if (tab === 'materials-master') {
+      canonicalTab = 'materials-spec';
+    } else if (tab === 'roles-permissions') {
+      canonicalTab = 'user-management';
+      setUserTab('roles');
+    } else if (tab === 'system-health') {
+      canonicalTab = 'settings';
+      setSettingsTab('health');
+    } else if (tab === 'biometrics') {
+      canonicalTab = 'attendance';
+      setHrTab('biometric-device');
+    } else if (tab === 'hr-payroll') {
+      canonicalTab = 'attendance';
+      setHrTab('payroll');
+    } else if (tab === 'report-order-audit') {
+      canonicalTab = 'sales-order-audit';
+    }
+
+    if (canonicalTab === 'quotations') {
       setActiveTab('quotations');
       setSalesOrderParams({ create: false, selectId: null, initialType: 'Quotation', ...params });
+    } else if (canonicalTab === 'sales-orders') {
+      setActiveTab('sales-orders');
+      setSalesOrderParams({ create: false, selectId: null, initialType: 'Direct', ...params });
     } else {
-      setActiveTab(tab);
-      if (tab === 'sales-orders') {
-        setSalesOrderParams({ create: false, selectId: null, initialType: 'Direct', ...params });
-      }
+      setActiveTab(canonicalTab);
     }
   };
 
@@ -182,48 +236,49 @@ const MainAppContent = () => {
                 onNavigate={handleNavigate}
               />
             )}
-            {(activeTab === 'job-orders' || activeTab === 'job-cards') && (
-              <ProductionView key="job-cards-list" initialStageFilter="ALL" initialViewType="list" onNavigate={handleNavigate} />
-            )}
             {activeTab === 'customers' && <CustomersView onNavigate={handleNavigate} />}
             {activeTab === 'employees' && <EmployeesView />}
             {activeTab === 'sales-persons' && <SalesPersonsView />}
             {activeTab === 'care-of-persons' && <CareOfManagementView />}
-            {(activeTab === 'hr-payroll' || activeTab === 'attendance') && (
-              <HRManagementView key={activeTab} initialTab={activeTab} />
-            )}
-            {activeTab === 'biometrics' && (
-              <HRManagementView key="biometric-device" initialTab="biometric-device" />
+            {activeTab === 'attendance' && (
+              <HRManagementView key={hrTab} initialTab={hrTab} />
             )}
             {activeTab === 'products' && <ProductsView />}
-            {(activeTab === 'machines' || activeTab === 'machines-admin') && <MachinesView />}
+            {activeTab === 'machines' && <MachinesView />}
             {activeTab === 'workflows' && <WorkflowsView />}
             {activeTab === 'wastage' && <WastageView />}
             {activeTab === 'designers' && <DesignersView />}
-            {activeTab === 'production' && <ProductionView initialStageFilter="ALL" onNavigate={handleNavigate} />}
-            {activeTab === 'my-work' && <ProductionTasksView key="my-work" initialStaffTab="my_work" onNavigate={handleNavigate} />}
-            {activeTab === 'available-work' && <ProductionTasksView key="available-work" initialStaffTab="available" onNavigate={handleNavigate} />}
-            {activeTab === 'employee-tasks' && <ProductionTasksView onNavigate={handleNavigate} />}
-            {activeTab === 'printing-dept' && <ProductionView initialStageFilter="Printing" onNavigate={handleNavigate} />}
-            {activeTab === 'finishing-dept' && <ProductionView initialStageFilter="Finishing" onNavigate={handleNavigate} />}
-            {(activeTab === 'vendors' || activeTab === 'outsource-jobs' || activeTab === 'suppliers' || activeTab === 'outsource-bills' || activeTab === 'outsource-payments') && (
-              <OutsourceVendorsView initialTab={activeTab} onNavigate={handleNavigate} />
+            {activeTab === 'production' && (
+              <ProductionView
+                initialStageFilter={productionParams.stageFilter || 'ALL'}
+                initialViewType={productionParams.viewType || 'kanban'}
+                onNavigate={handleNavigate}
+              />
+            )}
+            {activeTab === 'employee-tasks' && (
+              <ProductionTasksView
+                initialStaffTab={employeeTaskParams.staffTab || 'my_work'}
+                onNavigate={handleNavigate}
+              />
+            )}
+            {(activeTab === 'vendors' || activeTab === 'outsource-jobs' || activeTab === 'outsource-bills') && (
+              <OutsourceVendorsView initialTab={outsourceTab || activeTab} onNavigate={handleNavigate} />
             )}
             {activeTab === 'payments' && <PaymentsView />}
             {activeTab === 'purchase' && <PurchaseView />}
-            {(activeTab === 'inventory' || activeTab === 'materials-spec' || activeTab === 'materials-master' || activeTab === 'stock-ledger') && <InventoryView />}
-            {(activeTab === 'delivery' || activeTab.startsWith('delivery-')) && <DeliveryView />}
+            {(activeTab === 'inventory' || activeTab === 'materials-spec' || activeTab === 'stock-ledger') && <InventoryView initialTab={activeTab} />}
+            {activeTab === 'delivery' && <DeliveryView />}
             {activeTab === 'gst-invoicing' && <GSTInvoicingView />}
-            {(activeTab === 'sales-order-audit' || activeTab === 'report-order-audit') && (
+            {activeTab === 'sales-order-audit' && (
               <SalesOrderAuditView onNavigate={handleNavigate} />
             )}
             {activeTab === 'report-employee-work' && <EmployeeWorkReportView />}
-            {(activeTab === 'reports' || (activeTab.startsWith('report-') && activeTab !== 'report-order-audit' && activeTab !== 'report-employee-work')) && (
+            {(activeTab === 'reports' || (activeTab.startsWith('report-') && activeTab !== 'report-employee-work')) && (
               <ReportsView key={activeTab} initialReportKey={activeTab} />
             )}
             {ACCOUNTS_SUB_ITEMS.includes(activeTab) && <AccountsView key={activeTab} initialTab={activeTab} />}
-            {(activeTab === 'user-management' || activeTab === 'roles-permissions') && <UserManagementView initialTab={activeTab === 'roles-permissions' ? 'roles' : 'users'} />}
-            {(activeTab === 'settings' || activeTab === 'system-health') && <SettingsView initialTab={activeTab === 'system-health' ? 'health' : 'profile'} />}
+            {activeTab === 'user-management' && <UserManagementView initialTab={userTab} />}
+            {activeTab === 'settings' && <SettingsView initialTab={settingsTab} />}
           </ErrorBoundary>
         </main>
       </div>

@@ -224,9 +224,12 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
     }
   };
 
+  const [isSavingExpense, setIsSavingExpense] = useState(false);
+
   // Handle Persistent Expense Submission
   const handleExpenseSubmit = async (e) => {
     e.preventDefault();
+    if (isSavingExpense) return;
     const amt = parseFloat(expenseForm.amount) || 0;
     if (amt <= 0) {
       alert('Please enter a valid expense amount.');
@@ -234,6 +237,7 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
     }
 
     try {
+      setIsSavingExpense(true);
       if (addExpense) {
         await addExpense({
           category: expenseForm.category,
@@ -256,6 +260,8 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
       alert('Expense recorded and posted to persistent database successfully!');
     } catch (err) {
       alert('Error recording expense: ' + err.message);
+    } finally {
+      setIsSavingExpense(false);
     }
   };
 
@@ -1323,11 +1329,11 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
               </div>
 
               <div className="modal-footer">
-                <button type="button" onClick={() => setIsExpenseModalOpen(false)} className="btn btn-secondary">
+                <button type="button" onClick={() => setIsExpenseModalOpen(false)} className="btn btn-secondary" disabled={isSavingExpense}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" style={{ background: '#e11d48', borderColor: '#e11d48' }}>
-                  <Check size={16} /> Save & Post to Journal
+                <button type="submit" className="btn btn-primary" style={{ background: '#e11d48', borderColor: '#e11d48' }} disabled={isSavingExpense}>
+                  <Check size={16} /> {isSavingExpense ? 'Saving Expense...' : 'Save & Post to Journal'}
                 </button>
               </div>
             </form>

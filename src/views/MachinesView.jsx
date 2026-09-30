@@ -73,9 +73,11 @@ export const MachinesView = () => {
     setIsModalOpen(true);
   };
 
+  const [isSaving, setIsSaving] = useState(false);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name) return;
+    if (!formData.name || isSaving) return;
     const op = (employees || []).find((em) => em.id === formData.assignedOperatorId);
 
     const payload = {
@@ -83,12 +85,19 @@ export const MachinesView = () => {
       assignedOperatorName: op?.name || formData.assignedOperatorName || ''
     };
 
-    if (editingMachine) {
-      await updateMachine(editingMachine.id, payload);
-    } else {
-      await addMachine(payload);
+    try {
+      setIsSaving(true);
+      if (editingMachine) {
+        await updateMachine(editingMachine.id, payload);
+      } else {
+        await addMachine(payload);
+      }
+      setIsModalOpen(false);
+    } catch (err) {
+      alert(`Error saving machine: ${err.message}`);
+    } finally {
+      setIsSaving(false);
     }
-    setIsModalOpen(false);
   };
 
   // Calculate live machine workload from active sales order line items
@@ -445,11 +454,11 @@ export const MachinesView = () => {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
-                <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-secondary">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-secondary" disabled={isSaving}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  <Save size={15} /> Save Machine
+                <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                  <Save size={15} /> {isSaving ? 'Saving Machine...' : 'Save Machine'}
                 </button>
               </div>
             </form>

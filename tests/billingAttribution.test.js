@@ -57,12 +57,69 @@ function stopServer() {
   }
 }
 
+import { hashPassword } from '../server/migrations.js';
+
+function setupTestData() {
+  // Ensure Staff A employee exists
+  const existingEmpA = db.prepare("SELECT id FROM employees WHERE id = 'EMP-101'").get();
+  if (!existingEmpA) {
+    db.prepare(`
+      INSERT INTO employees (id, name, mobile, role, department, designation, base_salary, status)
+      VALUES ('EMP-101', 'Ramesh Sharma', '9876543210', 'Sales', 'Sales', 'Sales Executive', 25000, 'Active')
+    `).run();
+  }
+
+  // Ensure Staff A user exists
+  const existingUserA = db.prepare("SELECT id FROM users WHERE username = 'billing'").get();
+  const staffPassA = hashPassword('Billing@123');
+  if (!existingUserA) {
+    db.prepare(`
+      INSERT INTO users (id, employee_id, username, email, password_hash, salt, role, department, permissions, status)
+      VALUES ('USR-EMP-101', 'EMP-101', 'billing', 'billing@test.com', ?, ?, 'Sales', 'Sales', '["CREATE","VIEW","EDIT"]', 'Active')
+    `).run(staffPassA.hash, staffPassA.salt);
+  } else {
+    db.prepare(`UPDATE users SET password_hash = ?, salt = ?, employee_id = 'EMP-101' WHERE username = 'billing'`).run(staffPassA.hash, staffPassA.salt);
+  }
+
+  // Ensure Staff B employee exists
+  const existingEmpB = db.prepare("SELECT id FROM employees WHERE id = 'EMP-102'").get();
+  if (!existingEmpB) {
+    db.prepare(`
+      INSERT INTO employees (id, name, mobile, role, department, designation, base_salary, status)
+      VALUES ('EMP-102', 'Priya Patel', '9876543211', 'Sales', 'Sales', 'Senior Billing Clerk', 28000, 'Active')
+    `).run();
+  }
+
+  // Ensure Staff B user exists
+  const existingUserB = db.prepare("SELECT id FROM users WHERE username = 'emp-sls-02'").get();
+  const staffPassB = hashPassword('Staff@123');
+  if (!existingUserB) {
+    db.prepare(`
+      INSERT INTO users (id, employee_id, username, email, password_hash, salt, role, department, permissions, status)
+      VALUES ('USR-EMP-102', 'EMP-102', 'emp-sls-02', 'priya@test.com', ?, ?, 'Sales', 'Sales', '["CREATE","VIEW","EDIT"]', 'Active')
+    `).run(staffPassB.hash, staffPassB.salt);
+  } else {
+    db.prepare(`UPDATE users SET password_hash = ?, salt = ?, employee_id = 'EMP-102' WHERE username = 'emp-sls-02'`).run(staffPassB.hash, staffPassB.salt);
+  }
+
+  // Ensure historical order fixture exists for Test 7
+  const existingHist = db.prepare("SELECT id FROM sales_orders WHERE id = 'SO-2026-0891'").get();
+  if (!existingHist) {
+    db.prepare(`
+      INSERT INTO sales_orders (id, order_number, customer_name, order_date, order_type, grand_total, billed_by_staff, billed_by_id)
+      VALUES ('SO-2026-0891', 'SO-2026-0891', 'Historical Corp', '2026-01-01', 'Direct', 1000, NULL, NULL)
+    `).run();
+  }
+}
+
 function cleanupTestData() {
-  db.prepare("DELETE FROM sales_orders WHERE id LIKE 'SO-TEST-ATTR-%'").run();
-  db.prepare("DELETE FROM sales_order_items WHERE sales_order_id LIKE 'SO-TEST-ATTR-%'").run();
+  db.prepare("DELETE FROM sales_orders WHERE id LIKE 'SO-TEST-ATTR-%' OR id = 'SO-2026-0891'").run();
+  db.prepare("DELETE FROM sales_order_items WHERE sales_order_id LIKE 'SO-TEST-ATTR-%' OR sales_order_id = 'SO-2026-0891'").run();
   db.prepare("DELETE FROM payments WHERE order_id LIKE 'SO-TEST-ATTR-%' OR id LIKE 'PAY-SO-TEST-ATTR-%'").run();
   db.prepare("DELETE FROM job_work WHERE sales_order_id LIKE 'SO-TEST-ATTR-%'").run();
   db.prepare("DELETE FROM audit_logs WHERE record_id LIKE 'SO-TEST-ATTR-%'").run();
+  db.prepare("DELETE FROM users WHERE id IN ('USR-EMP-101', 'USR-EMP-102')").run();
+  db.prepare("DELETE FROM employees WHERE id IN ('EMP-101', 'EMP-102')").run();
 }
 
 async function runTests() {
@@ -73,6 +130,7 @@ async function runTests() {
 
     // Clean up any existing test records from previous runs
     cleanupTestData();
+    setupTestData();
 
     // ------------------------------------------------------------------------
     // TEST 1: Staff A creates an order -> saved billing identity is Staff A

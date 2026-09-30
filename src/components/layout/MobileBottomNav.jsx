@@ -35,18 +35,17 @@ export const MobileBottomNav = ({
 
   const moreMenuItems = [
     { id: 'quotations', label: 'Quotations', icon: FileText, color: '#f59e0b', params: { initialType: 'Quotation' } },
-    { id: 'designers', label: 'Designing', icon: Palette, color: '#8b5cf6' },
-    { id: 'production', label: 'Production', icon: Layers, color: '#3b82f6' },
-    { id: 'production-print', label: 'Printing', icon: Printer, color: '#06b6d4', tabTarget: 'production' },
-    { id: 'production-finish', label: 'Finishing', icon: Sliders, color: '#10b981', tabTarget: 'production' },
-    { id: 'vendors', label: 'Outsourcing', icon: Wrench, color: '#d97706' },
-    { id: 'delivery', label: 'Delivery', icon: Truck, color: '#10b981' },
-    { id: 'payments', label: 'Payments', icon: CreditCard, color: '#059669' },
-    { id: 'inventory', label: 'Inventory', icon: Package, color: '#6366f1' },
-    { id: 'reports', label: 'Reports', icon: BarChart3, color: '#3b82f6' },
-    { id: 'employees', label: 'Employees', icon: Users, color: '#64748b' },
-    { id: 'care-of-persons', label: 'Care Of Agents', icon: UserCheck, color: '#7c3aed' },
-    { id: 'settings', label: 'Settings', icon: Settings, color: '#475569' }
+    { id: 'production', label: 'Production Board', icon: Layers, color: '#3b82f6' },
+    { id: 'employee-tasks', label: 'Employee Tasks', icon: UserCheck, color: '#0284c7' },
+    { id: 'designers', label: 'Designing Queue', icon: Palette, color: '#8b5cf6' },
+    { id: 'vendors', label: 'Outsource Work', icon: Wrench, color: '#d97706' },
+    { id: 'delivery', label: 'Delivery & Dispatch', icon: Truck, color: '#10b981' },
+    { id: 'payments', label: 'Customer Receipts', icon: CreditCard, color: '#059669' },
+    { id: 'inventory', label: 'Inventory & Stock', icon: Package, color: '#6366f1' },
+    { id: 'reports', label: 'Executive Reports', icon: BarChart3, color: '#3b82f6' },
+    { id: 'employees', label: 'Employees Directory', icon: Users, color: '#64748b' },
+    { id: 'care-of-persons', label: 'Care Of Partners', icon: UserCheck, color: '#7c3aed' },
+    { id: 'settings', label: 'General Settings', icon: Settings, color: '#475569' }
   ];
 
   return (
