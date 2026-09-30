@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useERP } from '../../context/ERPContext';
 import { Building2, X, Check, Phone, Hash, MapPin, Tag } from 'lucide-react';
+import { useERPModalSafeClose } from '../../hooks/useERPModalSafeClose';
+import { UnsavedChangesPrompt } from '../common/UnsavedChangesPrompt';
 
 export const EditVendorModal = ({ isOpen, vendor, onClose }) => {
   const { updateVendor } = useERP();
@@ -32,6 +34,24 @@ export const EditVendorModal = ({ isOpen, vendor, onClose }) => {
     }
   }, [vendor]);
 
+  const isDirty = useMemo(() => {
+    if (!vendor) return false;
+    return (
+      (formData.name || '') !== (vendor.name || '') ||
+      (formData.category || '') !== (vendor.category || 'Raw Material Supplier') ||
+      (formData.mobile || '') !== (vendor.mobile || '') ||
+      (formData.gstin || '') !== (vendor.gstin || '') ||
+      (formData.address || '') !== (vendor.address || '') ||
+      Number(formData.avgTurnaroundDays || 0) !== Number(vendor.avgTurnaroundDays ?? 2)
+    );
+  }, [formData, vendor]);
+
+  const { showUnsavedPrompt, requestClose, confirmDiscard, cancelDiscard } = useERPModalSafeClose({
+    isOpen: !!(isOpen && vendor),
+    isDirty,
+    onClose
+  });
+
   if (!isOpen || !vendor) return null;
 
   const handleSubmit = async (e) => {
@@ -60,17 +80,18 @@ export const EditVendorModal = ({ isOpen, vendor, onClose }) => {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '580px' }}>
-        <div className="modal-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Building2 size={20} color="#7c3aed" />
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>Edit Supplier / Vendor</h3>
+    <>
+      <div className="modal-overlay">
+        <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '580px' }}>
+          <div className="modal-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Building2 size={20} color="#7c3aed" />
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>Edit Supplier / Vendor</h3>
+            </div>
+            <button onClick={requestClose} className="btn-secondary btn-icon" style={{ border: 'none' }} disabled={isSubmitting}>
+              <X size={20} />
+            </button>
           </div>
-          <button onClick={onClose} className="btn-secondary btn-icon" style={{ border: 'none' }} disabled={isSubmitting}>
-            <X size={20} />
-          </button>
-        </div>
 
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -170,7 +191,7 @@ export const EditVendorModal = ({ isOpen, vendor, onClose }) => {
           </div>
 
           <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={isSubmitting}>
+            <button type="button" onClick={requestClose} className="btn btn-secondary" disabled={isSubmitting}>
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" style={{ background: '#7c3aed', borderColor: '#7c3aed' }} disabled={isSubmitting}>
@@ -184,6 +205,13 @@ export const EditVendorModal = ({ isOpen, vendor, onClose }) => {
         </form>
       </div>
     </div>
+
+    <UnsavedChangesPrompt
+      isOpen={showUnsavedPrompt}
+      onConfirmDiscard={confirmDiscard}
+      onCancelKeepEditing={cancelDiscard}
+    />
+  </>
   );
 };
 

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useERP } from '../../context/ERPContext';
 import { UserPlus, X, Check, Shield, Briefcase, Phone, Mail, DollarSign, MapPin } from 'lucide-react';
+import { useERPModalSafeClose } from '../../hooks/useERPModalSafeClose';
+import { UnsavedChangesPrompt } from '../common/UnsavedChangesPrompt';
 
 export const DEPARTMENTS = [
   'Sales',
@@ -67,6 +69,26 @@ export const CreateEmployeeModal = ({ isOpen, onClose, onEmployeeCreated, editin
     address: '',
     emergencyContact: '',
     notes: ''
+  });
+
+  const isDirty = Boolean(
+    editingEmployee
+      ? (formData.name !== (editingEmployee.name || '') ||
+         formData.mobile !== (editingEmployee.mobile || '') ||
+         formData.department !== (editingEmployee.department || ''))
+      : (formData.name.trim() || formData.mobile.trim() || formData.email.trim() || formData.address.trim())
+  );
+
+  const {
+    showUnsavedPrompt,
+    requestClose,
+    handleKeepEditing,
+    handleDiscard
+  } = useERPModalSafeClose({
+    isOpen,
+    isDirty,
+    onClose,
+    isSubmitting
   });
 
   useEffect(() => {
@@ -177,7 +199,7 @@ export const CreateEmployeeModal = ({ isOpen, onClose, onEmployeeCreated, editin
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '780px', width: '92vw' }}>
         <div className="modal-header" style={{ background: 'linear-gradient(135deg, #1e40af, #2563eb)', color: '#ffffff' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -187,7 +209,7 @@ export const CreateEmployeeModal = ({ isOpen, onClose, onEmployeeCreated, editin
               <span style={{ fontSize: '0.75rem', color: '#bfdbfe' }}>Add staff for Sales, Design, Printing, Delivery, Accounts & Administration</span>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+          <button onClick={requestClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1.2rem' }} disabled={isSubmitting}>✕</button>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -357,7 +379,7 @@ export const CreateEmployeeModal = ({ isOpen, onClose, onEmployeeCreated, editin
           </div>
 
           <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={isSubmitting}>
+            <button type="button" onClick={requestClose} className="btn btn-secondary" disabled={isSubmitting}>
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
@@ -366,6 +388,12 @@ export const CreateEmployeeModal = ({ isOpen, onClose, onEmployeeCreated, editin
           </div>
         </form>
       </div>
+
+      <UnsavedChangesPrompt
+        isOpen={showUnsavedPrompt}
+        onKeepEditing={handleKeepEditing}
+        onDiscard={handleDiscard}
+      />
     </div>
   );
 };

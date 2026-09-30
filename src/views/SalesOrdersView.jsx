@@ -2962,7 +2962,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
 
       {/* 1 OR MORE OUTSOURCE VENDORS & PROCESSES MODAL */}
       {outsourceModalIdx !== null && (
-        <div className="modal-overlay" onClick={() => setOutsourceModalIdx(null)}>
+        <div className="modal-overlay">
           <div
             className="modal-content"
             onClick={(e) => e.stopPropagation()}
@@ -3228,7 +3228,7 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
 
       {/* RECEIVE PAYMENT / RECEIPT MODAL */}
       {receiptModalOrder && (
-        <div className="modal-overlay" onClick={() => !isSavingReceipt && setReceiptModalOrder(null)}>
+        <div className="modal-overlay">
           <div
             className="modal-content"
             onClick={(e) => e.stopPropagation()}

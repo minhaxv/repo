@@ -2908,7 +2908,7 @@ export const ProductionTasksView = ({ onNavigate = null, initialStaffTab = 'my_w
       {/* TAKE / ASSIGN JOB ORDER ITEM MODAL */}
       {/* ========================================================================= */}
       {isAssignModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsAssignModalOpen(false)} style={{ zIndex: 99999 }}>
+        <div className="modal-overlay" style={{ zIndex: 99999 }}>
           <div
             className="modal-content"
             onClick={(e) => e.stopPropagation()}
@@ -3242,7 +3242,7 @@ export const ProductionTasksView = ({ onNavigate = null, initialStaffTab = 'my_w
       {/* REWORK MODAL PROMPT */}
       {/* ========================================================================= */}
       {reworkPromptTask && (
-        <div className="modal-overlay" onClick={() => setReworkPromptTask(null)} style={{ zIndex: 99999 }}>
+        <div className="modal-overlay" style={{ zIndex: 99999 }}>
           <div
             className="modal-content"
             onClick={(e) => e.stopPropagation()}
@@ -3319,7 +3319,7 @@ export const ProductionTasksView = ({ onNavigate = null, initialStaffTab = 'my_w
       {/* REASSIGN TASK MODAL (ADMIN / MANAGER) */}
       {/* ========================================================================= */}
       {reassignModal && (
-        <div className="modal-overlay" onClick={() => setReassignModal(null)} style={{ zIndex: 99999 }}>
+        <div className="modal-overlay" style={{ zIndex: 99999 }}>
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px', width: '92vw', padding: '1.5rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
@@ -3397,7 +3397,7 @@ export const ProductionTasksView = ({ onNavigate = null, initialStaffTab = 'my_w
       {/* TASK ACTIVITY & AUDIT TIMELINE MODAL */}
       {/* ========================================================================= */}
       {timelineModal && (
-        <div className="modal-overlay" onClick={() => setTimelineModal(null)} style={{ zIndex: 99999 }}>
+        <div className="modal-overlay" style={{ zIndex: 99999 }}>
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '580px', width: '92vw', padding: '1.5rem', maxHeight: '85vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>

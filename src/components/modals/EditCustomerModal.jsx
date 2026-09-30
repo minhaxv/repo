@@ -5,6 +5,8 @@ import { X, UserCheck, Phone, PhoneCall, Plus, Trash2, Mail, MapPin, Hash, Check
 import CreateCareOfModal from './CreateCareOfModal';
 import { SearchableSelect } from '../common/SearchableSelect';
 import { KERALA_DISTRICTS, INDIAN_STATES } from './CreateCustomerModal';
+import { useERPModalSafeClose } from '../../hooks/useERPModalSafeClose';
+import { UnsavedChangesPrompt } from '../common/UnsavedChangesPrompt';
 
 export const EditCustomerModal = ({ isOpen, onClose, customer, onCustomerUpdated }) => {
   const { updateCustomer, careOfPersons } = useERP();
@@ -35,6 +37,27 @@ export const EditCustomerModal = ({ isOpen, onClose, customer, onCustomerUpdated
   const [openingBalanceType, setOpeningBalanceType] = useState('Receivable');
   const [openingBalanceDate, setOpeningBalanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [openingBalanceNotes, setOpeningBalanceNotes] = useState('');
+
+  const isDirty = Boolean(
+    customer &&
+    (formData.name !== (customer.name || '') ||
+     formData.mobile !== (customer.mobile || '') ||
+     formData.email !== (customer.email || '') ||
+     formData.address !== (customer.address || '') ||
+     formData.gstin !== (customer.gstin || ''))
+  );
+
+  const {
+    showUnsavedPrompt,
+    requestClose,
+    handleKeepEditing,
+    handleDiscard
+  } = useERPModalSafeClose({
+    isOpen,
+    isDirty,
+    onClose,
+    isSubmitting
+  });
 
   useEffect(() => {
     if (isOpen && customer) {
@@ -204,7 +227,7 @@ export const EditCustomerModal = ({ isOpen, onClose, customer, onCustomerUpdated
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '680px', width: '92vw' }}>
         <div className="modal-header" style={{ background: '#0f172a', color: '#ffffff' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -213,7 +236,7 @@ export const EditCustomerModal = ({ isOpen, onClose, customer, onCustomerUpdated
               Edit Customer Account — {customer.name} {customer.code ? `(${customer.code})` : ''}
             </h3>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1.2rem' }} disabled={isSubmitting}>✕</button>
+          <button onClick={requestClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1.2rem' }} disabled={isSubmitting}>✕</button>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -724,7 +747,7 @@ export const EditCustomerModal = ({ isOpen, onClose, customer, onCustomerUpdated
           </div>
 
           <div className="modal-footer" style={{ borderTop: '1px solid #e2e8f0', padding: '0.85rem 1.25rem' }}>
-            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={isSubmitting}>
+            <button type="button" onClick={requestClose} className="btn btn-secondary" disabled={isSubmitting}>
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
@@ -743,6 +766,12 @@ export const EditCustomerModal = ({ isOpen, onClose, customer, onCustomerUpdated
           }}
         />
       </div>
+
+      <UnsavedChangesPrompt
+        isOpen={showUnsavedPrompt}
+        onKeepEditing={handleKeepEditing}
+        onDiscard={handleDiscard}
+      />
     </div>
   );
 };

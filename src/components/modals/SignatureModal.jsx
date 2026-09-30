@@ -1,6 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useERP } from '../../context/ERPContext';
 import { PenTool, Check, RotateCcw, X, Truck } from 'lucide-react';
+import { useERPModalSafeClose } from '../../hooks/useERPModalSafeClose';
+import { UnsavedChangesPrompt } from '../common/UnsavedChangesPrompt';
 
 export const SignatureModal = ({ order, isOpen, onClose }) => {
   const { saveDeliverySignature, activeUser } = useERP();
@@ -8,6 +10,12 @@ export const SignatureModal = ({ order, isOpen, onClose }) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [deliveredBy, setDeliveredBy] = useState(activeUser?.name || 'Delivery Executive');
   const [hasSignature, setHasSignature] = useState(false);
+
+  const { showUnsavedPrompt, requestClose, confirmDiscard, cancelDiscard } = useERPModalSafeClose({
+    isOpen: !!(isOpen && order),
+    isDirty: hasSignature,
+    onClose
+  });
 
   useEffect(() => {
     if (isOpen && canvasRef.current) {
@@ -69,73 +77,81 @@ export const SignatureModal = ({ order, isOpen, onClose }) => {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '550px' }}>
-        <div className="modal-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Truck size={20} color="#2563eb" />
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>Customer Delivery Sign-Off</h3>
-          </div>
-          <button onClick={onClose} className="btn-secondary btn-icon" style={{ border: 'none' }}>
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="modal-body">
-          <div style={{ marginBottom: '1rem', background: '#f8fafc', padding: '0.75rem', borderRadius: '6px', fontSize: '0.85rem' }}>
-            <div>Order: <strong>{order.id}</strong> ({order.customerName})</div>
-            <div>Delivery Mode: <strong>{order.deliveryMode}</strong></div>
+    <>
+      <div className="modal-overlay">
+        <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '550px' }}>
+          <div className="modal-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Truck size={20} color="#2563eb" />
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>Customer Delivery Sign-Off</h3>
+            </div>
+            <button onClick={requestClose} className="btn-secondary btn-icon" style={{ border: 'none' }}>
+              <X size={20} />
+            </button>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Delivered By (Executive Name)</label>
-            <input
-              type="text"
-              className="form-control"
-              value={deliveredBy}
-              onChange={(e) => setDeliveredBy(e.target.value)}
-              placeholder="Driver / Executive Name"
-            />
-          </div>
-
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-              <label className="form-label" style={{ margin: 0 }}>
-                <PenTool size={14} /> Customer Electronic Signature
-              </label>
-              <button onClick={clearCanvas} type="button" className="btn btn-sm btn-secondary" style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem' }}>
-                <RotateCcw size={12} /> Clear Canvas
-              </button>
+          <div className="modal-body">
+            <div style={{ marginBottom: '1rem', background: '#f8fafc', padding: '0.75rem', borderRadius: '6px', fontSize: '0.85rem' }}>
+              <div>Order: <strong>{order.id}</strong> ({order.customerName})</div>
+              <div>Delivery Mode: <strong>{order.deliveryMode}</strong></div>
             </div>
 
-            <div style={{ border: '2px dashed #3b82f6', borderRadius: '8px', overflow: 'hidden', background: '#ffffff' }}>
-              <canvas
-                ref={canvasRef}
-                width={480}
-                height={160}
-                style={{ width: '100%', height: '160px', cursor: 'crosshair', touchAction: 'none' }}
-                onMouseDown={startDrawing}
-                onMouseMove={draw}
-                onMouseUp={stopDrawing}
-                onMouseLeave={stopDrawing}
-                onTouchStart={startDrawing}
-                onTouchMove={draw}
-                onTouchEnd={stopDrawing}
+            <div className="form-group">
+              <label className="form-label">Delivered By (Executive Name)</label>
+              <input
+                type="text"
+                className="form-control"
+                value={deliveredBy}
+                onChange={(e) => setDeliveredBy(e.target.value)}
+                placeholder="Driver / Executive Name"
               />
             </div>
-            <span style={{ fontSize: '0.72rem', color: '#64748b', textAlign: 'center', display: 'block', marginTop: '0.25rem' }}>
-              Sign above using mouse or touch screen
-            </span>
+
+            <div className="form-group">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                <label className="form-label" style={{ margin: 0 }}>
+                  <PenTool size={14} /> Customer Electronic Signature
+                </label>
+                <button onClick={clearCanvas} type="button" className="btn btn-sm btn-secondary" style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem' }}>
+                  <RotateCcw size={12} /> Clear Canvas
+                </button>
+              </div>
+
+              <div style={{ border: '2px dashed #3b82f6', borderRadius: '8px', overflow: 'hidden', background: '#ffffff' }}>
+                <canvas
+                  ref={canvasRef}
+                  width={480}
+                  height={160}
+                  style={{ width: '100%', height: '160px', cursor: 'crosshair', touchAction: 'none' }}
+                  onMouseDown={startDrawing}
+                  onMouseMove={draw}
+                  onMouseUp={stopDrawing}
+                  onMouseLeave={stopDrawing}
+                  onTouchStart={startDrawing}
+                  onTouchMove={draw}
+                  onTouchEnd={stopDrawing}
+                />
+              </div>
+              <span style={{ fontSize: '0.72rem', color: '#64748b', textAlign: 'center', display: 'block', marginTop: '0.25rem' }}>
+                Sign above using mouse or touch screen
+              </span>
+            </div>
+          </div>
+
+          <div className="modal-footer">
+            <button onClick={requestClose} className="btn btn-secondary">Cancel</button>
+            <button onClick={handleSave} className="btn btn-success">
+              <Check size={16} /> Confirm Delivery & Save Signature
+            </button>
           </div>
         </div>
-
-        <div className="modal-footer">
-          <button onClick={onClose} className="btn btn-secondary">Cancel</button>
-          <button onClick={handleSave} className="btn btn-success">
-            <Check size={16} /> Confirm Delivery & Save Signature
-          </button>
-        </div>
       </div>
-    </div>
+
+      <UnsavedChangesPrompt
+        isOpen={showUnsavedPrompt}
+        onConfirmDiscard={confirmDiscard}
+        onCancelKeepEditing={cancelDiscard}
+      />
+    </>
   );
 };

@@ -374,7 +374,7 @@ export const CustomersView = ({ onNavigate }) => {
 
       {/* CUSTOMER HISTORY & LEDGER MODAL */}
       {historyCust && (
-        <div className="modal-overlay" onClick={() => setHistoryCust(null)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '820px', width: '92vw' }}>
             <div className="modal-header" style={{ background: '#0f172a', color: '#ffffff' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

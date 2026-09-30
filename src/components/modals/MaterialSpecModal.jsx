@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useERP } from '../../context/ERPContext';
 import { Layers, X, Plus, Edit2, Trash2, Copy, Star, Download, Upload, Check, Search, ArrowUpDown, Power } from 'lucide-react';
 import { DEFAULT_UNITS } from '../../types';
+import { useERPModalSafeClose } from '../../hooks/useERPModalSafeClose';
+import { UnsavedChangesPrompt } from '../common/UnsavedChangesPrompt';
 
 export const MaterialSpecModal = ({ isOpen, onClose, product }) => {
   const { productMaterialSpecs, addMaterialSpec, updateMaterialSpec, deleteMaterialSpec, toggleSpecStatus } = useERP();
@@ -29,6 +31,17 @@ export const MaterialSpecModal = ({ isOpen, onClose, product }) => {
     hsnCode: '9989',
     status: 'Active',
     isDefault: false
+  });
+
+  const isDirty = useMemo(() => {
+    if (!isAddingNew) return false;
+    return Boolean((formData.specName || '').trim() || (formData.materialName || '').trim());
+  }, [isAddingNew, formData.specName, formData.materialName]);
+
+  const { showUnsavedPrompt, requestClose, confirmDiscard, cancelDiscard } = useERPModalSafeClose({
+    isOpen: !!(isOpen && product),
+    isDirty,
+    onClose
   });
 
   if (!isOpen || !product) return null;
@@ -232,22 +245,23 @@ export const MaterialSpecModal = ({ isOpen, onClose, product }) => {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '940px', width: '92vw' }}>
-        <div className="modal-header" style={{ background: 'linear-gradient(135deg, #1e40af, #2563eb)', color: '#ffffff' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Layers size={22} color="#93c5fd" />
-            <div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0, color: '#fff' }}>
-                Dynamic Material Specifications Master — {product.name}
-              </h3>
-              <span style={{ fontSize: '0.75rem', color: '#bfdbfe' }}>
-                Create, Edit, Delete, Search, Sort & Set Defaults for linked substrate grades
-              </span>
+    <>
+      <div className="modal-overlay">
+        <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '940px', width: '92vw' }}>
+          <div className="modal-header" style={{ background: 'linear-gradient(135deg, #1e40af, #2563eb)', color: '#ffffff' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Layers size={22} color="#93c5fd" />
+              <div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0, color: '#fff' }}>
+                  Dynamic Material Specifications Master — {product.name}
+                </h3>
+                <span style={{ fontSize: '0.75rem', color: '#bfdbfe' }}>
+                  Create, Edit, Delete, Search, Sort & Set Defaults for linked substrate grades
+                </span>
+              </div>
             </div>
+            <button onClick={requestClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
-        </div>
 
         <div className="modal-body" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
           {errorMsg && (
@@ -607,9 +621,16 @@ export const MaterialSpecModal = ({ isOpen, onClose, product }) => {
         </div>
 
         <div className="modal-footer">
-          <button type="button" onClick={onClose} className="btn btn-secondary">Close</button>
+          <button type="button" onClick={requestClose} className="btn btn-secondary">Close</button>
         </div>
       </div>
     </div>
+
+    <UnsavedChangesPrompt
+      isOpen={showUnsavedPrompt}
+      onConfirmDiscard={confirmDiscard}
+      onCancelKeepEditing={cancelDiscard}
+    />
+  </>
   );
 };

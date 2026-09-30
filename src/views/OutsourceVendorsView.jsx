@@ -1207,7 +1207,7 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
       {/* MODAL 1: OUTSOURCE PAYMENT ENTRY MODAL (SECTION 2, 3, 12 OF USER PROMPT)  */}
       {/* ========================================================================= */}
       {isPaymentModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsPaymentModalOpen(false)}>
+        <div className="modal-overlay">
           <div
             className="modal-content"
             onClick={(e) => e.stopPropagation()}
@@ -1513,7 +1513,7 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
       {/* MODAL 2: VIEW BILL DETAILS & PAYMENT HISTORY (SECTION 9 OF USER PROMPT)   */}
       {/* ========================================================================= */}
       {viewingBill && (
-        <div className="modal-overlay" onClick={() => setViewingBill(null)}>
+        <div className="modal-overlay">
           <div
             className="modal-content"
             onClick={(e) => e.stopPropagation()}
@@ -1698,7 +1698,7 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
       {/* MODAL 3: CREATE OUTSOURCE BILL (BUNDLING MULTIPLE WORK ORDERS)            */}
       {/* ========================================================================= */}
       {isCreateBillOpen && (
-        <div className="modal-overlay" onClick={() => setIsCreateBillOpen(false)}>
+        <div className="modal-overlay">
           <div
             className="modal-content"
             onClick={(e) => e.stopPropagation()}
@@ -1947,7 +1947,7 @@ export const OutsourceVendorsView = ({ initialTab = 'outsource-bills', onNavigat
       {/* MODAL 4: LEGACY LOG VENDOR BILL (PRESERVES EXISTING RECONCILIATION)        */}
       {/* ========================================================================= */}
       {selectedItemForLegacyBill && (
-        <div className="modal-overlay" onClick={() => setSelectedItemForLegacyBill(null)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
             <div className="modal-header" style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', color: '#fff' }}>
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>Log Vendor Bill — {selectedItemForLegacyBill.jobCardId}</h3>

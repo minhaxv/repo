@@ -5,6 +5,8 @@ import { X, UserPlus, Building, Phone, PhoneCall, Plus, Trash2, Mail, MapPin, Ha
 
 import CreateCareOfModal from './CreateCareOfModal';
 import { SearchableSelect } from '../common/SearchableSelect';
+import { useERPModalSafeClose } from '../../hooks/useERPModalSafeClose';
+import { UnsavedChangesPrompt } from '../common/UnsavedChangesPrompt';
 
 export const KERALA_DISTRICTS = [
   'Kozhikode',
@@ -80,6 +82,29 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
   // Duplicate Conflict Modal State
   const [duplicateConflict, setDuplicateConflict] = useState(null); 
   // duplicateConflict structure: { type: 'EXACT_DUPLICATE' | 'SHARED_MOBILE' | 'SAME_NAME', existing: customerObj, pendingData: customerData }
+
+  const isDirty = Boolean(
+    (formData.name || '').trim() ||
+    ((formData.mobile || '').trim() && (formData.mobile || '').trim() !== (initialMobile || '').trim()) ||
+    (formData.email || '').trim() ||
+    (formData.gstin || '').trim() ||
+    (formData.address || '').trim() ||
+    (formData.city || '').trim() ||
+    additionalMobiles.length > 0 ||
+    (enableOpeningBalance && openingBalance)
+  );
+
+  const {
+    showUnsavedPrompt,
+    requestClose,
+    handleKeepEditing,
+    handleDiscard
+  } = useERPModalSafeClose({
+    isOpen,
+    isDirty,
+    onClose,
+    isSubmitting
+  });
 
   // Sync initialMobile and reset form when modal opens
   useEffect(() => {
@@ -329,14 +354,14 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '640px' }}>
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <UserPlus size={20} color="#2563eb" />
             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>Create New Customer</h3>
           </div>
-          <button onClick={onClose} className="btn-secondary btn-icon" style={{ border: 'none' }} disabled={isSubmitting}>
+          <button onClick={requestClose} className="btn-secondary btn-icon" style={{ border: 'none' }} disabled={isSubmitting}>
             <X size={20} />
           </button>
         </div>
@@ -1009,7 +1034,7 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
           </div>
 
           <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={isSubmitting}>
+            <button type="button" onClick={requestClose} className="btn btn-secondary" disabled={isSubmitting}>
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
@@ -1032,6 +1057,12 @@ export const CreateCustomerModal = ({ isOpen, onClose, onCustomerCreated, initia
           }}
         />
       </div>
+
+      <UnsavedChangesPrompt
+        isOpen={showUnsavedPrompt}
+        onKeepEditing={handleKeepEditing}
+        onDiscard={handleDiscard}
+      />
     </div>
   );
 };

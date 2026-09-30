@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useERP } from '../context/ERPContext';
-import { Boxes, Plus, AlertTriangle, CheckCircle2, Sliders, History, ArrowDownLeft, ArrowUpRight, RefreshCw } from 'lucide-react';
+import { Boxes, Plus, AlertTriangle, CheckCircle2, Sliders, History, ArrowDownLeft, ArrowUpRight, RefreshCw, X } from 'lucide-react';
 
 export const InventoryView = () => {
   const { inventory, setInventory, products, productMaterialSpecs, inventoryTransactions, addInventoryTransaction } = useERP();
@@ -302,10 +302,18 @@ export const InventoryView = () => {
 
       {/* Adjust Modal */}
       {selectedItem && (
-        <div className="modal-overlay" onClick={() => setSelectedItem(null)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>Adjust Stock — {selectedItem.name}</h3>
+              <button
+                type="button"
+                onClick={() => setSelectedItem(null)}
+                className="btn-secondary btn-icon"
+                style={{ border: 'none', background: 'none', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
             </div>
             <form onSubmit={handleAdjust}>
               <div className="modal-body">
@@ -334,10 +342,18 @@ export const InventoryView = () => {
 
       {/* Inward Stock / New Transaction Modal */}
       {isNewTxModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsNewTxModalOpen(false)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>Record Inward Stock / Stock Movement</h3>
+              <button
+                type="button"
+                onClick={() => setIsNewTxModalOpen(false)}
+                className="btn-secondary btn-icon"
+                style={{ border: 'none', background: 'none', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
             </div>
             <form onSubmit={handleCreateTx}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>

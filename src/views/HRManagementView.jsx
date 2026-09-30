@@ -1862,7 +1862,7 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
 
       {/* PRINT SALARY SLIP MODAL */}
       {selectedPaySlip && (
-        <div className="modal-overlay" onClick={() => setSelectedPaySlip(null)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '680px', width: '92vw' }}>
             <div className="modal-header" style={{ background: '#0f172a', color: '#ffffff' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1982,7 +1982,7 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
 
       {/* APPLY LEAVE MODAL */}
       {isApplyLeaveOpen && (
-        <div className="modal-overlay" onClick={() => setIsApplyLeaveOpen(false)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px', width: '90vw' }}>
             <div className="modal-header">
               <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0 }}>+ Apply Leave Request</h3>
@@ -2065,7 +2065,7 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
 
       {/* MATCH BIOMETRIC USER TO EXISTING ERP EMPLOYEE MODAL */}
       {mappingUserToMatch && (
-        <div className="modal-overlay" onClick={() => setMappingUserToMatch(null)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '540px', width: '92vw' }}>
             <div className="modal-header" style={{ background: '#0f172a', color: '#fff' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -2133,7 +2133,7 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
 
       {/* CREATE NEW EMPLOYEE FROM BIOMETRIC USER MODAL */}
       {createEmpFromBioUser && (
-        <div className="modal-overlay" onClick={() => setCreateEmpFromBioUser(null)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '580px', width: '92vw' }}>
             <div className="modal-header" style={{ background: '#059669', color: '#fff' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -2240,7 +2240,7 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
 
       {/* ASSIGN BIOMETRIC ID TO EMPLOYEE MODAL */}
       {assignBioModalEmp && (
-        <div className="modal-overlay" onClick={() => setAssignBioModalEmp(null)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px', width: '92vw' }}>
             <div className="modal-header" style={{ background: '#1e40af', color: '#fff' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

@@ -88,7 +88,7 @@ const {
     : [];
 
   return (
-    <div className="modal-overlay" onClick={() => setIsSearchOpen(false)}>
+    <div className="modal-overlay">
       <div
         className="modal-content"
         onClick={(e) => e.stopPropagation()}

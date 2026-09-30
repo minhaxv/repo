@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { X, UserCheck, Phone, Mail, Award, Percent, FileText, Check } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
+import { useERPModalSafeClose } from '../../hooks/useERPModalSafeClose';
+import { UnsavedChangesPrompt } from '../common/UnsavedChangesPrompt';
 
 export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
   const { addCareOfPerson, careOfPersons, activeRole, activeUser } = useERP();
@@ -16,6 +18,25 @@ export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
     notes: ''
   });
   const [error, setError] = useState('');
+
+  const isDirty = Boolean(
+    formData.name.trim() ||
+    formData.mobile.trim() ||
+    formData.email.trim() ||
+    formData.notes.trim()
+  );
+
+  const {
+    showUnsavedPrompt,
+    requestClose,
+    handleKeepEditing,
+    handleDiscard
+  } = useERPModalSafeClose({
+    isOpen,
+    isDirty,
+    onClose,
+    isSubmitting
+  });
 
   React.useEffect(() => {
     if (isOpen) {
@@ -81,7 +102,7 @@ export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" style={{ zIndex: 10050 }}>
       <div
         className="modal-content"
         onClick={(e) => e.stopPropagation()}
@@ -100,7 +121,7 @@ export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
               </span>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1.2rem' }} disabled={isSubmitting}>✕</button>
+          <button onClick={requestClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1.2rem' }} disabled={isSubmitting}>✕</button>
         </div>
 
         {/* Form */}
@@ -236,7 +257,7 @@ export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
           </div>
 
           <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={isSubmitting}>
+            <button type="button" onClick={requestClose} className="btn btn-secondary" disabled={isSubmitting}>
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
@@ -249,6 +270,12 @@ export default function CreateCareOfModal({ isOpen, onClose, onCreated }) {
           </div>
         </form>
       </div>
+
+      <UnsavedChangesPrompt
+        isOpen={showUnsavedPrompt}
+        onKeepEditing={handleKeepEditing}
+        onDiscard={handleDiscard}
+      />
     </div>
   );
 }

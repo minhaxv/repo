@@ -36,7 +36,7 @@ export const TaxInvoicePrintModal = ({ order, isOpen, onClose }) => {
   const invoiceTypeBadge = isB2B ? 'B2B' : 'B2C';
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div
         className="modal-content"
         onClick={(e) => e.stopPropagation()}

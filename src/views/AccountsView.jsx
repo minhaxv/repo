@@ -1229,7 +1229,7 @@ export const AccountsView = ({ initialTab = 'accounts-dashboard' }) => {
 
       {/* RECORD PERSISTENT FACTORY EXPENSE MODAL */}
       {isExpenseModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsExpenseModalOpen(false)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

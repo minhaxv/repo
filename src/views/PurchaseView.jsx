@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useERP } from '../context/ERPContext';
 import { CreateSupplierModal } from '../components/modals/CreateSupplierModal';
 import { SearchableSelect } from '../components/common/SearchableSelect';
-import { ShoppingBag, Plus, Search, Truck, CheckCircle2 } from 'lucide-react';
+import { ShoppingBag, Plus, Search, Truck, CheckCircle2, X } from 'lucide-react';
+import { useERPModalSafeClose } from '../hooks/useERPModalSafeClose';
+import { UnsavedChangesPrompt } from '../components/common/UnsavedChangesPrompt';
 
 export const PurchaseView = () => {
 const { purchaseOrders, setPurchaseOrders, vendors, products, productMaterialSpecs } = useERP();
@@ -20,6 +22,21 @@ const { purchaseOrders, setPurchaseOrders, vendors, products, productMaterialSpe
     items: '10 Rolls Frontlit Flex 240gsm (10ft x 100m)',
     amount: 42000,
     status: 'Pending Dispatch'
+  });
+
+  const isPoDirty = useMemo(() => {
+    return Boolean(newPo.items !== '10 Rolls Frontlit Flex 240gsm (10ft x 100m)' || Number(newPo.amount) !== 42000);
+  }, [newPo]);
+
+  const {
+    showUnsavedPrompt: showPoPrompt,
+    requestClose: requestPoClose,
+    confirmDiscard: confirmPoDiscard,
+    cancelDiscard: cancelPoDiscard
+  } = useERPModalSafeClose({
+    isOpen: isAddOpen,
+    isDirty: isPoDirty,
+    onClose: () => setIsAddOpen(false)
   });
 
   const handleCreatePo = (e) => {
@@ -92,10 +109,18 @@ const { purchaseOrders, setPurchaseOrders, vendors, products, productMaterialSpe
 
       {/* Create Purchase Order Modal */}
       {isAddOpen && (
-        <div className="modal-overlay" onClick={() => setIsAddOpen(false)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '540px' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>Raise Raw Material Purchase Order</h3>
+              <button
+                type="button"
+                onClick={requestPoClose}
+                className="btn-secondary btn-icon"
+                style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '0.2rem' }}
+              >
+                <X size={20} />
+              </button>
             </div>
             <form onSubmit={handleCreatePo}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
@@ -217,13 +242,19 @@ const { purchaseOrders, setPurchaseOrders, vendors, products, productMaterialSpe
               </div>
 
               <div className="modal-footer">
-                <button type="button" onClick={() => setIsAddOpen(false)} className="btn btn-secondary">Cancel</button>
+                <button type="button" onClick={requestPoClose} className="btn btn-secondary">Cancel</button>
                 <button type="submit" className="btn btn-primary">Submit PO</button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <UnsavedChangesPrompt
+        isOpen={showPoPrompt}
+        onConfirmDiscard={confirmPoDiscard}
+        onCancelKeepEditing={cancelPoDiscard}
+      />
 
       {/* Quick Supplier Creation Modal */}
       <CreateSupplierModal

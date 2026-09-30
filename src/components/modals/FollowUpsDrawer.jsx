@@ -14,7 +14,7 @@ export const FollowUpsDrawer = () => {
   };
 
   return (
-    <div className="modal-overlay" onClick={() => setIsFollowUpsOpen(false)}>
+    <div className="modal-overlay">
       <div
         className="modal-content"
         onClick={(e) => e.stopPropagation()}

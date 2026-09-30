@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useERP } from '../../context/ERPContext';
-import { TrendingUp, Check } from 'lucide-react';
+import { TrendingUp, Check, X } from 'lucide-react';
+import { useERPModalSafeClose } from '../../hooks/useERPModalSafeClose';
+import { UnsavedChangesPrompt } from '../common/UnsavedChangesPrompt';
 
 export const EditSalesPersonModal = ({ isOpen, onClose, salesPerson }) => {
   const { updateSalesPerson, activeRole, activeUser } = useERP();
@@ -13,6 +15,24 @@ export const EditSalesPersonModal = ({ isOpen, onClose, salesPerson }) => {
     commissionRate: 3.5
   });
   const [error, setError] = useState('');
+
+  const isDirty = Boolean(
+    salesPerson &&
+    (formData.name !== (salesPerson.name || '') ||
+     formData.mobile !== (salesPerson.mobile || ''))
+  );
+
+  const {
+    showUnsavedPrompt,
+    requestClose,
+    handleKeepEditing,
+    handleDiscard
+  } = useERPModalSafeClose({
+    isOpen,
+    isDirty,
+    onClose,
+    isSubmitting
+  });
 
   useEffect(() => {
     if (isOpen && salesPerson) {
@@ -58,7 +78,7 @@ export const EditSalesPersonModal = ({ isOpen, onClose, salesPerson }) => {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '460px' }}>
         <div className="modal-header" style={{ background: '#2563eb', color: '#ffffff' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -67,7 +87,7 @@ export const EditSalesPersonModal = ({ isOpen, onClose, salesPerson }) => {
               Edit Sales Executive — {salesPerson.name}
             </h3>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1.2rem' }} disabled={isSubmitting}>✕</button>
+          <button onClick={requestClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1.2rem' }} disabled={isSubmitting}>✕</button>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -131,7 +151,7 @@ export const EditSalesPersonModal = ({ isOpen, onClose, salesPerson }) => {
           </div>
 
           <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={isSubmitting}>
+            <button type="button" onClick={requestClose} className="btn btn-secondary" disabled={isSubmitting}>
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
@@ -140,6 +160,12 @@ export const EditSalesPersonModal = ({ isOpen, onClose, salesPerson }) => {
           </div>
         </form>
       </div>
+
+      <UnsavedChangesPrompt
+        isOpen={showUnsavedPrompt}
+        onKeepEditing={handleKeepEditing}
+        onDiscard={handleDiscard}
+      />
     </div>
   );
 };

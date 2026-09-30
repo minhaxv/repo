@@ -475,7 +475,7 @@ export const WorkflowsView = () => {
 
       {/* Add / Edit Process Modal */}
       {isProcessModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsProcessModalOpen(false)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
             <div className="modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -588,7 +588,7 @@ export const WorkflowsView = () => {
 
       {/* Add / Edit Workflow Modal */}
       {isModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '620px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

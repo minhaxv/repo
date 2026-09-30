@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useERP } from '../../context/ERPContext';
 import { DEFAULT_UNITS, TAX_TYPES } from '../../types';
 import { PackagePlus, Edit3, X, Check, DollarSign, Tag, Percent, Truck } from 'lucide-react';
+import { useERPModalSafeClose } from '../../hooks/useERPModalSafeClose';
+import { UnsavedChangesPrompt } from '../common/UnsavedChangesPrompt';
 
 export const CreateProductModal = ({ isOpen, onClose, onProductCreated, productToEdit = null }) => {
   const { addProduct, updateProduct, products, vendors } = useERP();
@@ -20,6 +22,26 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated, productT
     category: 'Digital Printing',
     defaultMaterial: 'Standard Substrate',
     defaultVendor: ''
+  });
+
+  const isDirty = Boolean(
+    isEditMode
+      ? (formData.name !== (productToEdit.name || '') ||
+         Number(formData.defaultRate) !== Number(productToEdit.defaultRate || productToEdit.default_rate || 0) ||
+         Number(formData.estimatedCost) !== Number(productToEdit.estimatedCost || productToEdit.estimated_cost || 0))
+      : (formData.name.trim() || formData.hsnCode !== '9989')
+  );
+
+  const {
+    showUnsavedPrompt,
+    requestClose,
+    handleKeepEditing,
+    handleDiscard
+  } = useERPModalSafeClose({
+    isOpen,
+    isDirty,
+    onClose,
+    isSubmitting
   });
 
   useEffect(() => {
@@ -116,7 +138,7 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated, productT
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '580px' }}>
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -129,7 +151,7 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated, productT
               {isEditMode ? `Edit Master Product: ${productToEdit?.name}` : 'Add New Master Product'}
             </h3>
           </div>
-          <button onClick={onClose} className="btn-secondary btn-icon" style={{ border: 'none' }} disabled={isSubmitting}>
+          <button onClick={requestClose} className="btn-secondary btn-icon" style={{ border: 'none' }} disabled={isSubmitting}>
             <X size={20} />
           </button>
         </div>
@@ -266,7 +288,7 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated, productT
           </div>
 
           <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-secondary" disabled={isSubmitting}>
+            <button type="button" onClick={requestClose} className="btn btn-secondary" disabled={isSubmitting}>
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
@@ -281,6 +303,12 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated, productT
           </div>
         </form>
       </div>
+
+      <UnsavedChangesPrompt
+        isOpen={showUnsavedPrompt}
+        onKeepEditing={handleKeepEditing}
+        onDiscard={handleDiscard}
+      />
     </div>
   );
 };

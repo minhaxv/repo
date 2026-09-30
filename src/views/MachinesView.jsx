@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useERP } from '../context/ERPContext';
 import { MACHINE_TYPES, MACHINE_STATUS } from '../types';
 import { formatINR } from '../utils/reportEngine';
@@ -18,6 +18,8 @@ import {
   Save,
   X
 } from 'lucide-react';
+import { useERPModalSafeClose } from '../hooks/useERPModalSafeClose';
+import { UnsavedChangesPrompt } from '../components/common/UnsavedChangesPrompt';
 
 export const MachinesView = () => {
   const { machines, addMachine, updateMachine, deleteMachine, employees, salesOrders } = useERP();
@@ -74,6 +76,34 @@ export const MachinesView = () => {
   };
 
   const [isSaving, setIsSaving] = useState(false);
+
+  const isMachineDirty = useMemo(() => {
+    if (!isModalOpen) return false;
+    if (editingMachine) {
+      return (
+        (formData.name || '') !== (editingMachine.name || '') ||
+        (formData.model || '') !== (editingMachine.model || '') ||
+        (formData.type || '') !== (editingMachine.type || 'Large Format Flex & Banner') ||
+        (formData.status || '') !== (editingMachine.status || 'Running') ||
+        (formData.location || '') !== (editingMachine.location || '') ||
+        Number(formData.hourlyCost || 0) !== Number(editingMachine.hourlyCost || 0) ||
+        (formData.assignedOperatorId || '') !== (editingMachine.assignedOperatorId || '') ||
+        (formData.maintenanceInfo || '') !== (editingMachine.maintenanceInfo || '')
+      );
+    }
+    return Boolean((formData.name || '').trim() || (formData.model || '').trim());
+  }, [isModalOpen, editingMachine, formData]);
+
+  const {
+    showUnsavedPrompt: showMachinePrompt,
+    requestClose: requestMachineClose,
+    confirmDiscard: confirmMachineDiscard,
+    cancelDiscard: cancelMachineDiscard
+  } = useERPModalSafeClose({
+    isOpen: isModalOpen,
+    isDirty: isMachineDirty,
+    onClose: () => setIsModalOpen(false)
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -335,7 +365,7 @@ export const MachinesView = () => {
 
       {/* Add / Edit Machine Modal */}
       {isModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '560px' }}>
             <div className="modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -344,7 +374,7 @@ export const MachinesView = () => {
                   {editingMachine ? 'Edit Machine Details' : 'Add New Production Machine'}
                 </h3>
               </div>
-              <button onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+              <button onClick={requestMachineClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
                 <X size={18} />
               </button>
             </div>
@@ -454,7 +484,7 @@ export const MachinesView = () => {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
-                <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-secondary" disabled={isSaving}>
+                <button type="button" onClick={requestMachineClose} className="btn btn-secondary" disabled={isSaving}>
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={isSaving}>
@@ -465,6 +495,12 @@ export const MachinesView = () => {
           </div>
         </div>
       )}
+
+      <UnsavedChangesPrompt
+        isOpen={showMachinePrompt}
+        onConfirmDiscard={confirmMachineDiscard}
+        onCancelKeepEditing={cancelMachineDiscard}
+      />
     </div>
   );
 };

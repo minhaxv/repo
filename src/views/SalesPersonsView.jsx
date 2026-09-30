@@ -215,7 +215,7 @@ export const SalesPersonsView = () => {
 
       {/* Add Modal */}
       {isModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
             <div className="modal-header" style={{ background: '#1e40af', color: '#fff' }}>
               <div style={{ fontWeight: 800 }}>Add New Sales Executive</div>

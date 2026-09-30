@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useERP } from '../context/ERPContext';
 import { PAYMENT_METHODS } from '../types';
 import { SearchableSelect } from '../components/common/SearchableSelect';
-import { CreditCard, Plus, Search } from 'lucide-react';
+import { CreditCard, Plus, Search, X } from 'lucide-react';
+import { useERPModalSafeClose } from '../hooks/useERPModalSafeClose';
+import { UnsavedChangesPrompt } from '../components/common/UnsavedChangesPrompt';
 
 export const PaymentsView = () => {
   const { payments, recordPayment, salesOrders } = useERP();
@@ -15,14 +17,35 @@ export const PaymentsView = () => {
     method: PAYMENT_METHODS.UPI,
     refNo: 'UPI/REF-9921'
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleRecordPayment = (e) => {
+  const isPayDirty = useMemo(() => {
+    return Boolean(Number(payForm.amount || 0) > 0 || (payForm.refNo || '').trim() !== '');
+  }, [payForm]);
+
+  const {
+    showUnsavedPrompt: showPayPrompt,
+    requestClose: requestPayClose,
+    confirmDiscard: confirmPayDiscard,
+    cancelDiscard: cancelPayDiscard
+  } = useERPModalSafeClose({
+    isOpen: isLogPayOpen,
+    isDirty: isPayDirty,
+    onClose: () => setIsLogPayOpen(false)
+  });
+
+  const handleRecordPayment = async (e) => {
     e.preventDefault();
-    if (!payForm.orderId || !payForm.amount) return;
+    if (!payForm.orderId || !payForm.amount || isSubmitting) return;
 
-    recordPayment(payForm.orderId, payForm.amount, payForm.method, payForm.refNo);
-    alert(`Payment of ₹${payForm.amount} recorded for Order ${payForm.orderId}!`);
-    setIsLogPayOpen(false);
+    try {
+      setIsSubmitting(true);
+      await recordPayment(payForm.orderId, payForm.amount, payForm.method, payForm.refNo);
+      alert(`Payment of ₹${payForm.amount} recorded for Order ${payForm.orderId}!`);
+      setIsLogPayOpen(false);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const filteredPayments = (payments || []).filter((p) =>
@@ -149,10 +172,19 @@ export const PaymentsView = () => {
 
       {/* Record Payment Modal */}
       {isLogPayOpen && (
-        <div className="modal-overlay" onClick={() => setIsLogPayOpen(false)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>Record Payment Receipt Voucher</h3>
+              <button
+                type="button"
+                onClick={requestPayClose}
+                className="btn-secondary btn-icon"
+                style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '0.2rem' }}
+                disabled={isSubmitting}
+              >
+                <X size={20} />
+              </button>
             </div>
             <form onSubmit={handleRecordPayment}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
@@ -196,6 +228,7 @@ export const PaymentsView = () => {
                     value={payForm.amount}
                     onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })}
                     required
+                    disabled={isSubmitting}
                   />
                 </div>
 
@@ -205,6 +238,7 @@ export const PaymentsView = () => {
                     className="form-select"
                     value={payForm.method}
                     onChange={(e) => setPayForm({ ...payForm, method: e.target.value })}
+                    disabled={isSubmitting}
                   >
                     {Object.values(PAYMENT_METHODS).map((m) => (
                       <option key={m} value={m}>{m}</option>
@@ -219,18 +253,29 @@ export const PaymentsView = () => {
                     className="form-control"
                     value={payForm.refNo}
                     onChange={(e) => setPayForm({ ...payForm, refNo: e.target.value })}
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
 
               <div className="modal-footer">
-                <button type="button" onClick={() => setIsLogPayOpen(false)} className="btn btn-secondary">Cancel</button>
-                <button type="submit" className="btn btn-success">Save Payment Receipt</button>
+                <button type="button" onClick={requestPayClose} className="btn btn-secondary" disabled={isSubmitting}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-success" disabled={isSubmitting}>
+                  {isSubmitting ? 'Saving...' : 'Save Payment Receipt'}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <UnsavedChangesPrompt
+        isOpen={showPayPrompt}
+        onConfirmDiscard={confirmPayDiscard}
+        onCancelKeepEditing={cancelPayDiscard}
+      />
     </div>
   );
 };

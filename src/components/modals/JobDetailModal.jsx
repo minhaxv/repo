@@ -415,7 +415,7 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
   const totalOrderActiveRemMins = totalOrderActiveMinutes % 60;
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 99999 }}>
+    <div className="modal-overlay" style={{ zIndex: 99999 }}>
       <div
         className="modal-content"
         onClick={(e) => e.stopPropagation()}
@@ -2337,7 +2337,7 @@ export const JobDetailModal = ({ job, isOpen, onClose, onPrintJobCard, initialTa
 
       {/* QR JOB CARD MODAL */}
       {isQrModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsQrModalOpen(false)}>
+        <div className="modal-overlay" style={{ zIndex: 100001 }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px', textAlign: 'center' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
