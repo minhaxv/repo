@@ -22,6 +22,20 @@ if (!isSupabaseConfigured) {
 
 export const supabase = createClient(
   isSupabaseConfigured ? supabaseUrl : 'https://placeholder.supabase.co',
-  isSupabaseConfigured ? supabaseAnonKey : 'placeholder'
+  isSupabaseConfigured ? supabaseAnonKey : 'placeholder',
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true
+    },
+    global: {
+      fetch: (url, options = {}) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        return fetch(url, { ...options, signal: controller.signal })
+          .finally(() => clearTimeout(timeoutId));
+      }
+    }
+  }
 );
 

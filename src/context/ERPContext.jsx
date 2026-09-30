@@ -63,36 +63,49 @@ export const ERPProvider = ({ children }) => {
     return USER_ROLES.ADMIN;
   });
 
-  const [customers, setCustomers] = useState(() => []);
-  const [salesOrders, setSalesOrders] = useState(() => []);
-  const [products, setProducts] = useState(() => []);
-  const [productMaterialSpecs, setProductMaterialSpecs] = useState(() => []);
-  const [vendors, setVendors] = useState(() => []);
-  const [employees, setEmployees] = useState(() => []);
-  const [designers, setDesigners] = useState(() => []);
-  const [salesPersons, setSalesPersons] = useState(() => []);
-  const [careOfPersons, setCareOfPersons] = useState(() => []);
-  const [workers, setWorkers] = useState(() => []);
-  const [attendanceRecords, setAttendanceRecords] = useState(() => []);
-  const [payrollRecords, setPayrollRecords] = useState(() => []);
-  const [workerJobIncentives, setWorkerJobIncentives] = useState(() => []);
-  const [inventory, setInventory] = useState(() => []);
-  const [purchaseOrders, setPurchaseOrders] = useState(() => []);
-  const [payments, setPayments] = useState(() => []);
-  const [outsourceBills, setOutsourceBills] = useState(() => []);
-  const [outsourcePayments, setOutsourcePayments] = useState(() => []);
-  const [outsourceJobs, setOutsourceJobs] = useState(() => []);
-  const [orderAuditLogs, setOrderAuditLogs] = useState(() => []);
-  const [machines, setMachines] = useState(() => []);
-  const [workflows, setWorkflows] = useState(() => []);
-  const [wastageRecords, setWastageRecords] = useState([]);
-  const [productionProcesses, setProductionProcesses] = useState(() => initialProductionProcesses || []);
-  const [productionTasks, setProductionTasks] = useState(() => []);
-  const [followUps, setFollowUps] = useState(() => []);
+  const loadStorage = (key, fallback = []) => {
+    try {
+      const saved = localStorage.getItem(`stitch_erp_${key}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) ? parsed.length > 0 : (parsed !== null && parsed !== undefined)) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return fallback;
+  };
+
+  const [customers, setCustomers] = useState(() => loadStorage('customers', []));
+  const [salesOrders, setSalesOrders] = useState(() => loadStorage('sales_orders', []));
+  const [products, setProducts] = useState(() => loadStorage('products', []));
+  const [productMaterialSpecs, setProductMaterialSpecs] = useState(() => loadStorage('product_material_specs', []));
+  const [vendors, setVendors] = useState(() => loadStorage('vendors', []));
+  const [employees, setEmployees] = useState(() => loadStorage('employees', []));
+  const [designers, setDesigners] = useState(() => loadStorage('designers', []));
+  const [salesPersons, setSalesPersons] = useState(() => loadStorage('sales_persons', []));
+  const [careOfPersons, setCareOfPersons] = useState(() => loadStorage('care_of_persons', []));
+  const [workers, setWorkers] = useState(() => loadStorage('workers', []));
+  const [attendanceRecords, setAttendanceRecords] = useState(() => loadStorage('attendance_records', []));
+  const [payrollRecords, setPayrollRecords] = useState(() => loadStorage('payroll_records', []));
+  const [workerJobIncentives, setWorkerJobIncentives] = useState(() => loadStorage('worker_job_incentives', []));
+  const [inventory, setInventory] = useState(() => loadStorage('inventory', []));
+  const [purchaseOrders, setPurchaseOrders] = useState(() => loadStorage('purchase_orders', []));
+  const [payments, setPayments] = useState(() => loadStorage('payments', []));
+  const [outsourceBills, setOutsourceBills] = useState(() => loadStorage('outsource_bills', []));
+  const [outsourcePayments, setOutsourcePayments] = useState(() => loadStorage('outsource_payments', []));
+  const [outsourceJobs, setOutsourceJobs] = useState(() => loadStorage('outsource_jobs', []));
+  const [orderAuditLogs, setOrderAuditLogs] = useState(() => loadStorage('order_audit_logs', []));
+  const [machines, setMachines] = useState(() => loadStorage('machines', []));
+  const [workflows, setWorkflows] = useState(() => loadStorage('workflows', []));
+  const [wastageRecords, setWastageRecords] = useState(() => loadStorage('wastage_records', []));
+  const [productionProcesses, setProductionProcesses] = useState(() => loadStorage('production_processes', initialProductionProcesses || []));
+  const [productionTasks, setProductionTasks] = useState(() => loadStorage('production_tasks', []));
+  const [followUps, setFollowUps] = useState(() => loadStorage('follow_ups', []));
 
   // Phase 1-5 Production Hardening States (SQLite Authoritative & Live Sync)
-  const [expenses, setExpenses] = useState([]);
-  const [inventoryTransactions, setInventoryTransactions] = useState([]);
+  const [expenses, setExpenses] = useState(() => loadStorage('expenses', []));
+  const [inventoryTransactions, setInventoryTransactions] = useState(() => loadStorage('inventory_transactions', []));
   const [reworkTickets, setReworkTickets] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [usersList, setUsersList] = useState([]);
@@ -152,7 +165,7 @@ export const ERPProvider = ({ children }) => {
         if (data.companyProfile && data.companyProfile.name) {
           const rawCP = data.companyProfile;
           const bank = rawCP.bankDetails || {};
-          setCompanyProfile({
+          const cpObj = {
             ...rawCP,
             bankDetails: {
               bankName: bank.bankName || rawCP.bank_name || rawCP.bankName || 'HDFC Bank Ltd',
@@ -162,17 +175,42 @@ export const ERPProvider = ({ children }) => {
               branch: bank.branch || rawCP.branch || 'Goregaon East, Mumbai',
               upiId: bank.upiId || rawCP.upi_id || rawCP.upiId || 'screenarts@hdfcbank'
             }
-          });
+          };
+          setCompanyProfile(cpObj);
+          try { localStorage.setItem('stitch_erp_company_profile', JSON.stringify(cpObj)); } catch (e) {}
         }
-        setCustomers(data.customers || []);
-        setProducts(data.products || []);
-        setProductMaterialSpecs(data.productMaterialSpecs || []);
-        setVendors(data.vendors || data.suppliers || []);
-        setSalesPersons(data.salesPersons || []);
-        setCareOfPersons(data.careOfPersons || []);
-        if (data.purchaseOrders) setPurchaseOrders(data.purchaseOrders || []);
+        if (data.customers) {
+          setCustomers(data.customers);
+          try { localStorage.setItem('stitch_erp_customers', JSON.stringify(data.customers)); } catch (e) {}
+        }
+        if (data.products) {
+          setProducts(data.products);
+          try { localStorage.setItem('stitch_erp_products', JSON.stringify(data.products)); } catch (e) {}
+        }
+        if (data.productMaterialSpecs) {
+          setProductMaterialSpecs(data.productMaterialSpecs);
+          try { localStorage.setItem('stitch_erp_product_material_specs', JSON.stringify(data.productMaterialSpecs)); } catch (e) {}
+        }
+        if (data.vendors || data.suppliers) {
+          const v = data.vendors || data.suppliers;
+          setVendors(v);
+          try { localStorage.setItem('stitch_erp_vendors', JSON.stringify(v)); } catch (e) {}
+        }
+        if (data.salesPersons) {
+          setSalesPersons(data.salesPersons);
+          try { localStorage.setItem('stitch_erp_sales_persons', JSON.stringify(data.salesPersons)); } catch (e) {}
+        }
+        if (data.careOfPersons) {
+          setCareOfPersons(data.careOfPersons);
+          try { localStorage.setItem('stitch_erp_care_of_persons', JSON.stringify(data.careOfPersons)); } catch (e) {}
+        }
+        if (data.purchaseOrders) {
+          setPurchaseOrders(data.purchaseOrders);
+          try { localStorage.setItem('stitch_erp_purchase_orders', JSON.stringify(data.purchaseOrders)); } catch (e) {}
+        }
         if (data.employees) {
           setEmployees(data.employees);
+          try { localStorage.setItem('stitch_erp_employees', JSON.stringify(data.employees)); } catch (e) {}
           const designStaff = data.employees.filter(e => 
             (e.department && e.department.toLowerCase().includes('design')) || 
             (e.role && e.role.toLowerCase().includes('design'))
@@ -186,26 +224,81 @@ export const ERPProvider = ({ children }) => {
         }
         if (data.biometricDevices) setBiometricDevices(data.biometricDevices);
         if (data.biometricUsers) setBiometricUsers(data.biometricUsers);
-        setSalesOrders(data.salesOrders || []);
-        setWorkerJobIncentives(data.workerJobIncentives || []);
-        setPayments(data.payments || []);
-        setOutsourceBills(data.outsourceBills || []);
-        setOutsourcePayments(data.outsourcePayments || []);
-        setOutsourceJobs(data.outsourceJobs || []);
+        if (data.salesOrders) {
+          setSalesOrders(data.salesOrders);
+          try { localStorage.setItem('stitch_erp_sales_orders', JSON.stringify(data.salesOrders)); } catch (e) {}
+        }
+        if (data.workerJobIncentives) setWorkerJobIncentives(data.workerJobIncentives);
+        if (data.payments) {
+          setPayments(data.payments);
+          try { localStorage.setItem('stitch_erp_payments', JSON.stringify(data.payments)); } catch (e) {}
+        }
+        if (data.outsourceBills) {
+          setOutsourceBills(data.outsourceBills);
+          try { localStorage.setItem('stitch_erp_outsource_bills', JSON.stringify(data.outsourceBills)); } catch (e) {}
+        }
+        if (data.outsourcePayments) setOutsourcePayments(data.outsourcePayments);
+        if (data.outsourceJobs) setOutsourceJobs(data.outsourceJobs);
         if (data.productionProcesses) setProductionProcesses(data.productionProcesses);
-        setProductionTasks(data.productionTasks || []);
-        if (data.machines) setMachines(data.machines);
-        setExpenses(data.expenses || []);
-        setInventory(data.inventory || []);
-        setInventoryTransactions(data.inventoryTransactions || []);
-        setReworkTickets(data.reworkTickets || []);
-        setAuditLogs(data.auditLogs || []);
-        setDeliveries(data.deliveryNotes || []);
+        if (data.productionTasks) {
+          setProductionTasks(data.productionTasks);
+          try { localStorage.setItem('stitch_erp_production_tasks', JSON.stringify(data.productionTasks)); } catch (e) {}
+        }
+        if (data.machines) {
+          setMachines(data.machines);
+          try { localStorage.setItem('stitch_erp_machines', JSON.stringify(data.machines)); } catch (e) {}
+        }
+        if (data.expenses) {
+          setExpenses(data.expenses);
+          try { localStorage.setItem('stitch_erp_expenses', JSON.stringify(data.expenses)); } catch (e) {}
+        }
+        if (data.inventory) {
+          setInventory(data.inventory);
+          try { localStorage.setItem('stitch_erp_inventory', JSON.stringify(data.inventory)); } catch (e) {}
+        }
+        if (data.inventoryTransactions) setInventoryTransactions(data.inventoryTransactions);
+        if (data.reworkTickets) setReworkTickets(data.reworkTickets);
+        if (data.auditLogs) setAuditLogs(data.auditLogs);
+        if (data.deliveryNotes) setDeliveries(data.deliveryNotes);
         if (data.users) setUsersList(data.users);
+        return;
       }
     } catch (err) {
-      console.warn("API fetchAllERPData warning, using local state:", err);
+      console.warn("API fetchAllERPData warning, attempting fallback sync:", err);
     }
+
+    // FALLBACK 1: If API server is unreachable (e.g. running on Vercel or offline), try Supabase if configured
+    if (isSupabaseConfigured) {
+      try {
+        const [cRes, pRes, soRes, vRes] = await Promise.allSettled([
+          supabase.from('customers').select('*').limit(500),
+          supabase.from('products').select('*').limit(500),
+          supabase.from('sales_orders').select('*').order('created_at', { ascending: false }).limit(500),
+          supabase.from('vendors').select('*').limit(500)
+        ]);
+        if (cRes.status === 'fulfilled' && cRes.value.data && cRes.value.data.length > 0) {
+          setCustomers(cRes.value.data);
+          try { localStorage.setItem('stitch_erp_customers', JSON.stringify(cRes.value.data)); } catch (e) {}
+        }
+        if (pRes.status === 'fulfilled' && pRes.value.data && pRes.value.data.length > 0) {
+          setProducts(pRes.value.data);
+          try { localStorage.setItem('stitch_erp_products', JSON.stringify(pRes.value.data)); } catch (e) {}
+        }
+        if (soRes.status === 'fulfilled' && soRes.value.data && soRes.value.data.length > 0) {
+          setSalesOrders(soRes.value.data);
+          try { localStorage.setItem('stitch_erp_sales_orders', JSON.stringify(soRes.value.data)); } catch (e) {}
+        }
+        if (vRes.status === 'fulfilled' && vRes.value.data && vRes.value.data.length > 0) {
+          setVendors(vRes.value.data);
+          try { localStorage.setItem('stitch_erp_vendors', JSON.stringify(vRes.value.data)); } catch (e) {}
+        }
+      } catch (sbErr) {
+        console.warn("Supabase fallback sync bypassed:", sbErr);
+      }
+    }
+
+    // FALLBACK 2: Ensure any locally stored data is loaded
+    console.info("ℹ️ LocalStorage persistence active — ERP data safely restored across refreshes.");
   };
 
   const loginAsDemoAdmin = () => {
@@ -294,6 +387,7 @@ export const ERPProvider = ({ children }) => {
       setActiveUser(userObj);
       setActiveRole(userObj.role || USER_ROLES.ADMIN);
       setSession({ user: userObj });
+      await fetchAllERPData();
       setLoading(false);
     };
 
@@ -499,7 +593,11 @@ export const ERPProvider = ({ children }) => {
     try {
       const res = await api.createCustomer(uiCustomer);
       if (res && res.outstanding !== undefined) {
-        setCustomers((prev) => prev.map(c => c.id === uiCustomer.id ? { ...c, outstanding: res.outstanding } : c));
+        setCustomers((prev) => {
+          const updated = prev.map(c => c.id === uiCustomer.id ? { ...c, outstanding: res.outstanding } : c);
+          try { localStorage.setItem('stitch_erp_customers', JSON.stringify(updated)); } catch (e) {}
+          return updated;
+        });
       }
     } catch (err) {
       console.warn("api.createCustomer exception, using persistent local state:", err);
@@ -1028,7 +1126,11 @@ export const ERPProvider = ({ children }) => {
       console.warn("Supabase designer insert exception:", err);
     }
 
-    setDesigners((prev) => [uiDesigner, ...prev.filter(d => d.id !== uiDesigner.id)]);
+    setDesigners((prev) => {
+      const updated = [uiDesigner, ...prev.filter(d => d.id !== uiDesigner.id)];
+      try { localStorage.setItem('stitch_erp_designers', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
     return uiDesigner;
   };
 
@@ -1063,7 +1165,11 @@ export const ERPProvider = ({ children }) => {
       console.warn("Supabase worker insert exception:", err);
     }
 
-    setWorkers((prev) => [uiWorker, ...prev.filter(w => w.id !== uiWorker.id)]);
+    setWorkers((prev) => {
+      const updated = [uiWorker, ...prev.filter(w => w.id !== uiWorker.id)];
+      try { localStorage.setItem('stitch_erp_workers', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
     return uiWorker;
   };
 
@@ -1149,7 +1255,11 @@ export const ERPProvider = ({ children }) => {
       console.warn("Supabase employees insert exception:", err);
     }
 
-    setEmployees((prev) => [uiEmp, ...prev.filter(e => e.id !== uiEmp.id)]);
+    setEmployees((prev) => {
+      const updated = [uiEmp, ...prev.filter(e => e.id !== uiEmp.id)];
+      try { localStorage.setItem('stitch_erp_employees', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
     return uiEmp;
   };
 
@@ -1171,9 +1281,11 @@ export const ERPProvider = ({ children }) => {
       console.warn("Supabase employees update exception:", err);
     }
 
-    setEmployees((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, ...updatedData } : e))
-    );
+    setEmployees((prev) => {
+      const updated = prev.map((e) => (e.id === id ? { ...e, ...updatedData } : e));
+      try { localStorage.setItem('stitch_erp_employees', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
     return true;
   };
 
@@ -1186,7 +1298,11 @@ export const ERPProvider = ({ children }) => {
     } catch (err) {
       console.warn("Supabase employees delete exception:", err);
     }
-    setEmployees((prev) => prev.filter((e) => e.id !== id));
+    setEmployees((prev) => {
+      const updated = prev.filter((e) => e.id !== id);
+      try { localStorage.setItem('stitch_erp_employees', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
     return true;
   };
 
@@ -1213,7 +1329,11 @@ export const ERPProvider = ({ children }) => {
       console.warn("api.updateSupplier exception:", err);
     }
 
-    setVendors((prev) => prev.map((v) => (v.id === id ? { ...v, ...updatedData } : v)));
+    setVendors((prev) => {
+      const updated = prev.map((v) => (v.id === id ? { ...v, ...updatedData } : v));
+      try { localStorage.setItem('stitch_erp_vendors', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
     return true;
   };
 
@@ -1233,7 +1353,11 @@ export const ERPProvider = ({ children }) => {
       console.warn("api.deleteSupplier exception:", err);
     }
 
-    setVendors((prev) => prev.filter((v) => v.id !== id));
+    setVendors((prev) => {
+      const updated = prev.filter((v) => v.id !== id);
+      try { localStorage.setItem('stitch_erp_vendors', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
     return true;
   };
 
@@ -1709,8 +1833,25 @@ export const ERPProvider = ({ children }) => {
       }
       await fetchAllERPData();
     } catch (err) {
-      console.error("api.createSalesOrder failed:", err);
-      throw err;
+      console.warn("api.createSalesOrder offline fallback, saving to local store:", err);
+      setSalesOrders((prev) => {
+        const updated = [finalOrder, ...(prev || []).filter(o => o.id !== finalOrder.id)];
+        try { localStorage.setItem('stitch_erp_sales_orders', JSON.stringify(updated)); } catch(e){}
+        return updated;
+      });
+      if (finalOrder.customerId && balance > 0) {
+        setCustomers((prev) => {
+          const updated = prev.map(c => {
+            if (c.id === finalOrder.customerId) {
+              const newOut = Number(c.outstanding || 0) + balance;
+              return { ...c, outstanding: newOut, totalOrders: (c.totalOrders || 0) + 1 };
+            }
+            return c;
+          });
+          try { localStorage.setItem('stitch_erp_customers', JSON.stringify(updated)); } catch(e){}
+          return updated;
+        });
+      }
     }
 
     // Log creation activity
@@ -1984,19 +2125,25 @@ export const ERPProvider = ({ children }) => {
       }
     }
 
-    setSalesOrders((prev) => prev.map((o) => (o.id === orderId ? finalUpdatedOrder : o)));
+    setSalesOrders((prev) => {
+      const updated = prev.map((o) => (o.id === orderId ? finalUpdatedOrder : o));
+      try { localStorage.setItem('stitch_erp_sales_orders', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
 
     const balanceDiff = balance - oldBalance;
     if (balanceDiff !== 0 && customerId) {
-      setCustomers((prev) =>
-        prev.map((c) => {
+      setCustomers((prev) => {
+        const updated = prev.map((c) => {
           if (c.id === customerId) {
             const newOutstanding = Math.max(0, (Number(c.outstanding ?? c.outstandingAmount) || 0) + balanceDiff);
             return { ...c, outstanding: newOutstanding, outstandingAmount: newOutstanding };
           }
           return c;
-        })
-      );
+        });
+        try { localStorage.setItem('stitch_erp_customers', JSON.stringify(updated)); } catch(e){}
+        return updated;
+      });
     }
 
     // Log to central audit trail
@@ -2070,20 +2217,26 @@ export const ERPProvider = ({ children }) => {
       }
     }
 
-    setSalesOrders((prev) => prev.map(o => (o.id === orderId ? cancelledOrder : o)));
+    setSalesOrders((prev) => {
+      const updated = prev.map(o => (o.id === orderId ? cancelledOrder : o));
+      try { localStorage.setItem('stitch_erp_sales_orders', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
 
     // Reversal of customer outstanding balance for the cancelled order
     if (unpaidBalance > 0 && customerId) {
-      setCustomers((prev) =>
-        prev.map((c) => {
+      setCustomers((prev) => {
+        const updated = prev.map((c) => {
           if (c.id === customerId) {
             const currentOutstanding = Number(c.outstanding ?? c.outstandingAmount ?? 0);
             const newOutstanding = Math.max(0, currentOutstanding - unpaidBalance);
             return { ...c, outstanding: newOutstanding, outstandingAmount: newOutstanding };
           }
           return c;
-        })
-      );
+        });
+        try { localStorage.setItem('stitch_erp_customers', JSON.stringify(updated)); } catch(e){}
+        return updated;
+      });
     }
 
     // Log to central audit trail
@@ -2149,20 +2302,26 @@ export const ERPProvider = ({ children }) => {
       }
     }
 
-    setSalesOrders((prev) => prev.filter(o => o.id !== orderId));
+    setSalesOrders((prev) => {
+      const updated = prev.filter(o => o.id !== orderId);
+      try { localStorage.setItem('stitch_erp_sales_orders', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
 
     // Reversal of customer outstanding balance
     if (unpaidBalance > 0 && customerId && existing.productionStatus !== 'Cancelled') {
-      setCustomers((prev) =>
-        prev.map((c) => {
+      setCustomers((prev) => {
+        const updated = prev.map((c) => {
           if (c.id === customerId) {
             const currentOutstanding = Number(c.outstanding ?? c.outstandingAmount ?? 0);
             const newOutstanding = Math.max(0, currentOutstanding - unpaidBalance);
             return { ...c, outstanding: newOutstanding, outstandingAmount: newOutstanding };
           }
           return c;
-        })
-      );
+        });
+        try { localStorage.setItem('stitch_erp_customers', JSON.stringify(updated)); } catch(e){}
+        return updated;
+      });
     }
 
     return true;
@@ -2275,9 +2434,17 @@ export const ERPProvider = ({ children }) => {
         notes: billData.notes || '',
         createdAt: new Date().toISOString()
       };
-      setOutsourceBills(prev => [newBill, ...prev]);
+      setOutsourceBills(prev => {
+        const updated = [newBill, ...prev];
+        try { localStorage.setItem('stitch_erp_outsource_bills', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
       if (billData.vendorId) {
-        setVendors(prev => prev.map(v => v.id === billData.vendorId ? { ...v, pendingPayment: (v.pendingPayment || 0) + totalAmount } : v));
+        setVendors(prev => {
+          const updated = prev.map(v => v.id === billData.vendorId ? { ...v, pendingPayment: (v.pendingPayment || 0) + totalAmount } : v);
+          try { localStorage.setItem('stitch_erp_vendors', JSON.stringify(updated)); } catch (e) {}
+          return updated;
+        });
       }
       // Update outsourceJobs local state
       const billedWoCodes = (billData.workOrders || []).map(w => w.workOrder || w.outsourceNumber || w.jobCardId || w.id);
@@ -2321,25 +2488,37 @@ export const ERPProvider = ({ children }) => {
       createdAt: new Date().toISOString()
     };
 
-    setOutsourcePayments(prev => [newPayment, ...prev]);
-    setOutsourceBills(prev => prev.map(b => {
-      if (b.id === paymentData.billId || (b.billNumber === paymentData.billNumber && b.vendorId === paymentData.vendorId)) {
-        const newPaid = Number(b.paidAmount || 0) + payAmt;
-        const newOutstanding = Math.max(0, Number(b.totalAmount || 0) - newPaid);
-        const newStatus = newOutstanding <= 0 ? 'Paid' : (newPaid > 0 ? 'Partially Paid' : 'Unpaid');
-        return {
-          ...b,
-          paidAmount: newPaid,
-          outstandingAmount: newOutstanding,
-          status: newStatus,
-          payments: [newPayment, ...(b.payments || [])]
-        };
-      }
-      return b;
-    }));
+    setOutsourcePayments(prev => {
+      const updated = [newPayment, ...prev];
+      try { localStorage.setItem('stitch_erp_outsource_payments', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+    setOutsourceBills(prev => {
+      const updated = prev.map(b => {
+        if (b.id === paymentData.billId || (b.billNumber === paymentData.billNumber && b.vendorId === paymentData.vendorId)) {
+          const newPaid = Number(b.paidAmount || 0) + payAmt;
+          const newOutstanding = Math.max(0, Number(b.totalAmount || 0) - newPaid);
+          const newStatus = newOutstanding <= 0 ? 'Paid' : (newPaid > 0 ? 'Partially Paid' : 'Unpaid');
+          return {
+            ...b,
+            paidAmount: newPaid,
+            outstandingAmount: newOutstanding,
+            status: newStatus,
+            payments: [newPayment, ...(b.payments || [])]
+          };
+        }
+        return b;
+      });
+      try { localStorage.setItem('stitch_erp_outsource_bills', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
 
     if (paymentData.vendorId) {
-      setVendors(prev => prev.map(v => v.id === paymentData.vendorId ? { ...v, pendingPayment: Math.max(0, (v.pendingPayment || 0) - payAmt) } : v));
+      setVendors(prev => {
+        const updated = prev.map(v => v.id === paymentData.vendorId ? { ...v, pendingPayment: Math.max(0, (v.pendingPayment || 0) - payAmt) } : v);
+        try { localStorage.setItem('stitch_erp_vendors', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
     }
 
     return { success: true, paymentId: payId, amount: payAmt };
@@ -2855,8 +3034,8 @@ export const ERPProvider = ({ children }) => {
       }
     }
 
-    setSalesOrders((prev) =>
-      prev.map((o) =>
+    setSalesOrders((prev) => {
+      const updated = prev.map((o) =>
         o.id === orderId
           ? {
               ...o,
@@ -2865,19 +3044,23 @@ export const ERPProvider = ({ children }) => {
               paymentStatus: newPayStatus
             }
           : o
-      )
-    );
+      );
+      try { localStorage.setItem('stitch_erp_sales_orders', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
 
     if (order.customerId) {
-      setCustomers((prev) =>
-        prev.map((c) => {
+      setCustomers((prev) => {
+        const updated = prev.map((c) => {
           if (c.id === order.customerId) {
             const newOutstanding = Math.max(0, (Number(c.outstanding ?? c.outstandingAmount) || 0) - amt);
             return { ...c, outstanding: newOutstanding, outstandingAmount: newOutstanding };
           }
           return c;
-        })
-      );
+        });
+        try { localStorage.setItem('stitch_erp_customers', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
     }
 
     try {
@@ -2900,7 +3083,11 @@ export const ERPProvider = ({ children }) => {
       console.warn("api.recordPayment exception:", err);
     }
 
-    setPayments((prev) => [payVoucher, ...prev]);
+    setPayments((prev) => {
+      const updated = [payVoucher, ...prev];
+      try { localStorage.setItem('stitch_erp_payments', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
     return payVoucher;
   };
 
@@ -2912,23 +3099,42 @@ export const ERPProvider = ({ children }) => {
         createdBy: activeUser?.name || 'Authorized Staff'
       });
       if (res && res.expense) {
-        setExpenses(prev => [res.expense, ...prev]);
+        setExpenses(prev => {
+          const updated = [res.expense, ...prev];
+          try { localStorage.setItem('stitch_erp_expenses', JSON.stringify(updated)); } catch (e) {}
+          return updated;
+        });
         return res.expense;
       }
     } catch (err) {
-      console.error("addExpense error:", err);
-      throw err;
+      console.warn("addExpense offline fallback:", err);
+      const offlineExpense = {
+        id: `EXP-${Date.now()}`,
+        ...expenseData,
+        amount: parseFloat(expenseData.amount) || 0,
+        createdAt: new Date().toISOString(),
+        createdBy: activeUser?.name || 'Authorized Staff'
+      };
+      setExpenses(prev => {
+        const updated = [offlineExpense, ...prev];
+        try { localStorage.setItem('stitch_erp_expenses', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+      return offlineExpense;
     }
   };
 
   const removeExpense = async (id) => {
     try {
       await api.deleteExpense(id);
-      setExpenses(prev => prev.filter(e => e.id !== id));
     } catch (err) {
-      console.error("removeExpense error:", err);
-      throw err;
+      console.warn("removeExpense offline fallback:", err);
     }
+    setExpenses(prev => {
+      const updated = prev.filter(e => e.id !== id);
+      try { localStorage.setItem('stitch_erp_expenses', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
   };
 
   // Inventory Transactions Ledger Helper
@@ -3726,12 +3932,20 @@ export const ERPProvider = ({ children }) => {
   const addPurchaseOrder = async (poData) => {
     try {
       const created = await api.createPurchaseOrder(poData);
-      setPurchaseOrders(prev => [created, ...prev.filter(p => p.id !== created.id)]);
+      setPurchaseOrders(prev => {
+        const updated = [created, ...prev.filter(p => p.id !== created.id)];
+        try { localStorage.setItem('stitch_erp_purchase_orders', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
       return created;
     } catch (err) {
       console.warn("api.createPurchaseOrder exception:", err);
       const fallback = { ...poData, id: poData.id || `PO-${Date.now()}` };
-      setPurchaseOrders(prev => [fallback, ...prev.filter(p => p.id !== fallback.id)]);
+      setPurchaseOrders(prev => {
+        const updated = [fallback, ...prev.filter(p => p.id !== fallback.id)];
+        try { localStorage.setItem('stitch_erp_purchase_orders', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
       return fallback;
     }
   };
@@ -3739,11 +3953,19 @@ export const ERPProvider = ({ children }) => {
   const updatePurchaseOrder = async (id, updatedData) => {
     try {
       const updated = await api.updatePurchaseOrder(id, updatedData);
-      setPurchaseOrders(prev => prev.map(p => p.id === id ? { ...p, ...updated } : p));
+      setPurchaseOrders(prev => {
+        const upList = prev.map(p => p.id === id ? { ...p, ...updated } : p);
+        try { localStorage.setItem('stitch_erp_purchase_orders', JSON.stringify(upList)); } catch (e) {}
+        return upList;
+      });
       return updated;
     } catch (err) {
       console.warn("api.updatePurchaseOrder exception:", err);
-      setPurchaseOrders(prev => prev.map(p => p.id === id ? { ...p, ...updatedData } : p));
+      setPurchaseOrders(prev => {
+        const upList = prev.map(p => p.id === id ? { ...p, ...updatedData } : p);
+        try { localStorage.setItem('stitch_erp_purchase_orders', JSON.stringify(upList)); } catch (e) {}
+        return upList;
+      });
       return true;
     }
   };
@@ -3754,7 +3976,11 @@ export const ERPProvider = ({ children }) => {
     } catch (err) {
       console.warn("api.deletePurchaseOrder exception:", err);
     }
-    setPurchaseOrders(prev => prev.filter(p => p.id !== id));
+    setPurchaseOrders(prev => {
+      const updated = prev.filter(p => p.id !== id);
+      try { localStorage.setItem('stitch_erp_purchase_orders', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
     return true;
   };
 
@@ -3794,11 +4020,27 @@ export const ERPProvider = ({ children }) => {
       setBiometricDevices([]);
       setBiometricUsers([]);
       try {
-        localStorage.removeItem('stitch_erp_customers');
-        localStorage.removeItem('stitch_erp_products');
-        localStorage.removeItem('stitch_erp_sales_persons');
-        localStorage.removeItem('stitch_erp_care_of_persons');
-        localStorage.removeItem('stitch_erp_order_audit_logs');
+        const keysToRemove = [
+          'stitch_erp_customers',
+          'stitch_erp_sales_orders',
+          'stitch_erp_products',
+          'stitch_erp_vendors',
+          'stitch_erp_employees',
+          'stitch_erp_designers',
+          'stitch_erp_workers',
+          'stitch_erp_sales_persons',
+          'stitch_erp_care_of_persons',
+          'stitch_erp_purchase_orders',
+          'stitch_erp_payments',
+          'stitch_erp_outsource_bills',
+          'stitch_erp_outsource_payments',
+          'stitch_erp_expenses',
+          'stitch_erp_inventory',
+          'stitch_erp_machines',
+          'stitch_erp_production_tasks',
+          'stitch_erp_order_audit_logs'
+        ];
+        keysToRemove.forEach(k => localStorage.removeItem(k));
       } catch (e) {}
       await fetchAllERPData();
     }
