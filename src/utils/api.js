@@ -722,6 +722,26 @@ export const api = {
     if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to create user account');
     return data;
   },
+  async updateUser(userId, userData) {
+    const res = await fetch(`${API_BASE}/users/${userId}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(userData)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to update user account');
+    return data;
+  },
+  async deleteUser(userId, reason = '') {
+    const res = await fetch(`${API_BASE}/users/${userId}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+      body: JSON.stringify({ reason })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to remove user account');
+    return data;
+  },
   async updateUserStatus(userId, status, reason = '') {
     const res = await fetch(`${API_BASE}/users/${userId}/status`, {
       method: 'PUT',

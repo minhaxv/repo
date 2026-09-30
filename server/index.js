@@ -5827,6 +5827,206 @@ app.put('/api/users/:id/status', authenticateToken, requireRole(['Admin']), (req
   }
 });
 
+// 18D-2. PUT Edit User Account Credentials (Username, Password, Email, Designation, Role, Status)
+app.put('/api/users/:id', authenticateToken, requireRole(['Admin']), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { username, email, password, role, designation, department, status, reason } = req.body;
+    const actor = req.user;
+
+    const targetUser = db.prepare(`
+      SELECT u.*, e.name as employee_name, e.code as employee_code
+      FROM users u
+      LEFT JOIN employees e ON u.employee_id = e.id
+      WHERE u.id = ?
+    `).get(id);
+
+    if (!targetUser) {
+      return res.status(404).json({ success: false, error: 'User account not found.' });
+    }
+
+    // Admin lockout protection if changing role or status of last admin
+    if (targetUser.role === 'Admin') {
+      if ((role && role !== 'Admin') || (status && status !== 'Active')) {
+        const activeAdminCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'Admin' AND status = 'Active' AND id != ?").get(id).count;
+        if (activeAdminCount < 1) {
+          return res.status(400).json({
+            success: false,
+            error: 'At least one active administrator must remain.'
+          });
+        }
+      }
+    }
+
+    // Check username uniqueness if changing
+    if (username && username.trim().toLowerCase() !== targetUser.username.toLowerCase()) {
+      const existing = db.prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id != ?').get(username.trim(), id);
+      if (existing) {
+        return res.status(400).json({ success: false, error: 'Username is already taken by another user.' });
+      }
+    }
+
+    // Check email uniqueness if changing
+    if (email && email.trim() && (!targetUser.email || email.trim().toLowerCase() !== targetUser.email.toLowerCase())) {
+      const existing = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id != ?').get(email.trim(), id);
+      if (existing) {
+        return res.status(400).json({ success: false, error: 'Email is already in use by another user.' });
+      }
+    }
+
+    const updates = [];
+    const params = [];
+    const changes = {};
+
+    if (username && username.trim() !== targetUser.username) {
+      updates.push('username = ?');
+      params.push(username.trim());
+      changes.username = { old: targetUser.username, new: username.trim() };
+    }
+
+    if (email !== undefined && email !== targetUser.email) {
+      updates.push('email = ?');
+      params.push(email.trim());
+      changes.email = { old: targetUser.email, new: email.trim() };
+      if (targetUser.employee_id) {
+        db.prepare('UPDATE employees SET email = ? WHERE id = ?').run(email.trim(), targetUser.employee_id);
+      }
+    }
+
+    if (password && password.trim()) {
+      const { hash, salt } = hashPassword(password.trim());
+      updates.push('password_hash = ?', 'salt = ?');
+      params.push(hash, salt);
+      changes.password = 'PASSWORD_RESET';
+    }
+
+    if (role && role !== targetUser.role) {
+      updates.push('role = ?');
+      params.push(role);
+      changes.role = { old: targetUser.role, new: role };
+      if (targetUser.employee_id) {
+        db.prepare('UPDATE employees SET role = ? WHERE id = ?').run(role, targetUser.employee_id);
+      }
+    }
+
+    if (status && status !== targetUser.status) {
+      const validStatuses = ['Active', 'Disabled', 'Locked', 'Pending'];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ success: false, error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+      }
+      updates.push('status = ?');
+      params.push(status);
+      changes.status = { old: targetUser.status, new: status };
+    }
+
+    if (department && targetUser.employee_id) {
+      db.prepare('UPDATE employees SET department = ? WHERE id = ?').run(department, targetUser.employee_id);
+      updates.push('department = ?');
+      params.push(department);
+      changes.department = department;
+    }
+
+    if (designation && targetUser.employee_id) {
+      db.prepare('UPDATE employees SET designation = ? WHERE id = ?').run(designation, targetUser.employee_id);
+      changes.designation = designation;
+    }
+
+    if (updates.length > 0) {
+      params.push(id);
+      db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    }
+
+    logAuditEvent(db, {
+      user: actor,
+      action: 'UPDATE_USER_CREDENTIALS',
+      module: 'Admin',
+      recordId: id,
+      recordNumber: targetUser.employee_code || targetUser.username,
+      details: {
+        targetEmployeeId: targetUser.employee_id,
+        targetEmployeeName: targetUser.employee_name,
+        targetUsername: username || targetUser.username,
+        changes,
+        reason: reason || 'Credentials updated by administrator'
+      }
+    });
+
+    const refreshedUser = db.prepare('SELECT id, employee_id, username, email, role, status, created_at FROM users WHERE id = ?').get(id);
+    publishEvent('USER_UPDATED', { userId: id, username: refreshedUser?.username });
+
+    res.json({
+      success: true,
+      message: `User account for ${targetUser.employee_name || targetUser.username} updated successfully.`,
+      user: refreshedUser
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 18D-3. DELETE User Account (Revoke login access permanently while preserving employee profile)
+app.delete('/api/users/:id', authenticateToken, requireRole(['Admin']), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body || {};
+    const actor = req.user;
+
+    const targetUser = db.prepare(`
+      SELECT u.*, e.name as employee_name, e.code as employee_code
+      FROM users u
+      LEFT JOIN employees e ON u.employee_id = e.id
+      WHERE u.id = ?
+    `).get(id);
+
+    if (!targetUser) {
+      return res.status(404).json({ success: false, error: 'User account not found.' });
+    }
+
+    // Admin lockout protection
+    if (targetUser.role === 'Admin') {
+      const activeAdminCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'Admin' AND status = 'Active' AND id != ?").get(id).count;
+      if (activeAdminCount < 1) {
+        return res.status(400).json({
+          success: false,
+          error: 'Cannot delete the final administrator account.'
+        });
+      }
+    }
+
+    db.transaction(() => {
+      // Clean up user overrides
+      db.prepare('DELETE FROM employee_permissions WHERE user_id = ?').run(id);
+      db.prepare('DELETE FROM employee_process_permissions WHERE user_id = ?').run(id);
+      // Delete user account
+      db.prepare('DELETE FROM users WHERE id = ?').run(id);
+
+      logAuditEvent(db, {
+        user: actor,
+        action: 'DELETE_USER',
+        module: 'Admin',
+        recordId: id,
+        recordNumber: targetUser.employee_code || targetUser.username,
+        details: {
+          targetEmployeeId: targetUser.employee_id,
+          targetEmployeeName: targetUser.employee_name,
+          username: targetUser.username,
+          role: targetUser.role,
+          reason: reason || 'User account removed by administrator'
+        }
+      });
+    })();
+
+    publishEvent('USER_DELETED', { userId: id, employeeId: targetUser.employee_id });
+
+    res.json({
+      success: true,
+      message: `User account for ${targetUser.employee_name || targetUser.username} removed successfully.`
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 18E. PUT Update User Role & Granular Permission Overrides
 app.put('/api/users/:id/permissions', authenticateToken, requireRole(['Admin']), (req, res) => {
   try {

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useERP } from '../context/ERPContext';
 import { api } from '../utils/api';
 import { CreateEmployeeModal } from '../components/modals/CreateEmployeeModal';
+import { EditUserModal } from '../components/modals/EditUserModal';
 import {
   DEFAULT_ROLES,
   DEFAULT_PERMISSIONS,
@@ -28,6 +29,8 @@ export const UserManagementView = () => {
   const [rolePermissions, setRolePermissions] = useState(DEFAULT_ROLE_PERMISSIONS);
   const [auditLogs, setAuditLogs] = useState([]);
   const [isAddEmployeeModalOpen, setIsAddEmployeeModalOpen] = useState(false);
+  const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
+  const [editingUserEmployee, setEditingUserEmployee] = useState(null);
 
   // UI Navigation Tabs
   const [activeTab, setActiveTab] = useState('employees'); // 'employees' | 'matrix' | 'roles' | 'audit'
@@ -1025,13 +1028,27 @@ export const UserManagementView = () => {
                           {/* Actions */}
                           <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
                             {hasAccount ? (
-                              <button
-                                onClick={() => handleOpenManage(emp)}
-                                className="btn btn-sm btn-primary"
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700, fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
-                              >
-                                <Sliders size={14} /> Manage
-                              </button>
+                              <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                                <button
+                                  onClick={() => {
+                                    setEditingUserEmployee(emp);
+                                    setIsEditUserModalOpen(true);
+                                  }}
+                                  className="btn btn-sm btn-outline-primary"
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: 700, fontSize: '0.78rem', padding: '0.3rem 0.6rem' }}
+                                  title="Edit username, password, email, role"
+                                >
+                                  <Edit3 size={13} /> Edit
+                                </button>
+                                <button
+                                  onClick={() => handleOpenManage(emp)}
+                                  className="btn btn-sm btn-primary"
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: 700, fontSize: '0.78rem', padding: '0.3rem 0.6rem' }}
+                                  title="Configure permissions & processes"
+                                >
+                                  <Sliders size={13} /> Permissions
+                                </button>
+                              </div>
                             ) : (
                               <button
                                 onClick={() => {
@@ -1383,19 +1400,32 @@ export const UserManagementView = () => {
                   </div>
                 </div>
 
-                {/* Status Selector */}
-                <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569' }}>Explicit Status:</span>
-                  <select
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value)}
-                    style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', fontWeight: 600 }}
+                {/* Status Selector & Edit Account Action */}
+                <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569' }}>Explicit Status:</span>
+                    <select
+                      value={editStatus}
+                      onChange={(e) => setEditStatus(e.target.value)}
+                      style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', fontWeight: 600 }}
+                    >
+                      <option value="Active">Active (Permits login)</option>
+                      <option value="Disabled">Disabled (Blocks login immediately)</option>
+                      <option value="Locked">Locked (Temporarily locked)</option>
+                      <option value="Pending">Pending (Awaiting initial activation)</option>
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingUserEmployee(selectedEmployee);
+                      setIsEditUserModalOpen(true);
+                    }}
+                    className="btn btn-sm btn-outline-primary"
+                    style={{ fontSize: '0.75rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
                   >
-                    <option value="Active">Active (Permits login)</option>
-                    <option value="Disabled">Disabled (Blocks login immediately)</option>
-                    <option value="Locked">Locked (Temporarily locked)</option>
-                    <option value="Pending">Pending (Awaiting initial activation)</option>
-                  </select>
+                    <Edit3 size={13} /> Edit Username, Email & Password
+                  </button>
                 </div>
               </div>
 
@@ -2261,6 +2291,35 @@ export const UserManagementView = () => {
               email: newEmp.email || `${newEmp.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@screenarts.in`,
               designation: newEmp.designation || newEmp.role || 'Staff'
             }));
+          }
+        }}
+      />
+
+      {/* Edit User Account & Credentials Modal */}
+      <EditUserModal
+        isOpen={isEditUserModalOpen}
+        onClose={() => {
+          setIsEditUserModalOpen(false);
+          setEditingUserEmployee(null);
+        }}
+        employee={editingUserEmployee}
+        roles={roles}
+        recordAudit={recordLocalAudit}
+        onUserUpdated={(updatedUser) => {
+          showFeedback(`User account for ${updatedUser.name} updated successfully!`);
+          loadData();
+          loadAuditLogs();
+          if (selectedEmployee?.id === updatedUser.id) {
+            setSelectedEmployee(prev => ({ ...prev, ...updatedUser }));
+          }
+        }}
+        onUserDeleted={(empId) => {
+          showFeedback('User account removed.');
+          loadData();
+          loadAuditLogs();
+          if (selectedEmployee?.id === empId) {
+            setIsManageDrawerOpen(false);
+            setSelectedEmployee(null);
           }
         }}
       />
