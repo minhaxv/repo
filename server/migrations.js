@@ -693,23 +693,7 @@ export function runMigrations(db) {
       CREATE INDEX IF NOT EXISTS idx_machines_code ON machines(code);
     `);
 
-    const initialMachinesList = [
-      { id: 'MCH-01', code: 'ROLAND-640', name: 'Roland TrueVIS VG3-640', model: 'VG3-640 Dual Head 8-Color', process_category: 'Digital Printing', hourly_rate: 450, status: 'Active', runtime_hours: 1840, location: 'Digital Bay A', assigned_operator_id: 'EMP-106', assigned_operator_name: 'Vikas Patil' },
-      { id: 'MCH-02', code: 'STARFLEX-3200', name: 'StarFlex Grand 3200', model: 'SF-3200 Konica 512i 4-Head', process_category: 'Flex Printing', hourly_rate: 650, status: 'Active', runtime_hours: 2950, location: 'Heavy Media Bay 1', assigned_operator_id: 'EMP-106', assigned_operator_name: 'Vikas Patil' },
-      { id: 'MCH-03', code: 'HP-INDIGO-12K', name: 'HP Indigo 12000 Digital Press', model: 'Indigo 12000 7-Color Digital Offset', process_category: 'Digital Production', hourly_rate: 1200, status: 'Active', runtime_hours: 3420, location: 'Clean Press Room B', assigned_operator_id: 'EMP-107', assigned_operator_name: 'Rajesh Nair' },
-      { id: 'MCH-04', code: 'MIMAKI-UV-2513', name: 'Mimaki JFX200-2513 UV Flatbed', model: 'JFX200-2513 EX LED-UV 8x4ft', process_category: 'UV Printing', hourly_rate: 850, status: 'Active', runtime_hours: 1210, location: 'UV Fabrication Floor', assigned_operator_id: 'EMP-110', assigned_operator_name: 'Sunil Vishwakarma' },
-      { id: 'MCH-05', code: 'LASERCRAFT-1390', name: 'LaserCraft CO2 Laser Cutter', model: 'LC-1390 Reci 150W Glass Tube', process_category: 'Cutting', hourly_rate: 350, status: 'Active', runtime_hours: 890, location: 'CNC & Acrylic Room', assigned_operator_id: 'EMP-112', assigned_operator_name: 'Rakesh Yadav' },
-      { id: 'MCH-06', code: 'POLAR-78', name: 'Polar 78 Guillotine High-Speed Cutter', model: 'Polar Mohr 78 EM High Precision', process_category: 'Finishing', hourly_rate: 300, status: 'Active', runtime_hours: 4120, location: 'Post-Press & Finishing Floor', assigned_operator_id: 'EMP-107', assigned_operator_name: 'Sunil Finishing' },
-      { id: 'MCH-07', code: 'ROYAL-65', name: 'Royal 65" Automatic Heat Laminator', model: 'Royal Sovereign 1650 Cold/Warm', process_category: 'Lamination', hourly_rate: 250, status: 'Active', runtime_hours: 2150, location: 'Finishing Floor', assigned_operator_id: 'EMP-107', assigned_operator_name: 'Sunil Finishing' }
-    ];
-
-    const insertMch = database.prepare(`
-      INSERT OR IGNORE INTO machines (id, code, name, model, process_category, hourly_rate, status, runtime_hours, location, assigned_operator_id, assigned_operator_name)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    initialMachinesList.forEach(m => {
-      insertMch.run(m.id, m.code, m.name, m.model, m.process_category, m.hourly_rate, m.status, m.runtime_hours, m.location, m.assigned_operator_id, m.assigned_operator_name);
-    });
+    // Machines master initialized empty for clean production start
 
     // 4. Extend Sales Orders with Quotation and Concurrency tracking
     try { database.prepare("ALTER TABLE sales_orders ADD COLUMN order_type TEXT DEFAULT 'Direct'").run(); } catch(e) {}
@@ -1223,36 +1207,7 @@ export function runMigrations(db) {
       CREATE INDEX IF NOT EXISTS idx_outsource_payments_vendor ON outsource_payments(vendor_id);
     `);
 
-    // Ensure Vendor "ABC Embroidery" exists
-    const abcVendor = database.prepare("SELECT id FROM suppliers WHERE name = 'ABC Embroidery' OR supplier_code = 'SUP-ABC-01'").get();
-    let vendorId = abcVendor ? abcVendor.id : 'SUP-ABC-01';
-    if (!abcVendor) {
-      database.prepare(`
-        INSERT INTO suppliers (id, supplier_code, name, category, mobile, email, address, gstin, pending_payment, avg_turnaround_days, notes)
-        VALUES (?, 'SUP-ABC-01', 'ABC Embroidery', 'Job Work & Embroidery', '9846012345', 'abc@embroidery.com', 'Plot 18, Textile Zone, Surat', '24AAACA5566G1Z9', 15000, 2, 'Preferred vendor for machine embroidery and applique')
-      `).run(vendorId);
-    }
-
-    // Seed Demo Bill BILL-125 for ABC Embroidery with 3 Work Orders (WO-001, WO-002, WO-003)
-    const existingBill = database.prepare("SELECT id FROM outsource_bills WHERE bill_number = 'BILL-125' AND vendor_id = ?").get(vendorId);
-    if (!existingBill) {
-      const billId = 'BILL-125-DEMO';
-      const workOrders = [
-        { workOrder: 'WO-001', jobCardId: 'WO-001', orderId: 'SO-1001', description: 'Logo Embroidery for T-Shirts', amount: 5000 },
-        { workOrder: 'WO-002', jobCardId: 'WO-002', orderId: 'SO-1002', description: 'Gold Thread Border Patches', amount: 8000 },
-        { workOrder: 'WO-003', jobCardId: 'WO-003', orderId: 'SO-1003', description: 'Cap Visor Direct Embroidery', amount: 7000 }
-      ];
-      database.prepare(`
-        INSERT INTO outsource_bills (id, bill_number, vendor_id, vendor_name, bill_date, total_amount, paid_amount, outstanding_amount, status, work_orders_json, notes)
-        VALUES (?, 'BILL-125', ?, 'ABC Embroidery', '2026-04-01', 20000, 5000, 15000, 'Partially Paid', ?, 'Consolidated April embroidery work orders')
-      `).run(billId, vendorId, JSON.stringify(workOrders));
-
-      // First partial payment PAY-000101 for ₹5,000 via Cash
-      database.prepare(`
-        INSERT INTO outsource_payments (id, bill_id, bill_number, vendor_id, vendor_name, amount, payment_method, ref_no, payment_date, notes)
-        VALUES ('PAY-000101', ?, 'BILL-125', ?, 'ABC Embroidery', 5000, 'Cash', 'CASH/APR-01', '2026-04-01', 'Initial advance payment on bill receipt')
-      `).run(billId, vendorId);
-    }
+    console.log(' -> Migration 015 applied: Outsource bills and bill-based single payment tracking schema ready.');
 
     console.log(' -> Migration 015 applied: Outsource bills, bill-based single payment tracking, and demo BILL-125 ready.');
   });
@@ -1290,77 +1245,7 @@ export function runMigrations(db) {
       }
     }
 
-    // 5. Seed Work Orders for ABC Embroidery and other vendors in outsource_jobs
-    const abcVendor = database.prepare("SELECT id FROM suppliers WHERE name = 'ABC Embroidery' OR supplier_code = 'SUP-ABC-01'").get();
-    const vendorId = abcVendor ? abcVendor.id : 'SUP-ABC-01';
-
-    let validSO = database.prepare("SELECT id FROM sales_orders LIMIT 1").get();
-    if (!validSO) {
-      database.prepare(`
-        INSERT INTO sales_orders (id, order_number, order_date, status, production_status, subtotal, grand_total, invoice_type)
-        VALUES ('SO-DEFAULT-SEED', 'SO-DEFAULT-SEED', '2026-09-29', 'CONFIRMED', 'COMPLETED', 20000, 20000, 'B2C')
-      `).run();
-      validSO = { id: 'SO-DEFAULT-SEED' };
-    }
-    const defaultOrderId = validSO.id;
-
-    // Link already billed WO-001, WO-002, WO-003 to BILL-125
-    const existingWO1 = database.prepare("SELECT id FROM outsource_jobs WHERE outsource_number = 'WO-001'").get();
-    if (!existingWO1) {
-      database.prepare(`
-        INSERT INTO outsource_jobs (id, outsource_number, sales_order_id, supplier_id, supplier_name, work_description, quantity, outsource_cost, status, bill_id, bill_number, billing_status)
-        VALUES ('WO-001', 'WO-001', ?, ?, 'ABC Embroidery', 'Logo Embroidery for T-Shirts', 1, 5000, 'COMPLETED', 'BILL-125-DEMO', 'BILL-125', 'Billed')
-      `).run(defaultOrderId, vendorId);
-    }
-    const existingWO2 = database.prepare("SELECT id FROM outsource_jobs WHERE outsource_number = 'WO-002'").get();
-    if (!existingWO2) {
-      database.prepare(`
-        INSERT INTO outsource_jobs (id, outsource_number, sales_order_id, supplier_id, supplier_name, work_description, quantity, outsource_cost, status, bill_id, bill_number, billing_status)
-        VALUES ('WO-002', 'WO-002', ?, ?, 'ABC Embroidery', 'Gold Thread Border Patches', 1, 8000, 'COMPLETED', 'BILL-125-DEMO', 'BILL-125', 'Billed')
-      `).run(defaultOrderId, vendorId);
-    }
-    const existingWO3 = database.prepare("SELECT id FROM outsource_jobs WHERE outsource_number = 'WO-003'").get();
-    if (!existingWO3) {
-      database.prepare(`
-        INSERT INTO outsource_jobs (id, outsource_number, sales_order_id, supplier_id, supplier_name, work_description, quantity, outsource_cost, status, bill_id, bill_number, billing_status)
-        VALUES ('WO-003', 'WO-003', ?, ?, 'ABC Embroidery', 'Cap Visor Direct Embroidery', 1, 7000, 'COMPLETED', 'BILL-125-DEMO', 'BILL-125', 'Billed')
-      `).run(defaultOrderId, vendorId);
-    }
-
-    // Seed Unbilled Eligible Work Orders for ABC Embroidery
-    const existingWO4 = database.prepare("SELECT id FROM outsource_jobs WHERE outsource_number = 'WO-004'").get();
-    if (!existingWO4) {
-      database.prepare(`
-        INSERT INTO outsource_jobs (id, outsource_number, sales_order_id, supplier_id, supplier_name, work_description, quantity, outsource_cost, status, billing_status)
-        VALUES ('WO-004', 'WO-004', ?, ?, 'ABC Embroidery', 'Uniform Custom Sleeve Patches', 1, 4500, 'COMPLETED', 'Unbilled')
-      `).run(defaultOrderId, vendorId);
-    }
-    const existingWO5 = database.prepare("SELECT id FROM outsource_jobs WHERE outsource_number = 'WO-005'").get();
-    if (!existingWO5) {
-      database.prepare(`
-        INSERT INTO outsource_jobs (id, outsource_number, sales_order_id, supplier_id, supplier_name, work_description, quantity, outsource_cost, status, billing_status)
-        VALUES ('WO-005', 'WO-005', ?, ?, 'ABC Embroidery', 'Jacket Back Logo Embroidery', 1, 6000, 'COMPLETED', 'Unbilled')
-      `).run(defaultOrderId, vendorId);
-    }
-    const existingWO6 = database.prepare("SELECT id FROM outsource_jobs WHERE outsource_number = 'WO-006'").get();
-    if (!existingWO6) {
-      database.prepare(`
-        INSERT INTO outsource_jobs (id, outsource_number, sales_order_id, supplier_id, supplier_name, work_description, quantity, outsource_cost, status, billing_status)
-        VALUES ('WO-006', 'WO-006', ?, ?, 'ABC Embroidery', 'Apron Monogram Embroidery', 1, 7500, 'COMPLETED', 'Unbilled')
-      `).run(defaultOrderId, vendorId);
-    }
-
-    // Seed a work order for another vendor to test multi-vendor prevention
-    const otherVendor = database.prepare("SELECT id, name FROM suppliers WHERE id != ? LIMIT 1").get(vendorId);
-    if (otherVendor) {
-      const existingWO101 = database.prepare("SELECT id FROM outsource_jobs WHERE outsource_number = 'WO-101'").get();
-      if (!existingWO101) {
-        database.prepare(`
-          INSERT INTO outsource_jobs (id, outsource_number, sales_order_id, supplier_id, supplier_name, work_description, quantity, outsource_cost, status, billing_status)
-          VALUES ('WO-101', 'WO-101', ?, ?, ?, 'Acrylic Laser Cutting & Etching', 1, 3500, 'COMPLETED', 'Unbilled')
-        `).run(defaultOrderId, otherVendor.id, otherVendor.name);
-      }
-    }
+    console.log(' -> Migration 016 applied: Work order billing status, bill sequences, and B2B/B2C auto-classification schema ready.');
 
     console.log(' -> Migration 016 applied: Work order billing status, bill sequences, and B2B/B2C auto-classification initialized.');
   });

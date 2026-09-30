@@ -902,6 +902,37 @@ export const api = {
     return data;
   },
 
+  // Machines & Printing Floor Equipment
+  async createMachine(machineData) {
+    const res = await fetch(`${API_BASE}/machines`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(machineData)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to create machine');
+    return data.machine || data;
+  },
+  async updateMachine(id, machineData) {
+    const res = await fetch(`${API_BASE}/machines/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(machineData)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to update machine');
+    return data.machine || data;
+  },
+  async deleteMachine(id) {
+    const res = await fetch(`${API_BASE}/machines/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to delete machine');
+    return data;
+  },
+
   // Database Reset (Admin Fresh Start)
   async resetDatabase(confirmationCode = 'RESET ERP') {
     const res = await fetch(`${API_BASE}/admin/reset-database`, {

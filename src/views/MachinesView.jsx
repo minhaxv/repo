@@ -224,6 +224,16 @@ export const MachinesView = () => {
 
       {/* Machines Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
+        {filteredMachines.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '3.5rem 1rem', background: '#fff', borderRadius: '12px', border: '1px dashed #cbd5e1', gridColumn: '1 / -1' }}>
+            <Cpu size={44} color="#94a3b8" style={{ marginBottom: '0.75rem' }} />
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1e293b', margin: '0 0 0.5rem 0' }}>No Machines Registered</h3>
+            <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0 0 1.25rem 0' }}>The machinery and printing equipment directory is empty. Add your shop-floor printers, cutters, and presses to get started.</p>
+            <button onClick={openAddModal} className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Plus size={16} /> Add Your First Machine
+            </button>
+          </div>
+        )}
         {filteredMachines.map((mch) => {
           const workload = mch.activeJobCount || getMachineWorkload(mch.name);
           const isRunning = mch.status === 'Running';

@@ -300,7 +300,7 @@ function seedProductionDataIfEmpty() {
 // to guarantee that fresh/reset databases remain empty and newly created data persists permanently.
 // seedInitialDataIfEmpty();
 // seedBiometricDataIfEmpty();
-seedProductionDataIfEmpty();
+// seedProductionDataIfEmpty();
 
 /* ==========================================================================
    REST API ENDPOINTS — PERSISTENT SQLITE OPERATIONAL LAYER
@@ -1945,6 +1945,27 @@ app.post('/api/admin/reset-database', authenticateToken, async (req, res) => {
       db.prepare('DELETE FROM journal_entries').run();
       db.prepare('DELETE FROM journal_vouchers').run();
       db.prepare('DELETE FROM audit_logs').run();
+
+      // Machines & Printing Floor Equipment
+      db.prepare('DELETE FROM machines').run();
+
+      // Biometric Devices & Mappings
+      db.prepare('DELETE FROM biometric_user_mappings').run();
+      db.prepare('DELETE FROM unmapped_biometric_punches').run();
+      db.prepare('DELETE FROM biometric_devices').run();
+
+      // Attendance & Payroll
+      db.prepare('DELETE FROM attendance').run();
+      db.prepare('DELETE FROM payroll').run();
+
+      // Sales Persons & Care of Persons
+      db.prepare('DELETE FROM sales_persons').run();
+      db.prepare('DELETE FROM care_of_persons').run();
+
+      // Employees & Users (Preserve only Admin)
+      db.prepare("DELETE FROM employees WHERE role != 'Admin' AND id != 'EMP-ADM-01'").run();
+      db.prepare("DELETE FROM users WHERE username != 'admin'").run();
+      db.prepare("DELETE FROM employee_process_permissions WHERE user_id NOT IN (SELECT id FROM users)").run();
 
       // Reset Document Number Sequences to 0
       try {

@@ -68,11 +68,11 @@ export const ERPProvider = ({ children }) => {
   const [products, setProducts] = useState(() => []);
   const [productMaterialSpecs, setProductMaterialSpecs] = useState(() => []);
   const [vendors, setVendors] = useState(() => []);
-  const [employees, setEmployees] = useState(() => initialEmployees || []);
-  const [designers, setDesigners] = useState(() => initialDesigners || []);
+  const [employees, setEmployees] = useState(() => []);
+  const [designers, setDesigners] = useState(() => []);
   const [salesPersons, setSalesPersons] = useState(() => []);
   const [careOfPersons, setCareOfPersons] = useState(() => []);
-  const [workers, setWorkers] = useState(() => initialWorkers || []);
+  const [workers, setWorkers] = useState(() => []);
   const [attendanceRecords, setAttendanceRecords] = useState(() => []);
   const [payrollRecords, setPayrollRecords] = useState(() => []);
   const [workerJobIncentives, setWorkerJobIncentives] = useState(() => []);
@@ -82,13 +82,13 @@ export const ERPProvider = ({ children }) => {
   const [outsourceBills, setOutsourceBills] = useState(() => []);
   const [outsourcePayments, setOutsourcePayments] = useState(() => []);
   const [outsourceJobs, setOutsourceJobs] = useState(() => []);
-  const [orderAuditLogs, setOrderAuditLogs] = useState(() => initialOrderAuditLogs || []);
-  const [machines, setMachines] = useState(() => initialMachines || []);
-  const [workflows, setWorkflows] = useState(() => initialWorkflows || []);
+  const [orderAuditLogs, setOrderAuditLogs] = useState(() => []);
+  const [machines, setMachines] = useState(() => []);
+  const [workflows, setWorkflows] = useState(() => []);
   const [wastageRecords, setWastageRecords] = useState([]);
   const [productionProcesses, setProductionProcesses] = useState(() => initialProductionProcesses || []);
-  const [productionTasks, setProductionTasks] = useState(() => initialProductionTasks || []);
-  const [followUps, setFollowUps] = useState(() => initialFollowUps || []);
+  const [productionTasks, setProductionTasks] = useState(() => []);
+  const [followUps, setFollowUps] = useState(() => []);
 
   // Phase 1-5 Production Hardening States (SQLite Authoritative & Live Sync)
   const [expenses, setExpenses] = useState([]);
@@ -140,9 +140,7 @@ export const ERPProvider = ({ children }) => {
     }
   };
 
-  const [biometricDevices, setBiometricDevices] = useState([
-    { id: 'DEV-K90-01', name: 'ZKTeco K90 (Front Office)', model: 'ZKTeco K90 Standalone', ipAddress: '192.168.1.201', port: 4370, location: 'Head Office Gate 1', status: 'Online', lastSyncTime: '2026-08-14 10:30 AM', totalUsers: 6 }
-  ]);
+  const [biometricDevices, setBiometricDevices] = useState(() => []);
 
   const [biometricUsers, setBiometricUsers] = useState([]);
 
@@ -3103,16 +3101,31 @@ export const ERPProvider = ({ children }) => {
       totalHoursRun: machineData.totalHoursRun || 0,
       createdAt: new Date().toISOString()
     };
+    try {
+      await api.createMachine(newMch);
+    } catch (e) {
+      console.warn("api.createMachine fallback:", e.message);
+    }
     setMachines((prev) => [newMch, ...prev.filter(m => m.id !== newId)]);
     return newMch;
   };
 
   const updateMachine = async (id, updatedData) => {
+    try {
+      await api.updateMachine(id, updatedData);
+    } catch (e) {
+      console.warn("api.updateMachine fallback:", e.message);
+    }
     setMachines((prev) => prev.map((m) => (m.id === id ? { ...m, ...updatedData } : m)));
     return true;
   };
 
   const deleteMachine = async (id) => {
+    try {
+      await api.deleteMachine(id);
+    } catch (e) {
+      console.warn("api.deleteMachine fallback:", e.message);
+    }
     setMachines((prev) => prev.filter((m) => m.id !== id));
     return true;
   };
@@ -3748,6 +3761,45 @@ export const ERPProvider = ({ children }) => {
   const resetDatabase = async (confirmationCode = 'RESET ERP') => {
     const res = await api.resetDatabase(confirmationCode);
     if (res && res.success) {
+      setCustomers([]);
+      setSalesOrders([]);
+      setProducts([]);
+      setProductMaterialSpecs([]);
+      setVendors([]);
+      setSalesPersons([]);
+      setCareOfPersons([]);
+      setEmployees([]);
+      setDesigners([]);
+      setWorkers([]);
+      setAttendanceRecords([]);
+      setPayrollRecords([]);
+      setWorkerJobIncentives([]);
+      setInventory([]);
+      setPurchaseOrders([]);
+      setPayments([]);
+      setOutsourceBills([]);
+      setOutsourcePayments([]);
+      setOutsourceJobs([]);
+      setOrderAuditLogs([]);
+      setMachines([]);
+      setWorkflows([]);
+      setWastageRecords([]);
+      setProductionTasks([]);
+      setFollowUps([]);
+      setExpenses([]);
+      setInventoryTransactions([]);
+      setReworkTickets([]);
+      setAuditLogs([]);
+      setDeliveries([]);
+      setBiometricDevices([]);
+      setBiometricUsers([]);
+      try {
+        localStorage.removeItem('stitch_erp_customers');
+        localStorage.removeItem('stitch_erp_products');
+        localStorage.removeItem('stitch_erp_sales_persons');
+        localStorage.removeItem('stitch_erp_care_of_persons');
+        localStorage.removeItem('stitch_erp_order_audit_logs');
+      } catch (e) {}
       await fetchAllERPData();
     }
     return res;

@@ -164,6 +164,16 @@ export const WorkflowsView = () => {
 
       {/* Workflows Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1.25rem' }}>
+        {filteredWorkflows.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '3.5rem 1rem', background: '#fff', borderRadius: '12px', border: '1px dashed #cbd5e1', gridColumn: '1 / -1' }}>
+            <Workflow size={44} color="#94a3b8" style={{ marginBottom: '0.75rem' }} />
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1e293b', margin: '0 0 0.5rem 0' }}>No Workflow Routes Found</h3>
+            <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0 0 1.25rem 0' }}>Define custom multi-stage production routes for your products.</p>
+            <button onClick={openAddModal} className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Plus size={16} /> Create Production Route
+            </button>
+          </div>
+        )}
         {filteredWorkflows.map((wf) => (
           <div
             key={wf.id}
