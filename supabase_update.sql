@@ -216,6 +216,50 @@ CREATE INDEX IF NOT EXISTS idx_task_time_logs ON public.production_task_time_log
 ALTER TABLE public.production_task_time_logs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow public read to production_task_time_logs" ON public.production_task_time_logs FOR SELECT USING (true);
 CREATE POLICY "Allow public write to production_task_time_logs" ON public.production_task_time_logs FOR ALL USING (true);
+-- 12. Product Material Specifications Table
+CREATE TABLE IF NOT EXISTS public.product_material_specifications (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL,
+    spec_name TEXT NOT NULL,
+    material_name TEXT,
+    description TEXT,
+    unit TEXT DEFAULT 'Sq.Ft',
+    gsm NUMERIC DEFAULT 0,
+    thickness TEXT,
+    color TEXT,
+    size TEXT,
+    cost_price NUMERIC DEFAULT 0,
+    selling_price NUMERIC DEFAULT 0,
+    gst_rate NUMERIC DEFAULT 18,
+    hsn_code TEXT DEFAULT '9989',
+    is_default BOOLEAN DEFAULT false,
+    status TEXT DEFAULT 'Active',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT unique_product_spec_name UNIQUE (product_id, spec_name)
+);
+CREATE INDEX IF NOT EXISTS idx_spec_product_id ON public.product_material_specifications(product_id);
+ALTER TABLE public.product_material_specifications ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow authenticated read to product_material_specifications" ON public.product_material_specifications FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated write to product_material_specifications" ON public.product_material_specifications FOR ALL TO authenticated USING (true);
 
-
-
+-- 13. Worker Job Incentives Ledger (0.5% Profit Incentive)
+CREATE TABLE IF NOT EXISTS public.worker_job_incentives (
+    id TEXT PRIMARY KEY,
+    order_id TEXT REFERENCES public.sales_orders(id) ON DELETE CASCADE,
+    item_id TEXT,
+    job_card_id TEXT,
+    worker_id TEXT,
+    worker_name TEXT NOT NULL,
+    role_stage TEXT NOT NULL,
+    job_amount NUMERIC DEFAULT 0,
+    job_profit NUMERIC DEFAULT 0,
+    incentive_pct NUMERIC DEFAULT 0.5,
+    incentive_amount NUMERIC DEFAULT 0,
+    completed_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_worker_incentives_worker ON public.worker_job_incentives(worker_id);
+CREATE INDEX IF NOT EXISTS idx_worker_incentives_order ON public.worker_job_incentives(order_id);
+ALTER TABLE public.worker_job_incentives ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow authenticated read to worker_job_incentives" ON public.worker_job_incentives FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated write to worker_job_incentives" ON public.worker_job_incentives FOR ALL TO authenticated USING (true);

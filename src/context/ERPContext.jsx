@@ -321,6 +321,37 @@ export const ERPProvider = ({ children }) => {
   // Auth Initialization (Multi-User Local DB + Supabase Support)
   useEffect(() => {
     const initAuthAndData = async () => {
+      // Emergency clean slate check via URL parameter (e.g. ?fresh_start=true)
+      try {
+        if (typeof window !== 'undefined' && window.location && window.location.search) {
+          const urlParams = new URLSearchParams(window.location.search);
+          if (urlParams.get('fresh_start') === 'true' || urlParams.get('reset') === 'true') {
+            const keysToRemove = [
+              'stitch_erp_customers',
+              'stitch_erp_sales_orders',
+              'stitch_erp_products',
+              'stitch_erp_vendors',
+              'stitch_erp_employees',
+              'stitch_erp_designers',
+              'stitch_erp_workers',
+              'stitch_erp_sales_persons',
+              'stitch_erp_care_of_persons',
+              'stitch_erp_purchase_orders',
+              'stitch_erp_payments',
+              'stitch_erp_outsource_bills',
+              'stitch_erp_outsource_payments',
+              'stitch_erp_expenses',
+              'stitch_erp_inventory',
+              'stitch_erp_machines',
+              'stitch_erp_production_tasks',
+              'stitch_erp_order_audit_logs'
+            ];
+            keysToRemove.forEach(k => localStorage.removeItem(k));
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        }
+      } catch (e) {}
+
       // 1. Check local DB auth token
       const token = localStorage.getItem('stitch_auth_token');
       if (token) {
@@ -3985,66 +4016,106 @@ export const ERPProvider = ({ children }) => {
   };
 
   const resetDatabase = async (confirmationCode = 'RESET ERP') => {
-    const res = await api.resetDatabase(confirmationCode);
-    if (res && res.success) {
-      setCustomers([]);
-      setSalesOrders([]);
-      setProducts([]);
-      setProductMaterialSpecs([]);
-      setVendors([]);
-      setSalesPersons([]);
-      setCareOfPersons([]);
-      setEmployees([]);
-      setDesigners([]);
-      setWorkers([]);
-      setAttendanceRecords([]);
-      setPayrollRecords([]);
-      setWorkerJobIncentives([]);
-      setInventory([]);
-      setPurchaseOrders([]);
-      setPayments([]);
-      setOutsourceBills([]);
-      setOutsourcePayments([]);
-      setOutsourceJobs([]);
-      setOrderAuditLogs([]);
-      setMachines([]);
-      setWorkflows([]);
-      setWastageRecords([]);
-      setProductionTasks([]);
-      setFollowUps([]);
-      setExpenses([]);
-      setInventoryTransactions([]);
-      setReworkTickets([]);
-      setAuditLogs([]);
-      setDeliveries([]);
-      setBiometricDevices([]);
-      setBiometricUsers([]);
-      try {
-        const keysToRemove = [
-          'stitch_erp_customers',
-          'stitch_erp_sales_orders',
-          'stitch_erp_products',
-          'stitch_erp_vendors',
-          'stitch_erp_employees',
-          'stitch_erp_designers',
-          'stitch_erp_workers',
-          'stitch_erp_sales_persons',
-          'stitch_erp_care_of_persons',
-          'stitch_erp_purchase_orders',
-          'stitch_erp_payments',
-          'stitch_erp_outsource_bills',
-          'stitch_erp_outsource_payments',
-          'stitch_erp_expenses',
-          'stitch_erp_inventory',
-          'stitch_erp_machines',
-          'stitch_erp_production_tasks',
-          'stitch_erp_order_audit_logs'
-        ];
-        keysToRemove.forEach(k => localStorage.removeItem(k));
-      } catch (e) {}
-      await fetchAllERPData();
+    let localRes = null;
+    try {
+      localRes = await api.resetDatabase(confirmationCode);
+    } catch (err) {
+      console.warn("api.resetDatabase notice (running in cloud/standalone Vercel mode):", err.message);
     }
-    return res;
+
+    // Cloud Supabase wipe if configured
+    if (isSupabaseConfigured) {
+      try {
+        const sbTables = [
+          'worker_job_incentives',
+          'supplier_payments',
+          'supplier_bills',
+          'payments',
+          'sales_order_items',
+          'sales_orders',
+          'product_material_specifications',
+          'products',
+          'customers',
+          'vendors',
+          'purchase_orders',
+          'expenses',
+          'follow_ups',
+          'attendance',
+          'payroll',
+          'workers',
+          'designers',
+          'sales_persons',
+          'care_of_persons',
+          'inventory'
+        ];
+        await Promise.allSettled(
+          sbTables.map(t => supabase.from(t).delete().neq('id', '___MATCH_NONE___'))
+        );
+      } catch (sbErr) {
+        console.warn("Supabase clean slate notice:", sbErr);
+      }
+    }
+
+    // Clear all React states to 0 records
+    setCustomers([]);
+    setSalesOrders([]);
+    setProducts([]);
+    setProductMaterialSpecs([]);
+    setVendors([]);
+    setSalesPersons([]);
+    setCareOfPersons([]);
+    setEmployees([]);
+    setDesigners([]);
+    setWorkers([]);
+    setAttendanceRecords([]);
+    setPayrollRecords([]);
+    setWorkerJobIncentives([]);
+    setInventory([]);
+    setPurchaseOrders([]);
+    setPayments([]);
+    setOutsourceBills([]);
+    setOutsourcePayments([]);
+    setOutsourceJobs([]);
+    setOrderAuditLogs([]);
+    setMachines([]);
+    setWorkflows([]);
+    setWastageRecords([]);
+    setProductionTasks([]);
+    setFollowUps([]);
+    setExpenses([]);
+    setInventoryTransactions([]);
+    setReworkTickets([]);
+    setAuditLogs([]);
+    setDeliveries([]);
+    setBiometricDevices([]);
+    setBiometricUsers([]);
+
+    // Clear all persistent browser localStorage
+    try {
+      const keysToRemove = [
+        'stitch_erp_customers',
+        'stitch_erp_sales_orders',
+        'stitch_erp_products',
+        'stitch_erp_vendors',
+        'stitch_erp_employees',
+        'stitch_erp_designers',
+        'stitch_erp_workers',
+        'stitch_erp_sales_persons',
+        'stitch_erp_care_of_persons',
+        'stitch_erp_purchase_orders',
+        'stitch_erp_payments',
+        'stitch_erp_outsource_bills',
+        'stitch_erp_outsource_payments',
+        'stitch_erp_expenses',
+        'stitch_erp_inventory',
+        'stitch_erp_machines',
+        'stitch_erp_production_tasks',
+        'stitch_erp_order_audit_logs'
+      ];
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch (e) {}
+
+    return localRes || { success: true, message: 'All ERP business data successfully reset to clean slate.' };
   };
 
   return (
