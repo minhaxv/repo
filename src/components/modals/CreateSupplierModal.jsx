@@ -2,13 +2,19 @@ import React, { useState } from 'react';
 import { useERP } from '../../context/ERPContext';
 import { Building2, X, Check, Phone, Hash, MapPin, Tag } from 'lucide-react';
 
-export const CreateSupplierModal = ({ isOpen, onClose, onSupplierCreated }) => {
+export const CreateSupplierModal = ({
+  isOpen,
+  onClose,
+  onSupplierCreated,
+  defaultCategory = 'Raw Material Supplier',
+  title = 'Create New Supplier / Vendor'
+}) => {
   const { addVendor, vendors } = useERP();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [formData, setFormData] = useState({
     name: '',
-    category: 'Raw Material Supplier',
+    category: defaultCategory,
     mobile: '',
     gstin: '',
     address: '',
@@ -20,8 +26,12 @@ export const CreateSupplierModal = ({ isOpen, onClose, onSupplierCreated }) => {
     if (isOpen) {
       setErrorMsg('');
       setIsSubmitting(false);
+      setFormData(prev => ({
+        ...prev,
+        category: defaultCategory || prev.category
+      }));
     }
-  }, [isOpen]);
+  }, [isOpen, defaultCategory]);
 
   if (!isOpen) return null;
 
@@ -79,7 +89,7 @@ export const CreateSupplierModal = ({ isOpen, onClose, onSupplierCreated }) => {
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Building2 size={20} color="#2563eb" />
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>Create New Supplier / Vendor</h3>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>{title}</h3>
           </div>
           <button onClick={onClose} className="btn-secondary btn-icon" style={{ border: 'none' }} disabled={isSubmitting}>
             <X size={20} />

@@ -91,16 +91,20 @@ const MainAppContent = () => {
     } else if (tab === 'available-work') {
       canonicalTab = 'employee-tasks';
       setEmployeeTaskParams({ staffTab: 'available', ...params });
-    } else if (tab === 'machines-admin') {
+    } else if (tab === 'machines-admin' || tab === 'production/machines') {
       canonicalTab = 'machines';
-    } else if (tab === 'suppliers') {
+    } else if (tab === 'suppliers' || tab === 'vendors' || tab === 'outsource-vendors' || tab === 'vendor-master') {
       canonicalTab = 'vendors';
       setOutsourceTab('vendors');
     } else if (tab === 'outsource-bills' || tab === 'outsource-jobs' || tab === 'outsource-payments') {
       canonicalTab = 'outsource-jobs';
       setOutsourceTab(tab);
-    } else if (tab === 'materials-master') {
+    } else if (tab === 'materials-master' || tab === 'materials-spec' || tab === 'inventory/materials') {
       canonicalTab = 'materials-spec';
+    } else if (tab === 'processes' || tab === 'production/processes') {
+      canonicalTab = 'workflows';
+    } else if (tab === 'party-statement' || tab === 'customer-statements') {
+      canonicalTab = 'party-statement';
     } else if (tab === 'roles-permissions') {
       canonicalTab = 'user-management';
       setUserTab('roles');
@@ -261,8 +265,8 @@ const MainAppContent = () => {
                 onNavigate={handleNavigate}
               />
             )}
-            {(activeTab === 'vendors' || activeTab === 'outsource-jobs' || activeTab === 'outsource-bills') && (
-              <OutsourceVendorsView initialTab={outsourceTab || activeTab} onNavigate={handleNavigate} />
+            {(activeTab === 'vendors' || activeTab === 'suppliers' || activeTab === 'outsource-jobs' || activeTab === 'outsource-bills') && (
+              <OutsourceVendorsView initialTab={outsourceTab || (activeTab === 'suppliers' ? 'vendors' : activeTab)} onNavigate={handleNavigate} />
             )}
             {activeTab === 'payments' && <PaymentsView />}
             {activeTab === 'purchase' && <PurchaseView />}

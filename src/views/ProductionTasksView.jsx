@@ -54,10 +54,6 @@ export const ProductionTasksView = ({ onNavigate = null, initialStaffTab = 'my_w
     createProductionTask,
     updateProductionTask,
     executeTaskAction,
-    deleteProductionTask,
-    addProductionProcess,
-    updateProductionProcess,
-    deleteProductionProcess,
     activeUser,
     takeProductionTask,
     takeJobOrderItem,
@@ -265,18 +261,6 @@ export const ProductionTasksView = ({ onNavigate = null, initialStaffTab = 'my_w
   const [reworkPromptTask, setReworkPromptTask] = useState(null);
   const [reworkReason, setReworkReason] = useState('');
   const [reworkQtyInput, setReworkQtyInput] = useState('');
-
-  // Process Master Form state
-  const [isProcessModalOpen, setIsProcessModalOpen] = useState(false);
-  const [editingProcess, setEditingProcess] = useState(null);
-  const [processForm, setProcessForm] = useState({
-    name: '',
-    department: 'Finishing',
-    defaultRate: 0,
-    unit: 'Nos',
-    description: '',
-    isActive: true
-  });
 
   // Format minutes to string e.g. "1h 45m" or "35m"
   const formatDuration = (mins) => {
@@ -535,46 +519,6 @@ export const ProductionTasksView = ({ onNavigate = null, initialStaffTab = 'my_w
     });
 
     setIsAssignModalOpen(false);
-  };
-
-  // Process master add/edit submit
-  const handleProcessSubmit = async (e) => {
-    e.preventDefault();
-    if (!processForm.name) return;
-
-    if (editingProcess) {
-      await updateProductionProcess(editingProcess.id, processForm);
-    } else {
-      await addProductionProcess(processForm);
-    }
-    setIsProcessModalOpen(false);
-    setEditingProcess(null);
-  };
-
-  const openAddProcessModal = () => {
-    setEditingProcess(null);
-    setProcessForm({
-      name: '',
-      department: 'Finishing',
-      defaultRate: 0,
-      unit: 'Nos',
-      description: '',
-      isActive: true
-    });
-    setIsProcessModalOpen(true);
-  };
-
-  const openEditProcessModal = (proc) => {
-    setEditingProcess(proc);
-    setProcessForm({
-      name: proc.name,
-      department: proc.department || 'Finishing',
-      defaultRate: proc.defaultRate || 0,
-      unit: proc.unit || 'Nos',
-      description: proc.description || '',
-      isActive: proc.isActive !== false
-    });
-    setIsProcessModalOpen(true);
   };
 
   // KPI Calculations
@@ -1177,6 +1121,16 @@ export const ProductionTasksView = ({ onNavigate = null, initialStaffTab = 'my_w
 
           <button
             type="button"
+            onClick={() => onNavigate && onNavigate('workflows')}
+            className="btn btn-secondary btn-sm"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 700, padding: '0.55rem 1rem' }}
+            title="Configure Workflows & Standard Processes in Master Data"
+          >
+            <Settings size={16} color="#64748b" /> Workflows Master ↗
+          </button>
+
+          <button
+            type="button"
             onClick={() => openAssignModal()}
             className="btn btn-primary btn-sm"
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700, padding: '0.55rem 1rem' }}
@@ -1192,8 +1146,7 @@ export const ProductionTasksView = ({ onNavigate = null, initialStaffTab = 'my_w
           { id: 'board', label: 'Task Kanban Board', icon: Layers, count: inProgressCount + pausedCount },
           { id: 'list', label: 'Task List View', icon: List, count: filteredTasks.length },
           { id: 'available_items', label: 'Take Job Items (Available)', icon: PackageCheck, count: totalAvailableItemsCount },
-          { id: 'workload', label: 'Employee Workload & Capacity', icon: User, count: employees.length },
-          { id: 'processes', label: 'Process Master Directory', icon: Settings, count: (productionProcesses || []).length }
+          { id: 'workload', label: 'Employee Workload & Capacity', icon: User, count: employees.length }
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -2949,123 +2902,6 @@ export const ProductionTasksView = ({ onNavigate = null, initialStaffTab = 'my_w
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* SUB-TAB 3: PROCESS MASTER DIRECTORY */}
-      {/* ========================================================================= */}
-      {activeTab === 'processes' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-            <div>
-              <h4 style={{ margin: 0, fontWeight: 800, fontSize: '1.05rem', color: '#0f172a' }}>
-                Standard Process Master Directory
-              </h4>
-              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                Preconfigured printing & finishing operations available for employee assignment across all job cards.
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={openAddProcessModal}
-              className="btn btn-primary btn-sm"
-              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}
-            >
-              <Plus size={15} /> Add New Process
-            </button>
-          </div>
-
-          <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden', background: '#ffffff' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', color: '#475569', textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>PROCESS NAME</th>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>DEPARTMENT / CATEGORY</th>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>DESCRIPTION & SPEC</th>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>DEFAULT COST RATE</th>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>STATUS</th>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 800, textAlign: 'right' }}>ACTIONS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(productionProcesses || []).map((proc) => (
-                  <tr key={proc.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '0.75rem 1rem', fontWeight: 800, color: '#0f172a' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <div
-                          style={{
-                            width: '8px',
-                            height: '8px',
-                            borderRadius: '50%',
-                            background: proc.isActive !== false ? '#16a34a' : '#94a3b8'
-                          }}
-                        />
-                        {proc.name}
-                      </div>
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem' }}>
-                      <span
-                        style={{
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          padding: '0.15rem 0.5rem',
-                          borderRadius: '4px',
-                          background: '#f1f5f9',
-                          color: '#475569'
-                        }}
-                      >
-                        {proc.department || 'Production'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', color: '#64748b' }}>
-                      {proc.description || 'Standard print shop process'}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#0f172a' }}>
-                      {proc.defaultRate ? `${formatINR(proc.defaultRate)} / ${proc.unit || 'Unit'}` : 'N/A'}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem' }}>
-                      <span
-                        style={{
-                          fontSize: '0.72rem',
-                          fontWeight: 800,
-                          padding: '0.15rem 0.5rem',
-                          borderRadius: '12px',
-                          background: proc.isActive !== false ? '#dcfce7' : '#f1f5f9',
-                          color: proc.isActive !== false ? '#15803d' : '#64748b'
-                        }}
-                      >
-                        {proc.isActive !== false ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.35rem' }}>
-                        <button
-                          type="button"
-                          onClick={() => openEditProcessModal(proc)}
-                          className="btn btn-sm"
-                          style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '0.3rem 0.5rem', borderRadius: '4px' }}
-                        >
-                          <Edit size={12} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (window.confirm(`Delete process ${proc.name}?`)) {
-                              deleteProductionProcess(proc.id);
-                            }
-                          }}
-                          className="btn btn-sm"
-                          style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '0.3rem 0.5rem', borderRadius: '4px' }}
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
       </>)}
 
       {/* ========================================================================= */}
@@ -3477,128 +3313,7 @@ export const ProductionTasksView = ({ onNavigate = null, initialStaffTab = 'my_w
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* PROCESS MASTER ADD/EDIT MODAL */}
-      {/* ========================================================================= */}
-      {isProcessModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsProcessModalOpen(false)} style={{ zIndex: 99999 }}>
-          <div
-            className="modal-content"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '500px', width: '95vw', padding: '1.5rem' }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Settings size={20} color="#2563eb" />
-                <h4 style={{ margin: 0, fontWeight: 800, fontSize: '1.05rem', color: '#0f172a' }}>
-                  {editingProcess ? 'Edit Production Process' : 'Add New Production Process'}
-                </h4>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsProcessModalOpen(false)}
-                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
-              >
-                <X size={18} />
-              </button>
-            </div>
 
-            <form onSubmit={handleProcessSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                  Process Name <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  className="form-control"
-                  placeholder="e.g., Seal Making, Scoring, Eyeletting"
-                  value={processForm.name}
-                  onChange={(e) => setProcessForm({ ...processForm, name: e.target.value })}
-                  required
-                  style={{ width: '100%', padding: '0.5rem 0.75rem', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                    Department
-                  </label>
-                  <select
-                    className="form-control"
-                    value={processForm.department}
-                    onChange={(e) => setProcessForm({ ...processForm, department: e.target.value })}
-                    style={{ width: '100%', padding: '0.5rem 0.75rem', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                  >
-                    <option value="Pre-Press">Pre-Press</option>
-                    <option value="Printing">Printing</option>
-                    <option value="Finishing">Finishing</option>
-                    <option value="Fabrication">Fabrication</option>
-                    <option value="Post-Press">Post-Press</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                    Default Rate (INR)
-                  </label>
-                  <input
-                    type="number"
-                    className="form-control"
-                    placeholder="0"
-                    value={processForm.defaultRate}
-                    onChange={(e) => setProcessForm({ ...processForm, defaultRate: Number(e.target.value) })}
-                    style={{ width: '100%', padding: '0.5rem 0.75rem', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                  Description / Instructions
-                </label>
-                <textarea
-                  className="form-control"
-                  rows={2}
-                  placeholder="Standard instructions for this process"
-                  value={processForm.description}
-                  onChange={(e) => setProcessForm({ ...processForm, description: e.target.value })}
-                  style={{ width: '100%', padding: '0.5rem 0.75rem', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <input
-                  type="checkbox"
-                  id="procActive"
-                  checked={processForm.isActive}
-                  onChange={(e) => setProcessForm({ ...processForm, isActive: e.target.checked })}
-                />
-                <label htmlFor="procActive" style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', cursor: 'pointer' }}>
-                  Active Process (Visible in assignment lists)
-                </label>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
-                <button
-                  type="button"
-                  onClick={() => setIsProcessModalOpen(false)}
-                  className="btn btn-secondary btn-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary btn-sm"
-                  style={{ fontWeight: 700, padding: '0.5rem 1.25rem' }}
-                >
-                  {editingProcess ? 'Update Process' : 'Save Process'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* ========================================================================= */}
       {/* REASSIGN TASK MODAL (ADMIN / MANAGER) */}
