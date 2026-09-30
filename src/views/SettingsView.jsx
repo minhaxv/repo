@@ -560,6 +560,59 @@ export const SettingsView = ({ initialTab = 'profile' }) => {
           </div>
         </div>
 
+        {/* Bill & Invoice Print Formatting Card */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">
+              <FileText size={18} color="#059669" /> Bill & Invoice Print Formatting
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', padding: '0.5rem 0' }}>
+            <div className="form-group">
+              <label className="form-label">Default Bill Format Template</label>
+              <select
+                className="form-control"
+                value={profileForm?.defaultBillFormat || 'standard_a4'}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setProfileForm(prev => ({ ...prev, defaultBillFormat: val }));
+                  localStorage.setItem('stitch_bill_format', val);
+                }}
+                style={{ fontWeight: 700 }}
+              >
+                <option value="standard_a4">Standard GST Invoice (A4 Detailed)</option>
+                <option value="modern_a4">Modern Sleek Invoice (A4 Corporate)</option>
+                <option value="thermal_80mm">80mm Thermal POS Receipt (Roll)</option>
+                <option value="delivery_challan">Delivery Challan & Dispatch Slip</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Invoice Number Prefix</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="e.g. INV-, BILL-, TAX-"
+                value={profileForm?.invoicePrefix || 'INV-'}
+                onChange={(e) => setProfileForm(prev => ({ ...prev, invoicePrefix: e.target.value }))}
+                style={{ fontFamily: 'monospace', fontWeight: 700 }}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Invoice Footer Thank-You Note</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="e.g. Thank you for your business!"
+                value={profileForm?.invoiceFooterNote || ''}
+                onChange={(e) => setProfileForm(prev => ({ ...prev, invoiceFooterNote: e.target.value }))}
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Navigation & Sidebar Preferences Card */}
         <div className="card">
           <div className="card-header">
