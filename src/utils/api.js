@@ -672,6 +672,34 @@ export const api = {
     return await res.json();
   },
 
+  // Employees Master API
+  async createEmployee(empData) {
+    const res = await fetch(`${API_BASE}/employees`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(empData)
+    });
+    if (!res.ok) throw new Error('Failed to create employee on server');
+    return await res.json();
+  },
+  async updateEmployee(id, empData) {
+    const res = await fetch(`${API_BASE}/employees/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(empData)
+    });
+    if (!res.ok) throw new Error('Failed to update employee on server');
+    return await res.json();
+  },
+  async deleteEmployee(id) {
+    const res = await fetch(`${API_BASE}/employees/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to delete employee on server');
+    return await res.json();
+  },
+
   // Admin User Control & Permissions API
   async fetchUsers() {
     const res = await fetch(`${API_BASE}/users`, { headers: getHeaders() });

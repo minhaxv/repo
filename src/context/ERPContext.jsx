@@ -148,7 +148,7 @@ export const ERPProvider = ({ children }) => {
   const [inventoryTransactions, setInventoryTransactions] = useState(() => loadStorage('inventory_transactions', []));
   const [reworkTickets, setReworkTickets] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
-  const [usersList, setUsersList] = useState([]);
+  const [usersList, setUsersList] = useState(() => loadStorage('users_list', []));
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [deliveries, setDeliveries] = useState([]);
   const [reconciliationData, setReconciliationData] = useState([]);
@@ -1326,6 +1326,12 @@ export const ERPProvider = ({ children }) => {
       console.warn("Supabase employees insert exception:", err);
     }
 
+    try {
+      await api.createEmployee(uiEmp);
+    } catch (err) {
+      console.warn("api.createEmployee warning:", err);
+    }
+
     setEmployees((prev) => {
       const updated = [uiEmp, ...prev.filter(e => e.id !== uiEmp.id)];
       try { localStorage.setItem('stitch_erp_employees', JSON.stringify(updated)); } catch (e) {}
@@ -1352,6 +1358,12 @@ export const ERPProvider = ({ children }) => {
       console.warn("Supabase employees update exception:", err);
     }
 
+    try {
+      await api.updateEmployee(id, updatedData);
+    } catch (err) {
+      console.warn("api.updateEmployee warning:", err);
+    }
+
     setEmployees((prev) => {
       const updated = prev.map((e) => (e.id === id ? { ...e, ...updatedData } : e));
       try { localStorage.setItem('stitch_erp_employees', JSON.stringify(updated)); } catch (e) {}
@@ -1369,6 +1381,13 @@ export const ERPProvider = ({ children }) => {
     } catch (err) {
       console.warn("Supabase employees delete exception:", err);
     }
+
+    try {
+      await api.deleteEmployee(id);
+    } catch (err) {
+      console.warn("api.deleteEmployee warning:", err);
+    }
+
     setEmployees((prev) => {
       const updated = prev.filter((e) => e.id !== id);
       try { localStorage.setItem('stitch_erp_employees', JSON.stringify(updated)); } catch (e) {}
@@ -4323,6 +4342,7 @@ export const ERPProvider = ({ children }) => {
         addReworkTicket,
         auditLogs,
         usersList,
+        setUsersList,
         realtimeConnected,
         commitPayroll,
         loginWithCredentials,

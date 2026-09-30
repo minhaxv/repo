@@ -5451,6 +5451,100 @@ app.get('/api/users', authenticateToken, requireRole(['Admin', 'Management']), (
   }
 });
 
+// EMPLOYEES MASTER CRUD API
+app.get('/api/employees', (req, res) => {
+  try {
+    const employees = db.prepare('SELECT * FROM employees ORDER BY name ASC').all();
+    res.json({ success: true, employees });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/employees', (req, res) => {
+  try {
+    const emp = req.body;
+    if (!emp.name) return res.status(400).json({ success: false, error: 'Employee name is required' });
+    const empId = emp.id || `EMP-${Date.now()}`;
+    const empCode = emp.code || empId;
+    db.prepare(`
+      INSERT OR REPLACE INTO employees (
+        id, code, name, role, department, mobile, email, base_salary,
+        incentive_rate, commission_rate, joined_date, designation, status, allowed_processes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      empId,
+      empCode,
+      emp.name,
+      emp.role || 'Staff',
+      emp.department || 'Production',
+      emp.mobile || '',
+      emp.email || '',
+      Number(emp.basicSalary || emp.baseSalary || emp.basic_salary || 0),
+      Number(emp.incentiveRate || emp.incentive_rate || 0),
+      Number(emp.commissionRate || emp.commission_rate || 0),
+      emp.joiningDate || emp.joined_date || new Date().toISOString().split('T')[0],
+      emp.designation || emp.role || 'Staff',
+      emp.status || 'Active',
+      JSON.stringify(emp.allowedProcesses || [])
+    );
+    const created = db.prepare('SELECT * FROM employees WHERE id = ?').get(empId);
+    res.json({ success: true, employee: created });
+  } catch (err) {
+    console.error("POST /api/employees error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/employees/:id', (req, res) => {
+  try {
+    const emp = req.body;
+    const empId = req.params.id;
+    db.prepare(`
+      UPDATE employees SET
+        name = COALESCE(?, name),
+        role = COALESCE(?, role),
+        department = COALESCE(?, department),
+        mobile = COALESCE(?, mobile),
+        email = COALESCE(?, email),
+        base_salary = COALESCE(?, base_salary),
+        incentive_rate = COALESCE(?, incentive_rate),
+        commission_rate = COALESCE(?, commission_rate),
+        designation = COALESCE(?, designation),
+        status = COALESCE(?, status)
+      WHERE id = ?
+    `).run(
+      emp.name || null,
+      emp.role || null,
+      emp.department || null,
+      emp.mobile || null,
+      emp.email || null,
+      emp.basicSalary !== undefined ? Number(emp.basicSalary) : null,
+      emp.incentiveRate !== undefined ? Number(emp.incentiveRate) : null,
+      emp.commissionRate !== undefined ? Number(emp.commissionRate) : null,
+      emp.designation || null,
+      emp.status || null,
+      empId
+    );
+    const updated = db.prepare('SELECT * FROM employees WHERE id = ?').get(empId);
+    res.json({ success: true, employee: updated });
+  } catch (err) {
+    console.error("PUT /api/employees error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/employees/:id', (req, res) => {
+  try {
+    const empId = req.params.id;
+    db.prepare('DELETE FROM employees WHERE id = ?').run(empId);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("DELETE /api/employees error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 18B. GET Employee User Control Matrix (Employee list + accounts + effective access)
 app.get('/api/users/control-matrix', authenticateToken, requireRole(['Admin', 'Management']), (req, res) => {
   try {
@@ -5558,10 +5652,24 @@ app.post('/api/users/create', authenticateToken, requireRole(['Admin']), (req, r
       return res.status(400).json({ success: false, error: 'Employee, username, and password are required' });
     }
 
-    // 1. Verify employee exists in authoritative database
-    const employee = db.prepare('SELECT * FROM employees WHERE id = ?').get(employeeId);
+    // 1. Verify or auto-register employee in authoritative database
+    let employee = db.prepare('SELECT * FROM employees WHERE id = ?').get(employeeId);
     if (!employee) {
-      return res.status(404).json({ success: false, error: 'Selected employee does not exist in the database' });
+      db.prepare(`
+        INSERT OR IGNORE INTO employees (id, code, name, role, department, designation, status)
+        VALUES (?, ?, ?, ?, ?, ?, 'Active')
+      `).run(
+        employeeId,
+        req.body.employeeCode || employeeId,
+        req.body.name || req.body.employeeName || username,
+        role,
+        req.body.department || 'Production',
+        designation || role
+      );
+      employee = db.prepare('SELECT * FROM employees WHERE id = ?').get(employeeId);
+    }
+    if (!employee) {
+      return res.status(404).json({ success: false, error: 'Selected employee could not be resolved in the database' });
     }
 
     // 2. Prevent duplicate user account for same employee
