@@ -5970,10 +5970,12 @@ app.get('/api/permissions', authenticateToken, requireRole(['Admin', 'Management
 app.get('/api/audit-logs/permissions', authenticateToken, requireRole(['Admin', 'Management']), (req, res) => {
   try {
     const logs = db.prepare(`
-      SELECT * FROM audit_logs
+      SELECT id, user_id, employee_id, employee_name, role, action, module, record_id, record_number, details,
+             created_at, created_at as timestamp
+      FROM audit_logs
       WHERE action IN ('PERMISSION_CHANGED', 'CHANGE_USER_STATUS', 'CREATE_USER')
          OR module = 'Admin'
-      ORDER BY timestamp DESC
+      ORDER BY created_at DESC
       LIMIT 100
     `).all();
     res.json({ success: true, logs });
