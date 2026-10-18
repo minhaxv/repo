@@ -96,7 +96,7 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
     code: '',
     department: 'Production',
     designation: 'Machine Operator',
-    basicSalary: 25000,
+    basicSalary: '',
     mobile: '',
     email: ''
   });
@@ -458,18 +458,18 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
 
   // Compute Live Payroll for month
   const computedPayroll = activeEmployees.map((emp) => {
-    const baseSalary = Number(emp.basicSalary) || 25000;
+    const baseSalary = Number(emp.basicSalary) || 0;
     const hra = Math.round(baseSalary * 0.4); // 40% HRA
     const da = Math.round(baseSalary * 0.1);  // 10% DA
-    const allowances = 3000;
+    const allowances = Number(emp.allowances) || 0;
 
     // OT Hours calculation for selected month
     const empAtt = (attendanceRecords || []).filter((a) => a.staffId === emp.id && a.date?.startsWith(selectedMonth));
-    const daysPresent = empAtt.length > 0 ? empAtt.filter((a) => a.status === 'Present' || a.status === 'Overtime').length : 24;
+    const daysPresent = empAtt.length > 0 ? empAtt.filter((a) => a.status === 'Present' || a.status === 'Overtime').length : 26;
     const totalOt = empAtt.reduce((sum, a) => sum + (parseFloat(a.otHours) || 0), 0);
     const otPay = totalOt * 150; // ₹150 / hr
 
-    // Commissions & 0.5% Job Profit Incentives
+    // Commissions & 0.5% Job Profit Incentives from actual completed jobs
     const workerIncentiveSum = (workerJobIncentives || [])
       .filter((inc) => inc.workerId === emp.id || inc.workerName === emp.name)
       .reduce((sum, inc) => sum + (Number(inc.incentiveAmount) || 0), 0);
@@ -482,10 +482,6 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
         .reduce((sum, o) => sum + (Number(o.grandTotal) || 0), 0);
       const salesComm = Math.round((sales * (emp.commissionRate || 3.5)) / 100);
       incentiveEarned += salesComm;
-    } else if (incentiveEarned <= 0) {
-      if (emp.department === 'Design') incentiveEarned = 1500;
-      else if (emp.department === 'Printing' || emp.department === 'Production') incentiveEarned = 1750;
-      else if (emp.department === 'Logistics & Delivery') incentiveEarned = 1200;
     }
 
     const grossSalary = baseSalary + hra + da + allowances + otPay + incentiveEarned;
@@ -1001,7 +997,7 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
                         <div style={{ display: 'flex', gap: '1.5rem', textAlign: 'right' }}>
                           <div>
                             <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Basic Salary</span>
-                            <div style={{ fontSize: '1rem', fontWeight: 800, color: '#15803d' }}>₹{Number(targetEmp.basicSalary || 25000).toLocaleString('en-IN')}</div>
+                            <div style={{ fontSize: '1rem', fontWeight: 800, color: '#15803d' }}>₹{Number(targetEmp.basicSalary || 0).toLocaleString('en-IN')}</div>
                           </div>
                           <div>
                             <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Joining Date</span>
@@ -1590,7 +1586,7 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
                       <td>
                         <span className="badge badge-sky">{emp.employmentType || 'Permanent'}</span>
                       </td>
-                      <td style={{ fontWeight: 800, color: '#0f172a' }}>₹{Number(emp.basicSalary || 25000).toLocaleString()}/mo</td>
+                      <td style={{ fontWeight: 800, color: '#0f172a' }}>₹{Number(emp.basicSalary || 0).toLocaleString()}/mo</td>
                       <td style={{ fontSize: '0.75rem', color: '#475569' }}>
                         <div><strong>Bank:</strong> {emp.bankName || 'HDFC Bank'}</div>
                         <div><strong>A/C:</strong> {emp.accountNo || '5010023456789'}</div>
@@ -1812,7 +1808,7 @@ export const HRManagementView = ({ initialTab = 'attendance' }) => {
                                         code: `EMP-${u.biometricUserId}`,
                                         department: 'Production',
                                         designation: 'Machine Operator',
-                                        basicSalary: 25000,
+                                        basicSalary: '',
                                         mobile: '',
                                         email: ''
                                       });

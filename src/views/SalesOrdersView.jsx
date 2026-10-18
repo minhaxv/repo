@@ -52,6 +52,8 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
     customers,
     products,
     productMaterialSpecs,
+    productPricingSlabs,
+    getProductSlabInfo,
     employees,
     salesPersons,
     careOfPersons,
@@ -1337,7 +1339,10 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                       (s) => s.productId === item.productId || (s.productName && s.productName === item.productName)
                     );
                     const isCustomItem = item.isCustom || (item.productName && item.productName.includes('Custom'));
-                    const activeSpec = productSpecs.find((s) => s.id === item.specId || (s.specName && item.material === s.specName)) || productSpecs.find((s) => s.isDefault) || productSpecs[0];
+                    const activeSpec = item.specId ? productSpecs.find((s) => s.id === item.specId) : null;
+                    const baseProduct = (products || []).find((p) => p.id === item.productId);
+                    const baseProductRate = baseProduct?.defaultRate ?? baseProduct?.sellingPrice ?? baseProduct?.selling_price ?? 0;
+                    const baseProductUnit = baseProduct?.unit || 'Pcs';
 
                     return (
                       <tr key={item.id || idx}>
@@ -1368,11 +1373,45 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                                 return;
                               }
                               const pSpecs = (productMaterialSpecs || []).filter((s) => s.productId === p.id && s.status !== 'Inactive');
-                              const defSpec = pSpecs.find((s) => s.isDefault) || pSpecs[0];
+                              const defSpec = (pSpecs || []).find((s) => s.isDefault) || pSpecs[0] || null;
                               const defaultCost = defSpec ? defSpec.costPrice : (p?.estimatedCost ?? p?.estimated_cost ?? items[idx]?.estimatedCost ?? 0);
+
+                              // Auto-select outsource vendor if specification or product has an outsource vendor assigned
+                              const hasOutsourceVendor = Boolean(
+                                (defSpec && (defSpec.isOutsource || defSpec.is_outsource || defSpec.defaultVendor || defSpec.defaultVendorId)) ||
+                                p?.defaultVendor || p?.defaultVendorId || p?.isOutsource || p?.is_outsource
+                              );
+                              let matchedVendor = null;
+                              if (hasOutsourceVendor) {
+                                const targetVendorId = (defSpec && (defSpec.defaultVendorId || defSpec.default_vendor_id)) || p?.defaultVendorId;
+                                const targetVendorName = (defSpec && (defSpec.defaultVendor || defSpec.default_vendor)) || p?.defaultVendor;
+                                matchedVendor = (vendors || []).find((v) =>
+                                  (targetVendorId && v.id === targetVendorId) ||
+                                  (targetVendorName && (v.id === targetVendorName || (v.name && v.name.toLowerCase() === targetVendorName.toLowerCase())))
+                                ) || (vendors && vendors.length > 0 ? vendors[0] : null);
+                              }
+
+                              const isOutsource = Boolean(matchedVendor);
+                              const vendorId = matchedVendor ? matchedVendor.id : (items[idx]?.vendorId || '');
+                              const vendorName = matchedVendor ? matchedVendor.name : (items[idx]?.vendorName || '');
+                              const outsourceJobs = matchedVendor ? [{
+                                id: 1,
+                                vendorId: matchedVendor.id,
+                                vendorName: matchedVendor.name,
+                                processName: 'Printing / Job Work',
+                                estCost: defaultCost || 0,
+                                notes: defSpec?.defaultVendor
+                                  ? `Auto-assigned vendor from specification (${defSpec.specName} → ${matchedVendor.name})`
+                                  : `Auto-assigned vendor from product master (${matchedVendor.name})`
+                              }] : (isOutsource ? items[idx]?.outsourceJobs || [] : []);
 
                               const newItems = [...items];
                               const isCustom = p?.isCustom || (p.name || '').includes('Custom');
+                              const currentQty = Number(newItems[idx].qty) || 1;
+                              const slabInfo = getProductSlabInfo ? getProductSlabInfo(p.id, currentQty, defSpec?.id || null) : null;
+                              const baseProdRate = p?.defaultRate ?? p?.sellingPrice ?? p?.selling_price ?? newItems[idx].sellingRate ?? '';
+                              const resolvedRate = slabInfo ? slabInfo.rate : (defSpec ? defSpec.sellingPrice : baseProdRate);
+
                               newItems[idx] = {
                                 ...newItems[idx],
                                 productName: p.name,
@@ -1380,14 +1419,20 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                                 isCustom: isCustom,
                                 specId: defSpec?.id || '',
                                 specName: defSpec?.specName || '',
-                                sellingRate: defSpec ? defSpec.sellingPrice : (p?.defaultRate ?? p?.sellingPrice ?? p?.selling_price ?? newItems[idx].sellingRate ?? ''),
+                                sellingRate: resolvedRate,
+                                appliedSlab: slabInfo,
+                                isRateOverridden: false,
                                 estimatedCost: defaultCost,
                                 internalEstOutsourceCost: defaultCost,
                                 unit: defSpec ? defSpec.unit : (p?.unit || newItems[idx].unit || 'Pcs'),
                                 material: defSpec ? (defSpec.materialName || defSpec.specName) : (p?.defaultMaterial || newItems[idx].material || ''),
                                 description: defSpec ? (defSpec.description || defSpec.specName) : (newItems[idx].description || p?.description || ''),
                                 gstRate: defSpec ? defSpec.gstRate : (p?.gstRate || newItems[idx].gstRate || 18),
-                                hsnCode: defSpec ? defSpec.hsnCode : (p?.hsnCode || '9989')
+                                hsnCode: defSpec ? defSpec.hsnCode : (p?.hsnCode || '9989'),
+                                outsource: isOutsource,
+                                vendorId: vendorId,
+                                vendorName: vendorName,
+                                outsourceJobs: outsourceJobs
                               };
                               setItems(newItems);
                             }}
@@ -1400,31 +1445,116 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                             <select
                               className="form-select form-select-sm"
                               style={{ marginTop: '4px', background: '#eff6ff', borderColor: '#93c5fd', fontWeight: 700, color: '#1e40af' }}
-                              value={activeSpec?.id || ''}
+                              value={item.specId || ''}
                               onChange={(e) => {
-                                const selectedSpec = productSpecs.find((s) => s.id === e.target.value);
-                                if (selectedSpec) {
-                                  const newItems = [...items];
+                                const selectedSpecId = e.target.value;
+                                const newItems = [...items];
+                                const currentQty = Number(newItems[idx].qty) || 1;
+                                const prod = (products || []).find((p) => p.id === item.productId);
+
+                                if (!selectedSpecId) {
+                                  // User chose Normal / Standard Product Rate
+                                  const bRate = prod?.defaultRate ?? prod?.sellingPrice ?? prod?.selling_price ?? 0;
+                                  const bCost = prod?.estimatedCost ?? prod?.estimated_cost ?? 0;
+                                  const slab = getProductSlabInfo ? getProductSlabInfo(item.productId, currentQty, null) : null;
+                                  const isProdOutsource = Boolean(prod?.isOutsource || prod?.is_outsource || prod?.defaultVendor || prod?.defaultVendorId);
+                                  const prodVendorId = prod?.defaultVendorId || prod?.default_vendor_id || '';
+                                  const prodVendorName = prod?.defaultVendor || prod?.default_vendor || '';
+
                                   newItems[idx] = {
                                     ...newItems[idx],
-                                    specId: selectedSpec.id,
-                                    specName: selectedSpec.specName,
-                                    sellingRate: selectedSpec.sellingPrice,
-                                    estimatedCost: selectedSpec.costPrice,
-                                    internalEstOutsourceCost: selectedSpec.costPrice,
-                                    unit: selectedSpec.unit,
-                                    material: selectedSpec.materialName || selectedSpec.specName,
-                                    description: selectedSpec.description || selectedSpec.specName,
-                                    gstRate: selectedSpec.gstRate,
-                                    hsnCode: selectedSpec.hsnCode
+                                    specId: '',
+                                    specName: '',
+                                    unit: prod?.unit || 'Pcs',
+                                    material: prod?.defaultMaterial || '',
+                                    description: prod?.description || newItems[idx].description || '',
+                                    sellingRate: slab ? slab.rate : bRate,
+                                    appliedSlab: slab,
+                                    isRateOverridden: false,
+                                    estimatedCost: bCost,
+                                    internalEstOutsourceCost: bCost,
+                                    gstRate: prod?.gstRate || 18,
+                                    hsnCode: prod?.hsnCode || '9989',
+                                    outsource: isProdOutsource,
+                                    vendorId: isProdOutsource ? prodVendorId : '',
+                                    vendorName: isProdOutsource ? prodVendorName : '',
+                                    outsourceJobs: isProdOutsource ? [
+                                      {
+                                        id: `OJ-${Date.now()}-1`,
+                                        jobType: 'Outsource Production',
+                                        vendorId: prodVendorId,
+                                        vendorName: prodVendorName,
+                                        estCost: bCost * currentQty,
+                                        notes: `Auto-assigned vendor from product ${prod?.name}`
+                                      }
+                                    ] : []
                                   };
-                                  setItems(newItems);
+                                } else {
+                                  // User chose a specific material specification
+                                  const selectedSpec = productSpecs.find((s) => s.id === selectedSpecId);
+                                  if (selectedSpec) {
+                                    const slab = getProductSlabInfo ? getProductSlabInfo(item.productId, currentQty, selectedSpec.id) : null;
+                                    const isSpecOutsource = Boolean(
+                                      selectedSpec.isOutsource ||
+                                      selectedSpec.is_outsource ||
+                                      selectedSpec.defaultVendorId ||
+                                      selectedSpec.default_vendor_id ||
+                                      selectedSpec.defaultVendor ||
+                                      selectedSpec.default_vendor
+                                    );
+                                    const specVendorId = selectedSpec.defaultVendorId || selectedSpec.default_vendor_id || '';
+                                    const specVendorName = selectedSpec.defaultVendor || selectedSpec.default_vendor || '';
+
+                                    const isProdOutsource = Boolean(prod?.isOutsource || prod?.is_outsource || prod?.defaultVendor || prod?.defaultVendorId);
+                                    const prodVendorId = prod?.defaultVendorId || prod?.default_vendor_id || '';
+                                    const prodVendorName = prod?.defaultVendor || prod?.default_vendor || '';
+
+                                    const willOutsource = isSpecOutsource || isProdOutsource;
+                                    const assignedVendorId = specVendorId || prodVendorId;
+                                    const assignedVendorName = specVendorName || prodVendorName;
+
+                                    newItems[idx] = {
+                                      ...newItems[idx],
+                                      specId: selectedSpec.id,
+                                      specName: selectedSpec.specName,
+                                      unit: selectedSpec.unit,
+                                      material: selectedSpec.materialName || selectedSpec.specName,
+                                      description: selectedSpec.description || selectedSpec.specName,
+                                      sellingRate: slab ? slab.rate : selectedSpec.sellingPrice,
+                                      appliedSlab: slab,
+                                      isRateOverridden: false,
+                                      estimatedCost: selectedSpec.costPrice,
+                                      internalEstOutsourceCost: selectedSpec.costPrice,
+                                      gstRate: selectedSpec.gstRate,
+                                      hsnCode: selectedSpec.hsnCode,
+                                      outsource: willOutsource,
+                                      vendorId: willOutsource ? assignedVendorId : '',
+                                      vendorName: willOutsource ? assignedVendorName : '',
+                                      outsourceJobs: willOutsource ? [
+                                        {
+                                          id: `OJ-${Date.now()}-1`,
+                                          jobType: 'Outsource Production',
+                                          vendorId: assignedVendorId,
+                                          vendorName: assignedVendorName,
+                                          estCost: (selectedSpec.costPrice || 0) * currentQty,
+                                          notes: isSpecOutsource
+                                            ? `Auto-assigned from specification (${selectedSpec.specName} → ${assignedVendorName})`
+                                            : `Auto-assigned from product master (${assignedVendorName})`
+                                        }
+                                      ] : []
+                                    };
+                                  }
                                 }
+                                setItems(newItems);
                               }}
                             >
+                              <option value="">
+                                ⚙️ Normal / Standard Product (₹{baseProductRate}/{baseProductUnit})
+                              </option>
                               {productSpecs.map((s) => (
                                 <option key={s.id} value={s.id}>
                                   Spec: {s.specName} (₹{s.sellingPrice}/{s.unit}){s.isDefault ? ' ★ Default' : ''}
+                                  {Boolean(s.isOutsource || s.defaultVendor) ? ` [🏬 ${s.defaultVendor || 'Outsource'}]` : ''}
                                 </option>
                               ))}
                             </select>
@@ -1468,8 +1598,28 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                             placeholder="Qty"
                             value={item.qty ?? ''}
                             onChange={(e) => {
+                              const newQty = e.target.value;
                               const newItems = [...items];
-                              newItems[idx].qty = e.target.value;
+                              newItems[idx].qty = newQty;
+
+                              if (item.productId && !item.isRateOverridden && getProductSlabInfo) {
+                                const slab = getProductSlabInfo(item.productId, newQty, item.specId || null);
+                                if (slab) {
+                                  newItems[idx].sellingRate = slab.rate;
+                                  newItems[idx].appliedSlab = slab;
+                                } else {
+                                  const pSpecs = (productMaterialSpecs || []).filter((s) => s.productId === item.productId);
+                                  const currSpec = pSpecs.find((s) => s.id === item.specId);
+                                  const prod = (products || []).find((p) => p.id === item.productId);
+                                  if (currSpec) {
+                                    newItems[idx].sellingRate = currSpec.sellingPrice;
+                                  } else if (prod) {
+                                    newItems[idx].sellingRate = prod.defaultRate ?? prod.sellingPrice ?? newItems[idx].sellingRate;
+                                  }
+                                  newItems[idx].appliedSlab = null;
+                                }
+                              }
+
                               setItems(newItems);
                             }}
                           />
@@ -1649,9 +1799,29 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                             onChange={(e) => {
                               const newItems = [...items];
                               newItems[idx].sellingRate = e.target.value;
+                              newItems[idx].isRateOverridden = true;
                               setItems(newItems);
                             }}
                           />
+                          {item.appliedSlab && !item.isRateOverridden && (
+                            <div style={{ fontSize: '0.68rem', color: '#059669', fontWeight: 700, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                              🎯 Slab: {item.appliedSlab.minQty}{item.appliedSlab.maxQty ? `–${item.appliedSlab.maxQty}` : '+'} @ ₹{item.appliedSlab.rate}
+                            </div>
+                          )}
+                          {item.isRateOverridden && item.appliedSlab && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newItems = [...items];
+                                newItems[idx].sellingRate = item.appliedSlab.rate;
+                                newItems[idx].isRateOverridden = false;
+                                setItems(newItems);
+                              }}
+                              style={{ background: 'none', border: 'none', padding: 0, color: '#2563eb', fontSize: '0.66rem', cursor: 'pointer', textDecoration: 'underline' }}
+                            >
+                              Reset to slab (₹{item.appliedSlab.rate})
+                            </button>
+                          )}
                         </td>
 
                         {/* GST % */}

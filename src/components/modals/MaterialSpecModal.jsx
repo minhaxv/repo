@@ -1,16 +1,19 @@
 import React, { useState, useMemo } from 'react';
 import { useERP } from '../../context/ERPContext';
-import { Layers, X, Plus, Edit2, Trash2, Copy, Star, Download, Upload, Check, Search, ArrowUpDown, Power } from 'lucide-react';
+import { Layers, X, Plus, Edit2, Trash2, Copy, Star, Download, Upload, Check, Search, ArrowUpDown, Power, Truck, Building2 } from 'lucide-react';
 import { DEFAULT_UNITS } from '../../types';
 import { useERPModalSafeClose } from '../../hooks/useERPModalSafeClose';
 import { UnsavedChangesPrompt } from '../common/UnsavedChangesPrompt';
+import { ProductSlabsModal } from './ProductSlabsModal';
 
 export const MaterialSpecModal = ({ isOpen, onClose, product }) => {
-  const { productMaterialSpecs, addMaterialSpec, updateMaterialSpec, deleteMaterialSpec, toggleSpecStatus } = useERP();
+  const { productMaterialSpecs, addMaterialSpec, updateMaterialSpec, deleteMaterialSpec, toggleSpecStatus, vendors, productPricingSlabs } = useERP();
   const [editingSpec, setEditingSpec] = useState(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [activeSpecForSlabs, setActiveSpecForSlabs] = useState(null);
+  const [isSlabsModalOpen, setIsSlabsModalOpen] = useState(false);
 
   // Search & Sort State
   const [searchTerm, setSearchTerm] = useState('');
@@ -30,7 +33,10 @@ export const MaterialSpecModal = ({ isOpen, onClose, product }) => {
     gstRate: 18,
     hsnCode: '9989',
     status: 'Active',
-    isDefault: false
+    isDefault: false,
+    isOutsource: false,
+    defaultVendorId: '',
+    defaultVendor: ''
   });
 
   const isDirty = useMemo(() => {
@@ -85,7 +91,10 @@ export const MaterialSpecModal = ({ isOpen, onClose, product }) => {
       gstRate: product.gstRate || 18,
       hsnCode: product.hsnCode || '9989',
       status: 'Active',
-      isDefault: productSpecs.length === 0
+      isDefault: productSpecs.length === 0,
+      isOutsource: false,
+      defaultVendorId: '',
+      defaultVendor: ''
     });
     setEditingSpec(null);
     setIsAddingNew(false);
@@ -108,7 +117,10 @@ export const MaterialSpecModal = ({ isOpen, onClose, product }) => {
       gstRate: spec.gstRate || 18,
       hsnCode: spec.hsnCode || '9989',
       status: spec.status || 'Active',
-      isDefault: !!spec.isDefault
+      isDefault: !!spec.isDefault,
+      isOutsource: Boolean(spec.isOutsource || spec.is_outsource || spec.defaultVendorId || spec.default_vendor_id || spec.defaultVendor || spec.default_vendor),
+      defaultVendorId: spec.defaultVendorId || spec.default_vendor_id || '',
+      defaultVendor: spec.defaultVendor || spec.default_vendor || ''
     });
     setIsAddingNew(true);
     setErrorMsg('');
@@ -121,7 +133,10 @@ export const MaterialSpecModal = ({ isOpen, onClose, product }) => {
         ...spec,
         productId: product.id,
         specName: `${spec.specName} (Copy)`,
-        isDefault: false
+        isDefault: false,
+        isOutsource: Boolean(spec.isOutsource || spec.is_outsource || spec.defaultVendorId || spec.default_vendor_id),
+        defaultVendorId: spec.defaultVendorId || spec.default_vendor_id || '',
+        defaultVendor: spec.defaultVendor || spec.default_vendor || ''
       };
       await addMaterialSpec(dupData);
       setSuccessMsg(`Specification "${spec.specName}" duplicated successfully!`);
@@ -487,6 +502,69 @@ export const MaterialSpecModal = ({ isOpen, onClose, product }) => {
                 ></textarea>
               </div>
 
+              {/* Outsource Vendor / Partner Fulfillment Card */}
+              <div style={{ marginTop: '0.85rem', background: '#faf5ff', border: '1.5px solid #d8b4fe', borderRadius: '8px', padding: '0.85rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: formData.isOutsource ? '0.65rem' : 0 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', margin: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={formData.isOutsource}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        const firstV = (vendors || [])[0];
+                        setFormData({
+                          ...formData,
+                          isOutsource: checked,
+                          defaultVendorId: checked ? (formData.defaultVendorId || (firstV?.id || '')) : '',
+                          defaultVendor: checked ? (formData.defaultVendor || (firstV?.name || '')) : ''
+                        });
+                      }}
+                      style={{ width: '16px', height: '16px', accentColor: '#7c3aed' }}
+                    />
+                    <span style={{ fontWeight: 800, fontSize: '0.86rem', color: '#6b21a8', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Truck size={16} /> Outsource / Job-Work Fulfillment for this Specification
+                    </span>
+                  </label>
+                  {formData.isOutsource && (
+                    <span style={{ fontSize: '0.72rem', color: '#7c3aed', background: '#f3e8ff', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                      ⚡ Auto-Selects Vendor in Sales Orders
+                    </span>
+                  )}
+                </div>
+
+                {formData.isOutsource && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: '0.78rem', color: '#6b21a8', fontWeight: 700 }}>
+                        <Building2 size={13} style={{ display: 'inline', marginRight: '3px' }} /> Default Outsource Vendor / Partner *
+                      </label>
+                      <select
+                        className="form-select form-select-sm"
+                        style={{ borderColor: '#c084fc', background: '#fff', fontWeight: 600 }}
+                        value={formData.defaultVendorId}
+                        onChange={(e) => {
+                          const vId = e.target.value;
+                          const selectedV = (vendors || []).find(v => v.id === vId);
+                          setFormData({
+                            ...formData,
+                            defaultVendorId: vId,
+                            defaultVendor: selectedV ? selectedV.name : ''
+                          });
+                        }}
+                        required={formData.isOutsource}
+                      >
+                        <option value="">Select Outsource Partner Vendor...</option>
+                        {(vendors || []).map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.name} ({v.category || 'Vendor'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.85rem' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', cursor: 'pointer' }}>
                   <input
@@ -522,6 +600,7 @@ export const MaterialSpecModal = ({ isOpen, onClose, product }) => {
                   <th>Cost Price (₹)</th>
                   <th>GST %</th>
                   <th>Status</th>
+                  <th>Fulfillment & Slabs</th>
                   <th>Default?</th>
                   <th style={{ textAlign: 'center' }}>Actions</th>
                 </tr>
@@ -529,7 +608,7 @@ export const MaterialSpecModal = ({ isOpen, onClose, product }) => {
               <tbody>
                 {productSpecs.length === 0 ? (
                   <tr>
-                    <td colSpan="10" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                    <td colSpan="11" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
                       No material specifications found. Click "+ Add Specification" to create linked substrate grades.
                     </td>
                   </tr>
@@ -559,6 +638,49 @@ export const MaterialSpecModal = ({ isOpen, onClose, product }) => {
                         >
                           <Power size={10} /> {s.status || 'Active'}
                         </button>
+                      </td>
+                      <td>
+                        {/* Outsource Badge */}
+                        {Boolean(s.isOutsource || s.is_outsource || s.defaultVendorId || s.default_vendor_id || s.defaultVendor || s.default_vendor) ? (
+                          <div style={{ fontSize: '0.72rem', color: '#6b21a8', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <Truck size={12} color="#7c3aed" /> {s.defaultVendor || s.default_vendor || 'Outsource'}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600 }}>🏭 In-House</div>
+                        )}
+
+                        {/* Tiered Quantity Slabs Button / Badge */}
+                        {(() => {
+                          const specSlabs = (productPricingSlabs || []).filter(sl => sl.productId === product.id && sl.specId === s.id);
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveSpecForSlabs(s);
+                                setIsSlabsModalOpen(true);
+                              }}
+                              className="btn btn-xs"
+                              style={{
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                marginTop: '3px',
+                                background: specSlabs.length > 0 ? '#eff6ff' : '#f8fafc',
+                                color: specSlabs.length > 0 ? '#1d4ed8' : '#64748b',
+                                border: specSlabs.length > 0 ? '1px solid #bfdbfe' : '1px solid #cbd5e1',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                cursor: 'pointer'
+                              }}
+                              title="Configure Quantity Rate Slabs for this specification"
+                            >
+                              <Layers size={11} />
+                              {specSlabs.length > 0 ? `🎯 ${specSlabs.length} Slabs` : '+ Add Slabs'}
+                            </button>
+                          );
+                        })()}
                       </td>
                       <td>
                         <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}>
@@ -631,6 +753,19 @@ export const MaterialSpecModal = ({ isOpen, onClose, product }) => {
       onConfirmDiscard={confirmDiscard}
       onCancelKeepEditing={cancelDiscard}
     />
+
+    {/* Slabs Management Modal for Selected Material Specification */}
+    {isSlabsModalOpen && activeSpecForSlabs && (
+      <ProductSlabsModal
+        isOpen={isSlabsModalOpen}
+        onClose={() => {
+          setIsSlabsModalOpen(false);
+          setActiveSpecForSlabs(null);
+        }}
+        product={product}
+        initialSpecId={activeSpecForSlabs.id}
+      />
+    )}
   </>
   );
 };

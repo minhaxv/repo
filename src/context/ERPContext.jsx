@@ -120,6 +120,7 @@ export const ERPProvider = ({ children }) => {
   const [salesOrders, setSalesOrders] = useState(() => loadStorage('sales_orders', []));
   const [products, setProducts] = useState(() => loadStorage('products', []));
   const [productMaterialSpecs, setProductMaterialSpecs] = useState(() => loadStorage('product_material_specs', []));
+  const [productPricingSlabs, setProductPricingSlabs] = useState(() => loadStorage('product_pricing_slabs', []));
   const [vendors, setVendors] = useState(() => loadStorage('vendors', []));
   const [employees, setEmployees] = useState(() => loadStorage('employees', []));
   const [designers, setDesigners] = useState(() => loadStorage('designers', []));
@@ -135,7 +136,10 @@ export const ERPProvider = ({ children }) => {
   const [outsourceBills, setOutsourceBills] = useState(() => loadStorage('outsource_bills', []));
   const [outsourcePayments, setOutsourcePayments] = useState(() => loadStorage('outsource_payments', []));
   const [outsourceJobs, setOutsourceJobs] = useState(() => loadStorage('outsource_jobs', []));
-  const [orderAuditLogs, setOrderAuditLogs] = useState(() => loadStorage('order_audit_logs', []));
+  const [orderAuditLogs, setOrderAuditLogs] = useState(() => {
+    const stored = loadStorage('order_audit_logs', []);
+    return (stored && stored.length > 0) ? stored : (initialOrderAuditLogs || []);
+  });
   const [machines, setMachines] = useState(() => loadStorage('machines', []));
   const [workflows, setWorkflows] = useState(() => loadStorage('workflows', []));
   const [wastageRecords, setWastageRecords] = useState(() => loadStorage('wastage_records', []));
@@ -231,6 +235,10 @@ export const ERPProvider = ({ children }) => {
           setProductMaterialSpecs(data.productMaterialSpecs);
           try { localStorage.setItem('stitch_erp_product_material_specs', JSON.stringify(data.productMaterialSpecs)); } catch (e) {}
         }
+        if (data.productPricingSlabs) {
+          setProductPricingSlabs(data.productPricingSlabs);
+          try { localStorage.setItem('stitch_erp_product_pricing_slabs', JSON.stringify(data.productPricingSlabs)); } catch (e) {}
+        }
         if (data.vendors || data.suppliers) {
           const v = data.vendors || data.suppliers;
           setVendors(v);
@@ -299,6 +307,10 @@ export const ERPProvider = ({ children }) => {
         if (data.inventoryTransactions) setInventoryTransactions(data.inventoryTransactions);
         if (data.reworkTickets) setReworkTickets(data.reworkTickets);
         if (data.auditLogs) setAuditLogs(data.auditLogs);
+        if (data.orderAuditLogs && data.orderAuditLogs.length > 0) {
+          setOrderAuditLogs(data.orderAuditLogs);
+          try { localStorage.setItem('stitch_erp_order_audit_logs', JSON.stringify(data.orderAuditLogs)); } catch (e) {}
+        }
         if (data.deliveryNotes) setDeliveries(data.deliveryNotes);
         if (data.users) setUsersList(data.users);
         return;
@@ -677,6 +689,140 @@ export const ERPProvider = ({ children }) => {
     return uiCustomer;
   };
 
+  // Bulk Add / Upsert Customers
+  const addCustomersBulk = async (customerList = [], { overwriteExisting = false } = {}) => {
+    if (!Array.isArray(customerList) || customerList.length === 0) return { inserted: 0, updated: 0, total: 0 };
+
+    const newUiCustomers = [];
+    const dbCustomers = [];
+    let updatedCount = 0;
+    let insertedCount = 0;
+
+    const existingMap = new Map();
+    (customers || []).forEach(c => {
+      if (c.mobile) existingMap.set(String(c.mobile).trim(), c);
+      if (c.id) existingMap.set(c.id, c);
+    });
+
+    const now = new Date().toISOString();
+    const today = now.split('T')[0];
+
+    customerList.forEach((customerData, index) => {
+      const cleanMobile = String(customerData.mobile || '').trim();
+      const cleanName = String(customerData.name || '').trim();
+      if (!cleanName || !cleanMobile) return;
+
+      const existing = existingMap.get(cleanMobile);
+      if (existing && !overwriteExisting) {
+        return; // Skip existing duplicate
+      }
+
+      const newId = existing ? existing.id : (customerData.id || `CUST-${100 + (customers?.length || 0) + index + 1}`);
+      const newCode = existing ? existing.code : (customerData.code || `${cleanName.substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`);
+
+      const rawAddMobiles = customerData.additionalMobiles || customerData.additional_mobiles || [];
+      const additionalMobiles = Array.isArray(rawAddMobiles) 
+        ? rawAddMobiles.map(m => String(m).trim()).filter(Boolean)
+        : (typeof rawAddMobiles === 'string' ? rawAddMobiles.split(',').map(m => m.trim()).filter(Boolean) : []);
+
+      const openingBalance = Math.max(0, parseFloat(customerData.openingBalance || customerData.opening_balance) || 0);
+      const openingBalanceType = customerData.openingBalanceType || customerData.opening_balance_type || 'Receivable';
+      const openingBalanceDate = customerData.openingBalanceDate || customerData.opening_balance_date || today;
+      const openingBalanceNotes = customerData.openingBalanceNotes || customerData.opening_balance_notes || '';
+
+      let initialOutstanding = customerData.outstanding !== undefined ? parseFloat(customerData.outstanding) : 
+        (existing ? existing.outstanding : (openingBalance > 0 ? (openingBalanceType === 'Receivable' ? openingBalance : -openingBalance) : 0));
+
+      const creditLimit = customerData.creditLimit !== undefined ? parseFloat(customerData.creditLimit) : 10000;
+      const referralCommissionPct = customerData.referralCommissionPct !== undefined ? parseFloat(customerData.referralCommissionPct) : 0.2;
+      const customerType = customerData.type || customerData.customerType || 'Regular';
+
+      const uiCustomer = {
+        id: newId,
+        code: newCode,
+        name: cleanName,
+        mobile: cleanMobile,
+        additionalMobiles,
+        email: String(customerData.email || '').trim(),
+        gstin: String(customerData.gstin || '').trim().toUpperCase(),
+        type: customerType,
+        address: String(customerData.address || '').trim(),
+        city: String(customerData.city || '').trim(),
+        pincode: String(customerData.pincode || customerData.pinCode || '').trim(),
+        district: String(customerData.district || 'Kozhikode').trim(),
+        state: String(customerData.state || 'Kerala').trim(),
+        creditLimit,
+        referralCommissionPct,
+        outstanding: initialOutstanding,
+        openingBalance,
+        openingBalanceType,
+        openingBalanceDate,
+        openingBalanceNotes,
+        totalOrders: parseInt(customerData.totalOrders, 10) || (existing?.totalOrders || 0),
+        careOfId: customerData.careOfId || (existing?.careOfId || ''),
+        careOfName: customerData.careOfName || (existing?.careOfName || ''),
+        createdAt: customerData.createdAt || (existing?.createdAt || today)
+      };
+
+      if (existing) {
+        updatedCount++;
+      } else {
+        insertedCount++;
+      }
+
+      newUiCustomers.push(uiCustomer);
+      existingMap.set(cleanMobile, uiCustomer);
+
+      dbCustomers.push({
+        id: uiCustomer.id,
+        code: uiCustomer.code,
+        name: uiCustomer.name,
+        mobile: uiCustomer.mobile,
+        additional_mobiles: JSON.stringify(uiCustomer.additionalMobiles),
+        email: uiCustomer.email,
+        gstin: uiCustomer.gstin,
+        type: uiCustomer.type,
+        address: uiCustomer.address,
+        city: uiCustomer.city,
+        pincode: uiCustomer.pincode,
+        district: uiCustomer.district,
+        state: uiCustomer.state,
+        credit_limit: uiCustomer.creditLimit,
+        referral_commission_pct: uiCustomer.referralCommissionPct,
+        outstanding: uiCustomer.outstanding,
+        opening_balance: uiCustomer.openingBalance,
+        opening_balance_type: uiCustomer.openingBalanceType,
+        opening_balance_date: uiCustomer.openingBalanceDate,
+        opening_balance_notes: uiCustomer.openingBalanceNotes,
+        total_orders: uiCustomer.totalOrders,
+        care_of_id: uiCustomer.careOfId,
+        care_of_name: uiCustomer.careOfName,
+        created_at: uiCustomer.createdAt
+      });
+    });
+
+    if (newUiCustomers.length === 0) return { inserted: 0, updated: 0, total: 0 };
+
+    setCustomers((prev) => {
+      const map = new Map(prev.map(c => [c.id, c]));
+      newUiCustomers.forEach(c => map.set(c.id, c));
+      const updated = Array.from(map.values());
+      try { localStorage.setItem('stitch_erp_customers', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+
+    try {
+      if (isSupabaseConfigured && dbCustomers.length > 0) {
+        const { error } = await supabase.from('customers').upsert(dbCustomers);
+        if (error) console.warn("Supabase bulk customer upsert error:", error);
+      }
+    } catch (err) {
+      console.warn("Supabase bulk customer upsert exception:", err);
+    }
+
+    return { inserted: insertedCount, updated: updatedCount, total: newUiCustomers.length };
+  };
+
   // Care Of Person Management
   const addCareOfPerson = async (careOfData) => {
     const newId = `CO-${String(careOfPersons.length + 1).padStart(2, '0')}`;
@@ -1037,7 +1183,7 @@ export const ERPProvider = ({ children }) => {
     return true;
   };
 
-  const addProduct = async (productData, specsArr = []) => {
+  const addProduct = async (productData, specsArr = [], slabsArr = []) => {
     const pid = productData.id || `PROD-${Date.now()}`;
     const newProduct = { ...productData, id: pid };
 
@@ -1068,14 +1214,31 @@ export const ERPProvider = ({ children }) => {
     }
 
     try {
-      await api.createProduct(newProduct, specsArr);
+      await api.createProduct(newProduct, specsArr, slabsArr);
     } catch (err) {
       console.warn("api.createProduct exception, using persistent local state:", err);
     }
+
+    if (slabsArr && slabsArr.length > 0) {
+      const formattedSlabs = slabsArr.map((s, idx) => ({
+        id: s.id || `SLAB-${Date.now()}-${idx}`,
+        productId: pid,
+        minQty: Number(s.minQty ?? s.min_qty ?? 1),
+        maxQty: (s.maxQty !== null && s.maxQty !== undefined && s.maxQty !== '') ? Number(s.maxQty) : null,
+        rate: Number(s.rate || 0),
+        costRate: Number(s.costRate || s.cost_rate || 0)
+      }));
+      setProductPricingSlabs(prev => {
+        const updated = [...prev.filter(s => s.productId !== pid), ...formattedSlabs];
+        try { localStorage.setItem('stitch_erp_product_pricing_slabs', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+    }
+
     return newProduct;
   };
 
-  const updateProduct = async (id, productData, specsArr = []) => {
+  const updateProduct = async (id, productData, specsArr = [], slabsArr = null) => {
     setProducts((prev) => {
       const updated = prev.map((p) => (p.id === id ? { ...p, ...productData } : p));
       try { localStorage.setItem('stitch_erp_products', JSON.stringify(updated)); } catch (e) {}
@@ -1101,10 +1264,27 @@ export const ERPProvider = ({ children }) => {
     }
 
     try {
-      await api.updateProduct(id, productData, specsArr);
+      await api.updateProduct(id, productData, specsArr, slabsArr);
     } catch (err) {
       console.warn("api.updateProduct exception:", err);
     }
+
+    if (slabsArr !== null && Array.isArray(slabsArr)) {
+      const formattedSlabs = slabsArr.map((s, idx) => ({
+        id: s.id || `SLAB-${Date.now()}-${idx}`,
+        productId: id,
+        minQty: Number(s.minQty ?? s.min_qty ?? 1),
+        maxQty: (s.maxQty !== null && s.maxQty !== undefined && s.maxQty !== '') ? Number(s.maxQty) : null,
+        rate: Number(s.rate || 0),
+        costRate: Number(s.costRate || s.cost_rate || 0)
+      }));
+      setProductPricingSlabs(prev => {
+        const updated = [...prev.filter(s => s.productId !== id), ...formattedSlabs];
+        try { localStorage.setItem('stitch_erp_product_pricing_slabs', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+    }
+
     return { ...productData, id };
   };
 
@@ -1115,6 +1295,11 @@ export const ERPProvider = ({ children }) => {
       return updated;
     });
     setProductMaterialSpecs((prev) => prev.filter((s) => s.productId !== id));
+    setProductPricingSlabs((prev) => {
+      const updated = prev.filter((s) => s.productId !== id);
+      try { localStorage.setItem('stitch_erp_product_pricing_slabs', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
 
     try {
       if (isSupabaseConfigured) {
@@ -1130,7 +1315,93 @@ export const ERPProvider = ({ children }) => {
     } catch (err) {
       console.warn("api.deleteProduct exception:", err);
     }
-    return true;
+  };
+
+  // Product Pricing Slabs Methods
+  const saveProductSlabs = async (productId, slabsArr, specId = undefined) => {
+    try {
+      const res = await api.saveProductSlabs(productId, slabsArr, specId);
+      if (res && res.slabs) {
+        setProductPricingSlabs(prev => {
+          const filtered = prev.filter(s => {
+            if (s.productId !== productId) return true;
+            if (specId !== undefined && specId !== 'ALL') {
+              if (specId) return s.specId !== specId;
+              return Boolean(s.specId); // keep spec slabs, remove base product slabs
+            }
+            return false;
+          });
+          const updated = [...filtered, ...res.slabs];
+          try { localStorage.setItem('stitch_erp_product_pricing_slabs', JSON.stringify(updated)); } catch (e) {}
+          return updated;
+        });
+        return res.slabs;
+      }
+    } catch (err) {
+      console.warn("api.saveProductSlabs exception, using local state:", err);
+    }
+    const formatted = slabsArr.map((s, idx) => ({
+      id: s.id || `SLAB-${Date.now()}-${idx}`,
+      productId,
+      specId: s.specId !== undefined ? s.specId : (specId !== undefined && specId !== 'ALL' ? specId : null),
+      minQty: Number(s.minQty ?? s.min_qty ?? 1),
+      maxQty: (s.maxQty !== null && s.maxQty !== undefined && s.maxQty !== '') ? Number(s.maxQty) : null,
+      rate: Number(s.rate || 0),
+      costRate: Number(s.costRate || s.cost_rate || 0)
+    }));
+    setProductPricingSlabs(prev => {
+      const filtered = prev.filter(s => {
+        if (s.productId !== productId) return true;
+        if (specId !== undefined && specId !== 'ALL') {
+          if (specId) return s.specId !== specId;
+          return Boolean(s.specId);
+        }
+        return false;
+      });
+      const updated = [...filtered, ...formatted];
+      try { localStorage.setItem('stitch_erp_product_pricing_slabs', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+    return formatted;
+  };
+
+  const deleteProductSlab = async (slabId) => {
+    try {
+      await api.deleteProductSlab(slabId);
+    } catch (err) {
+      console.warn("api.deleteProductSlab exception:", err);
+    }
+    setProductPricingSlabs(prev => {
+      const updated = prev.filter(s => s.id !== slabId);
+      try { localStorage.setItem('stitch_erp_product_pricing_slabs', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+  };
+
+  const getProductSlabInfo = (productId, qty, specId = null) => {
+    const numQty = Number(qty);
+    if (!productId || isNaN(numQty) || numQty <= 0) return null;
+
+    // 1. First attempt to find slab specific to the selected specification (if provided)
+    if (specId) {
+      const specSlabs = (productPricingSlabs || [])
+        .filter(s => s.productId === productId && s.specId === specId)
+        .sort((a, b) => Number(a.minQty) - Number(b.minQty));
+      const matchedSpecSlab = specSlabs.find(s => numQty >= Number(s.minQty) && (s.maxQty === null || s.maxQty === undefined || s.maxQty === '' || numQty <= Number(s.maxQty)));
+      if (matchedSpecSlab) return matchedSpecSlab;
+    }
+
+    // 2. Otherwise fall back to general / standard base product slabs (no spec or specId is null/empty/'ALL')
+    const generalSlabs = (productPricingSlabs || [])
+      .filter(s => s.productId === productId && (!s.specId || s.specId === '' || s.specId === 'ALL'))
+      .sort((a, b) => Number(a.minQty) - Number(b.minQty));
+    if (generalSlabs.length === 0) return null;
+    return generalSlabs.find(s => numQty >= Number(s.minQty) && (s.maxQty === null || s.maxQty === undefined || s.maxQty === '' || numQty <= Number(s.maxQty))) || null;
+  };
+
+  const getProductSlabRate = (productId, qty, defaultRate = 0, specId = null) => {
+    const slab = getProductSlabInfo(productId, qty, specId);
+    return slab ? slab.rate : defaultRate;
   };
 
   const addVendor = async (vendorData) => {
@@ -1530,7 +1801,7 @@ export const ERPProvider = ({ children }) => {
       throw new Error(`Specification "${cleanSpecName}" already exists for this product.`);
     }
 
-    const newId = `SPEC-${100 + productMaterialSpecs.length + Math.floor(Math.random() * 100) + 1}`;
+    const newId = specData.id || `SPEC-${100 + productMaterialSpecs.length + Math.floor(Math.random() * 100) + 1}`;
     const newSpec = {
       id: newId,
       product_id: specData.productId,
@@ -1548,6 +1819,9 @@ export const ERPProvider = ({ children }) => {
       hsn_code: specData.hsnCode || '9989',
       is_default: !!specData.isDefault,
       status: specData.status || 'Active',
+      is_outsource: specData.isOutsource || specData.defaultVendor || specData.defaultVendorId ? 1 : 0,
+      default_vendor_id: specData.defaultVendorId || specData.default_vendor_id || '',
+      default_vendor: specData.defaultVendor || specData.default_vendor || '',
       created_at: new Date().toISOString()
     };
 
@@ -1566,10 +1840,21 @@ export const ERPProvider = ({ children }) => {
       sellingPrice: newSpec.selling_price,
       gstRate: newSpec.gst_rate,
       hsnCode: newSpec.hsn_code,
-      isDefault: newSpec.is_default,
+      isDefault: Boolean(newSpec.is_default),
       status: newSpec.status,
+      isOutsource: Boolean(newSpec.is_outsource),
+      defaultVendorId: newSpec.default_vendor_id,
+      defaultVendor: newSpec.default_vendor,
       createdAt: newSpec.created_at
     };
+
+    try {
+      fetch(`/api/products/${specData.productId}/specifications`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(uiSpec)
+      }).catch(() => {});
+    } catch (e) {}
 
     try {
       if (isSupabaseConfigured) {
@@ -1582,12 +1867,27 @@ export const ERPProvider = ({ children }) => {
 
     setProductMaterialSpecs((prev) => {
       const updated = prev.map((s) => (s.productId === specData.productId && specData.isDefault ? { ...s, isDefault: false } : s));
-      return [uiSpec, ...updated.filter((s) => s.id !== uiSpec.id)];
+      const nextList = [uiSpec, ...updated.filter((s) => s.id !== uiSpec.id)];
+      try { localStorage.setItem('stitch_erp_product_material_specs', JSON.stringify(nextList)); } catch (e) {}
+      return nextList;
     });
     return uiSpec;
   };
 
   const updateMaterialSpec = async (id, updatedData) => {
+    const existing = (productMaterialSpecs || []).find(s => s.id === id);
+    const productId = updatedData.productId || existing?.productId;
+
+    try {
+      if (productId) {
+        fetch(`/api/products/${productId}/specifications/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedData)
+        }).catch(() => {});
+      }
+    } catch (e) {}
+
     const dbUpdate = { ...updatedData };
     if (updatedData.productId) { dbUpdate.product_id = updatedData.productId; delete dbUpdate.productId; }
     if (updatedData.specName) { dbUpdate.spec_name = updatedData.specName; delete dbUpdate.specName; }
@@ -1597,6 +1897,9 @@ export const ERPProvider = ({ children }) => {
     if (updatedData.gstRate !== undefined) { dbUpdate.gst_rate = parseFloat(updatedData.gstRate) || 18; delete dbUpdate.gstRate; }
     if (updatedData.hsnCode) { dbUpdate.hsn_code = updatedData.hsnCode; delete dbUpdate.hsnCode; }
     if (updatedData.isDefault !== undefined) { dbUpdate.is_default = !!updatedData.isDefault; delete dbUpdate.isDefault; }
+    if (updatedData.isOutsource !== undefined) { dbUpdate.is_outsource = updatedData.isOutsource ? 1 : 0; }
+    if (updatedData.defaultVendorId !== undefined) { dbUpdate.default_vendor_id = updatedData.defaultVendorId; }
+    if (updatedData.defaultVendor !== undefined) { dbUpdate.default_vendor = updatedData.defaultVendor; }
 
     try {
       if (isSupabaseConfigured) {
@@ -1607,21 +1910,40 @@ export const ERPProvider = ({ children }) => {
       console.warn("Supabase product_material_specifications update exception:", err);
     }
 
-    setProductMaterialSpecs((prev) =>
-      prev.map((s) => {
+    setProductMaterialSpecs((prev) => {
+      const nextList = prev.map((s) => {
         if (s.id === id) {
-          return { ...s, ...updatedData };
+          return {
+            ...s,
+            ...updatedData,
+            isOutsource: updatedData.isOutsource !== undefined ? Boolean(updatedData.isOutsource) : Boolean(s.isOutsource || updatedData.defaultVendorId || updatedData.defaultVendor),
+            defaultVendorId: updatedData.defaultVendorId !== undefined ? updatedData.defaultVendorId : s.defaultVendorId,
+            defaultVendor: updatedData.defaultVendor !== undefined ? updatedData.defaultVendor : s.defaultVendor
+          };
         }
-        if (updatedData.productId && updatedData.isDefault && s.productId === updatedData.productId) {
+        if (productId && updatedData.isDefault && s.productId === productId) {
           return { ...s, isDefault: false };
         }
         return s;
-      })
-    );
+      });
+      try { localStorage.setItem('stitch_erp_product_material_specs', JSON.stringify(nextList)); } catch (e) {}
+      return nextList;
+    });
     return true;
   };
 
   const deleteMaterialSpec = async (id) => {
+    const existing = (productMaterialSpecs || []).find(s => s.id === id);
+    const productId = existing?.productId;
+
+    try {
+      if (productId) {
+        fetch(`/api/products/${productId}/specifications/${id}`, {
+          method: 'DELETE'
+        }).catch(() => {});
+      }
+    } catch (e) {}
+
     try {
       if (isSupabaseConfigured) {
         const { error } = await supabase.from('product_material_specifications').delete().eq('id', id);
@@ -1630,7 +1952,11 @@ export const ERPProvider = ({ children }) => {
     } catch (err) {
       console.warn("Supabase product_material_specifications delete exception:", err);
     }
-    setProductMaterialSpecs((prev) => prev.filter((s) => s.id !== id));
+    setProductMaterialSpecs((prev) => {
+      const nextList = prev.filter((s) => s.id !== id);
+      try { localStorage.setItem('stitch_erp_product_material_specs', JSON.stringify(nextList)); } catch (e) {}
+      return nextList;
+    });
     return true;
   };
 
@@ -4193,6 +4519,7 @@ export const ERPProvider = ({ children }) => {
         switchRole,
         customers,
         addCustomer,
+        addCustomersBulk,
         updateCustomer,
         deleteCustomer,
         salesOrders,
@@ -4227,6 +4554,12 @@ export const ERPProvider = ({ children }) => {
         updateMaterialSpec,
         deleteMaterialSpec,
         toggleSpecStatus,
+        productPricingSlabs,
+        setProductPricingSlabs,
+        saveProductSlabs,
+        deleteProductSlab,
+        getProductSlabInfo,
+        getProductSlabRate,
         employees,
         setEmployees,
         addEmployee,

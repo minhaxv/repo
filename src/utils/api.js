@@ -93,23 +93,48 @@ export const api = {
   },
 
   // Products
-  async createProduct(product, specs) {
+  async createProduct(product, specs, slabs = []) {
     const res = await fetch(`${API_BASE}/products`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ product, specs })
+      body: JSON.stringify({ product, specs, slabs })
     });
     if (!res.ok) throw new Error(`API createProduct failed`);
     return await res.json();
   },
 
-  async updateProduct(id, product, specs) {
+  async updateProduct(id, product, specs, slabs = []) {
     const res = await fetch(`${API_BASE}/products/${id}`, {
       method: 'PUT',
       headers: getHeaders(),
-      body: JSON.stringify({ product, specs })
+      body: JSON.stringify({ product, specs, slabs })
     });
     if (!res.ok) throw new Error(`API updateProduct failed`);
+    return await res.json();
+  },
+
+  async fetchProductSlabs(productId) {
+    const res = await fetch(`${API_BASE}/products/${productId}/slabs`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`API fetchProductSlabs failed`);
+    return await res.json();
+  },
+
+  async saveProductSlabs(productId, slabs) {
+    const res = await fetch(`${API_BASE}/products/${productId}/slabs`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ slabs })
+    });
+    if (!res.ok) throw new Error(`API saveProductSlabs failed`);
+    return await res.json();
+  },
+
+  async deleteProductSlab(slabId) {
+    const res = await fetch(`${API_BASE}/products/slabs/${slabId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error(`API deleteProductSlab failed`);
     return await res.json();
   },
 
@@ -978,6 +1003,32 @@ export const api = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to delete machine');
+    return data;
+  },
+
+  // Product Quantity-Based Pricing Slabs
+  async fetchProductSlabs(productId) {
+    const res = await fetch(`${API_BASE}/products/${productId}/slabs`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch product slabs');
+    return await res.json();
+  },
+  async saveProductSlabs(productId, slabs, specId = undefined) {
+    const res = await fetch(`${API_BASE}/products/${productId}/slabs`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ slabs, specId })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to save product slabs');
+    return data;
+  },
+  async deleteProductSlab(slabId) {
+    const res = await fetch(`${API_BASE}/products/slabs/${slabId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to delete slab');
     return data;
   },
 

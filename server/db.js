@@ -109,11 +109,29 @@ export function initDatabase() {
       gst_rate REAL DEFAULT 18,
       hsn_code TEXT DEFAULT '9989',
       status TEXT DEFAULT 'Active',
+      is_outsource INTEGER DEFAULT 0,
+      default_vendor_id TEXT,
+      default_vendor TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_product_specs_pid ON product_specifications(product_id);
+
+    -- 4b. Product Quantity-Based Pricing Slabs (Tiered Rates)
+    CREATE TABLE IF NOT EXISTS product_pricing_slabs (
+      id TEXT PRIMARY KEY,
+      product_id TEXT NOT NULL,
+      spec_id TEXT,
+      min_qty REAL NOT NULL,
+      max_qty REAL,
+      rate REAL NOT NULL,
+      cost_rate REAL DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_product_slabs_pid ON product_pricing_slabs(product_id);
 
     -- 5. Suppliers / Outsource Vendors
     CREATE TABLE IF NOT EXISTS suppliers (
@@ -559,6 +577,11 @@ export function initDatabase() {
   try { db.prepare("ALTER TABLE sales_orders ADD COLUMN billed_by_role TEXT").run(); } catch(e) {}
   try { db.prepare("ALTER TABLE sales_orders ADD COLUMN billed_at TEXT").run(); } catch(e) {}
   try { db.prepare("ALTER TABLE employee_permissions ADD COLUMN employee_id TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE product_pricing_slabs ADD COLUMN spec_id TEXT").run(); } catch(e) {}
+  try { db.prepare("CREATE INDEX IF NOT EXISTS idx_product_slabs_spec ON product_pricing_slabs(product_id, spec_id)").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE product_specifications ADD COLUMN is_outsource INTEGER DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE product_specifications ADD COLUMN default_vendor_id TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE product_specifications ADD COLUMN default_vendor TEXT").run(); } catch(e) {}
 }
 
 // Call schema initialization & migration runner

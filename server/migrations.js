@@ -1250,6 +1250,319 @@ export function runMigrations(db) {
     console.log(' -> Migration 016 applied: Work order billing status, bill sequences, and B2B/B2C auto-classification initialized.');
   });
 
+  // ----------------------------------------------------
+  // MIGRATION 017: Product Quantity-Based Rate Slabs (Tiered Rates)
+  // ----------------------------------------------------
+  applyMigration('017_product_pricing_slabs', (database) => {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS product_pricing_slabs (
+        id TEXT PRIMARY KEY,
+        product_id TEXT NOT NULL,
+        spec_id TEXT,
+        min_qty REAL NOT NULL,
+        max_qty REAL,
+        rate REAL NOT NULL,
+        cost_rate REAL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_product_slabs_pid ON product_pricing_slabs(product_id);
+    `);
+    try { database.prepare("ALTER TABLE product_pricing_slabs ADD COLUMN spec_id TEXT").run(); } catch(e) {}
+    console.log(' -> Migration 017 applied: product_pricing_slabs table created.');
+  });
+
+  // ----------------------------------------------------
+  // MIGRATION 018: Sales Order Revision & Audit Logs Demo Data + Product Outsource Vendor Assignment
+  // ----------------------------------------------------
+  applyMigration('018_order_audit_logs_and_outsource_vendor', (database) => {
+    // 1. Extend products table with default_vendor_id and is_outsource
+    try { database.prepare("ALTER TABLE products ADD COLUMN default_vendor_id TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE products ADD COLUMN is_outsource INTEGER DEFAULT 0").run(); } catch(e) {}
+
+    // 2. Create order_audit_logs table
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS order_audit_logs (
+        id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        order_number TEXT NOT NULL,
+        customer_name TEXT,
+        customer_mobile TEXT,
+        action_type TEXT NOT NULL,
+        action_title TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        role TEXT,
+        timestamp TEXT NOT NULL,
+        formatted_time TEXT,
+        reason TEXT,
+        previous_amount REAL,
+        new_amount REAL,
+        diff_amount REAL,
+        refund_or_reversal REAL DEFAULT 0,
+        changes_summary TEXT,
+        previous_snapshot TEXT,
+        new_snapshot TEXT,
+        snapshot TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_order_audit_oid ON order_audit_logs(order_id);
+      CREATE INDEX IF NOT EXISTS idx_order_audit_type ON order_audit_logs(action_type);
+      CREATE INDEX IF NOT EXISTS idx_order_audit_time ON order_audit_logs(timestamp DESC);
+    `);
+
+    // 3. Seed demo audit logs if empty
+    const auditCount = database.prepare("SELECT COUNT(*) as count FROM order_audit_logs").get();
+    if (!auditCount || auditCount.count === 0) {
+      const insertAuditLog = database.prepare(`
+        INSERT INTO order_audit_logs (
+          id, order_id, order_number, customer_name, customer_mobile, action_type, action_title,
+          actor, role, timestamp, formatted_time, reason, previous_amount, new_amount,
+          diff_amount, refund_or_reversal, changes_summary, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const demoLogs = [
+        {
+          id: 'AUD-REV-001',
+          orderId: 'SO-2026-0891',
+          orderNumber: 'SO-2026-0891',
+          customerName: 'Apex Retail Solutions Pvt Ltd',
+          customerMobile: '9820011223',
+          actionType: 'EDITED',
+          actionTitle: 'Order Revised - Material Spec Upgraded & Quantity Increased',
+          actor: 'Minhaj V (Admin)',
+          role: 'Admin',
+          timestamp: '2026-10-18T14:30:00.000Z',
+          formattedTime: '18 Oct 2026, 02:30 PM',
+          reason: 'Customer requested 340gsm Blackout Flex upgrade for highway hoarding and added 2 extra entrance banners',
+          previousAmount: 40600,
+          newAmount: 47908,
+          diffAmount: 7308,
+          refundOrReversal: 0,
+          changesSummary: JSON.stringify([
+            'Item #1: Quantity updated from 2 to 4 Nos',
+            'Material changed: Star Flex 240gsm → 340gsm Blackout Flex',
+            'Line item total revised: ₹1,200 → ₹2,400',
+            'Order Grand Total increased from ₹40,600 to ₹47,908 (+₹7,308 with 18% GST)'
+          ])
+        },
+        {
+          id: 'AUD-REV-002',
+          orderId: 'SO-2026-0888',
+          orderNumber: 'SO-2026-0888',
+          customerName: 'Kerala State Handloom Weavers Society',
+          customerMobile: '9447012399',
+          actionType: 'CANCELLED',
+          actionTitle: 'Order Cancelled - Client Postponed Annual Expo',
+          actor: 'Priya Patel',
+          role: 'Sales',
+          timestamp: '2026-10-17T16:15:00.000Z',
+          formattedTime: '17 Oct 2026, 04:15 PM',
+          reason: 'Annual state handloom exhibition postponed by authorities. Customer requested order cancellation and advance reversal.',
+          previousAmount: 28450,
+          newAmount: 0,
+          diffAmount: -28450,
+          refundOrReversal: 14000,
+          changesSummary: JSON.stringify([
+            'Order Status changed: Confirmed → Cancelled',
+            'Production job cards (JC-888-1, JC-888-2, JC-888-3) recalled from shop floor',
+            'Advance payment ₹14,000 tagged for credit refund to customer account ledger'
+          ])
+        },
+        {
+          id: 'AUD-REV-003',
+          orderId: 'SO-2026-0885',
+          orderNumber: 'SO-2026-0885',
+          customerName: 'Maharashtra Tourism Dev Corp (MTDC)',
+          customerMobile: '9422077112',
+          actionType: 'EDITED',
+          actionTitle: 'Order Revised - Dimension Modification by Installation Team',
+          actor: 'Ramesh Sharma',
+          role: 'Sales',
+          timestamp: '2026-10-15T11:20:00.000Z',
+          formattedTime: '15 Oct 2026, 11:20 AM',
+          reason: 'Site measurements updated by field civil engineer. Hoarding width reduced from 20ft to 16ft across 4 structures.',
+          previousAmount: 98500,
+          newAmount: 88500,
+          diffAmount: -10000,
+          refundOrReversal: 0,
+          changesSummary: JSON.stringify([
+            'Item #1 Hoarding Print Size revised: 20ft x 10ft → 16ft x 10ft',
+            'Total square footage reduced: 800 Sq.Ft → 640 Sq.Ft',
+            'Contract subtotal revised from ₹98,500 to ₹88,500 (-₹10,000)'
+          ])
+        },
+        {
+          id: 'AUD-REV-004',
+          orderId: 'SO-2026-0879-DRAFT',
+          orderNumber: 'SO-2026-0879-DRAFT',
+          customerName: 'Walk-in Counter Customer',
+          customerMobile: '9895000000',
+          actionType: 'DELETED',
+          actionTitle: 'Draft Order Purged - Accidental Duplicate Entry',
+          actor: 'Minhaj V (Admin)',
+          role: 'Admin',
+          timestamp: '2026-10-13T18:45:00.000Z',
+          formattedTime: '13 Oct 2026, 06:45 PM',
+          reason: 'Counter cashier accidentally created a duplicate test order while verifying digital brochure color swatch.',
+          previousAmount: 3200,
+          newAmount: 0,
+          diffAmount: -3200,
+          refundOrReversal: 0,
+          changesSummary: JSON.stringify([
+            'Duplicate draft order SO-2026-0879-DRAFT permanently removed from registry',
+            'Unprinted digital job sheet discarded prior to RIP processing'
+          ])
+        },
+        {
+          id: 'AUD-REV-005',
+          orderId: 'SO-2026-0894',
+          orderNumber: 'SO-2026-0894',
+          customerName: 'Zeta Fashion Pvt Ltd',
+          customerMobile: '9811099887',
+          actionType: 'CONVERTED',
+          actionTitle: 'Quotation Converted to Confirmed Sales Order',
+          actor: 'Priya Patel',
+          role: 'Sales',
+          timestamp: '2026-10-12T10:00:00.000Z',
+          formattedTime: '12 Oct 2026, 10:00 AM',
+          reason: 'Quotation QT-2026-014 approved by brand manager via WhatsApp. 50% booking advance received via NEFT.',
+          previousAmount: 0,
+          newAmount: 50976,
+          diffAmount: 50976,
+          refundOrReversal: 0,
+          changesSummary: JSON.stringify([
+            'Quotation QT-2026-014 converted to active Sales Order SO-2026-0894',
+            'Received advance: ₹25,000 tagged to Order #SO-2026-0894',
+            'Job cards automatically routed to Pre-Press & Large Format Printing queues'
+          ])
+        },
+        {
+          id: 'AUD-REV-006',
+          orderId: 'SO-2026-0870',
+          orderNumber: 'SO-2026-0870',
+          customerName: 'Dr. Alok Mehta (Mehta Eye Clinic)',
+          customerMobile: '9867088990',
+          actionType: 'EDITED',
+          actionTitle: 'Order Revised - Additional Trodat Self-Inking Stamp Added',
+          actor: 'Minhaj V (Admin)',
+          role: 'Admin',
+          timestamp: '2026-10-10T15:10:00.000Z',
+          formattedTime: '10 Oct 2026, 03:10 PM',
+          reason: 'Doctor called to add an urgent Trodat Printy date & time stamp to prescription pad printing job.',
+          previousAmount: 4500,
+          newAmount: 5850,
+          diffAmount: 1350,
+          refundOrReversal: 0,
+          changesSummary: JSON.stringify([
+            'Item #2 added: Trodat 4810 Self-Inking Dater Stamp (1 Nos @ ₹1,350)',
+            'Order total revised from ₹4,500 to ₹5,850 (+₹1,350)'
+          ])
+        }
+      ];
+
+      for (const log of demoLogs) {
+        insertAuditLog.run(
+          log.id, log.orderId, log.orderNumber, log.customerName, log.customerMobile,
+          log.actionType, log.actionTitle, log.actor, log.role, log.timestamp,
+          log.formattedTime, log.reason, log.previousAmount, log.newAmount, log.diffAmount,
+          log.refundOrReversal, log.changesSummary, log.timestamp
+        );
+      }
+      console.log(' -> Seeded 6 realistic demo order audit logs.');
+    }
+
+    // 4. Set demo outsource vendor on balloon / outsource products
+    try {
+      const vendor = database.prepare("SELECT id, name FROM suppliers LIMIT 1").get();
+      if (vendor) {
+        database.prepare(`
+          UPDATE products
+          SET default_vendor = ?, default_vendor_id = ?, is_outsource = 1
+          WHERE id IN ('PROD-BAL-01', 'PROD-03') OR name LIKE '%Balloon%' OR name LIKE '%Embroidery%'
+        `).run(vendor.name, vendor.id);
+      }
+    } catch(e) {}
+
+    console.log(' -> Migration 018 applied: Order revision & cancellation logs demo data and product outsource vendor linking ready.');
+  });
+
+  // ----------------------------------------------------
+  // MIGRATION 019: Specification Outsource Vendor Linking & Quantity Slabs
+  // ----------------------------------------------------
+  applyMigration('019_specification_outsource_and_slabs', (database) => {
+    // 1. Extend product_specifications table with outsource columns
+    try { database.prepare("ALTER TABLE product_specifications ADD COLUMN is_outsource INTEGER DEFAULT 0").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE product_specifications ADD COLUMN default_vendor_id TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE product_specifications ADD COLUMN default_vendor TEXT").run(); } catch(e) {}
+
+    // 2. Link Outsource Vendors to specific specialized specifications
+    try {
+      const vendors = database.prepare("SELECT id, name FROM suppliers").all();
+      const signageVendor = vendors.find(v => (v.name || '').toLowerCase().includes('screen') || (v.name || '').toLowerCase().includes('modern')) || vendors[0];
+      const stampVendor = vendors.find(v => (v.name || '').toLowerCase().includes('stamp') || (v.name || '').toLowerCase().includes('laser')) || vendors[1] || vendors[0];
+
+      if (signageVendor) {
+        // Stainless steel 3D letters and acrylic letters outsource
+        database.prepare(`
+          UPDATE product_specifications
+          SET is_outsource = 1, default_vendor_id = ?, default_vendor = ?
+          WHERE id IN ('SPEC-105', 'SPEC-106') OR spec_name LIKE '%Stainless Steel%' OR spec_name LIKE '%Acrylic Face Lit%'
+        `).run(signageVendor.id, signageVendor.name);
+      }
+
+      if (stampVendor) {
+        // Rubber stamps / trodat dater outsource
+        database.prepare(`
+          UPDATE product_specifications
+          SET is_outsource = 1, default_vendor_id = ?, default_vendor = ?
+          WHERE id IN ('SPEC-109') OR spec_name LIKE '%Trodat%'
+        `).run(stampVendor.id, stampVendor.name);
+      }
+      console.log(' -> Linked demo specifications with outsource fulfillment partners.');
+    } catch (e) {
+      console.warn('Migration 019 vendor link notice:', e.message);
+    }
+
+    // 3. Seed demo Quantity Slabs for Specifications
+    try {
+      const insertSlab = database.prepare(`
+        INSERT OR REPLACE INTO product_pricing_slabs (id, product_id, spec_id, min_qty, max_qty, rate, cost_rate)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      // Slabs for SPEC-101 (240gsm Star Frontlit Flex on PROD-01)
+      insertSlab.run('SLAB-SPEC-101-1', 'PROD-01', 'SPEC-101', 1, 500, 15, 8);
+      insertSlab.run('SLAB-SPEC-101-2', 'PROD-01', 'SPEC-101', 501, 2000, 12, 7);
+      insertSlab.run('SLAB-SPEC-101-3', 'PROD-01', 'SPEC-101', 2001, null, 9.5, 6);
+
+      // Slabs for SPEC-108 (350gsm Velvet Lamination + Raised Spot UV on PROD-05)
+      insertSlab.run('SLAB-SPEC-108-1', 'PROD-05', 'SPEC-108', 1, 500, 850, 450);
+      insertSlab.run('SLAB-SPEC-108-2', 'PROD-05', 'SPEC-108', 501, 1000, 720, 390);
+      insertSlab.run('SLAB-SPEC-108-3', 'PROD-05', 'SPEC-108', 1001, null, 580, 320);
+
+      // Slabs for SPEC-110 (5mm High Density Sunboard on PROD-08)
+      insertSlab.run('SLAB-SPEC-110-1', 'PROD-08', 'SPEC-110', 1, 50, 75, 42);
+      insertSlab.run('SLAB-SPEC-110-2', 'PROD-08', 'SPEC-110', 51, 200, 68, 38);
+      insertSlab.run('SLAB-SPEC-110-3', 'PROD-08', 'SPEC-110', 201, null, 60, 34);
+
+      console.log(' -> Seeded demo quantity rate slabs for product material specifications.');
+    } catch (e) {
+      console.warn('Migration 019 slabs seed notice:', e.message);
+    }
+
+    console.log(' -> Migration 019 applied: Specification outsource vendor & quantity slabs ready.');
+  });
+
+  // Also ensure spec_id column exists for already applied migration 017
+  try { db.prepare("ALTER TABLE product_pricing_slabs ADD COLUMN spec_id TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE products ADD COLUMN default_vendor_id TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE products ADD COLUMN is_outsource INTEGER DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE product_specifications ADD COLUMN is_outsource INTEGER DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE product_specifications ADD COLUMN default_vendor_id TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE product_specifications ADD COLUMN default_vendor TEXT").run(); } catch(e) {}
+
   console.log('✅ All migrations processed successfully!');
 }
 

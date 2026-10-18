@@ -594,6 +594,12 @@ app.get('/api/all', authenticateToken, (req, res) => {
     const customers = db.prepare('SELECT * FROM customers ORDER BY created_at DESC').all();
     const products = db.prepare('SELECT * FROM products ORDER BY name ASC').all();
     const productMaterialSpecs = db.prepare('SELECT * FROM product_specifications').all();
+    let productPricingSlabs = [];
+    try {
+      productPricingSlabs = db.prepare('SELECT * FROM product_pricing_slabs ORDER BY min_qty ASC').all();
+    } catch(e) {
+      productPricingSlabs = [];
+    }
     const suppliers = db.prepare('SELECT * FROM suppliers ORDER BY name ASC').all();
     const rawPurchaseOrders = db.prepare('SELECT * FROM purchase_orders ORDER BY order_date DESC').all();
     const purchaseOrders = rawPurchaseOrders.map(po => {
@@ -912,6 +918,9 @@ app.get('/api/all', authenticateToken, (req, res) => {
         ...p,
         code: p.product_code,
         defaultRate: Number(p.default_rate),
+        defaultVendor: p.default_vendor || '',
+        defaultVendorId: p.default_vendor_id || '',
+        isOutsource: Boolean(p.is_outsource || p.default_vendor),
         estimatedCost: canViewFinancials ? Number(p.estimated_cost) : null,
         gstRate: Number(p.gst_rate),
         isCustom: Boolean(p.is_custom)
@@ -923,7 +932,19 @@ app.get('/api/all', authenticateToken, (req, res) => {
         materialName: s.material_name,
         sellingPrice: Number(s.selling_price),
         costPrice: canViewFinancials ? Number(s.cost_price) : null,
-        isDefault: Boolean(s.is_default)
+        isDefault: Boolean(s.is_default),
+        isOutsource: Boolean(s.is_outsource || s.default_vendor_id || s.default_vendor),
+        defaultVendorId: s.default_vendor_id || null,
+        defaultVendor: s.default_vendor || null
+      })),
+      productPricingSlabs: productPricingSlabs.map(s => ({
+        id: s.id,
+        productId: s.product_id,
+        specId: s.spec_id || null,
+        minQty: Number(s.min_qty),
+        maxQty: s.max_qty !== null && s.max_qty !== undefined ? Number(s.max_qty) : null,
+        rate: Number(s.rate),
+        costRate: canViewFinancials ? Number(s.cost_rate || 0) : null
       })),
       vendors: suppliers.map(s => ({ ...s, code: s.supplier_code, pendingPayment: Number(s.pending_payment), avgTurnaroundDays: Number(s.avg_turnaround_days) })),
       salesPersons: salesPersons.map(sp => ({
@@ -992,6 +1013,36 @@ app.get('/api/all', authenticateToken, (req, res) => {
       inventoryTransactions: db.prepare('SELECT * FROM inventory_transactions ORDER BY created_at DESC LIMIT 100').all(),
       reworkTickets: db.prepare('SELECT * FROM rework_tickets ORDER BY created_at DESC').all(),
       auditLogs: db.prepare('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100').all(),
+      orderAuditLogs: (() => {
+        try {
+          const logs = db.prepare('SELECT * FROM order_audit_logs ORDER BY timestamp DESC LIMIT 200').all();
+          return logs.map(l => ({
+            id: l.id,
+            orderId: l.order_id,
+            orderNumber: l.order_number,
+            customerName: l.customer_name,
+            customerMobile: l.customer_mobile,
+            actionType: l.action_type,
+            actionTitle: l.action_title,
+            actor: l.actor,
+            role: l.role,
+            timestamp: l.timestamp,
+            formattedTime: l.formatted_time,
+            reason: l.reason,
+            previousAmount: l.previous_amount !== null && l.previous_amount !== undefined ? Number(l.previous_amount) : undefined,
+            newAmount: l.new_amount !== null && l.new_amount !== undefined ? Number(l.new_amount) : undefined,
+            diffAmount: l.diff_amount !== null && l.diff_amount !== undefined ? Number(l.diff_amount) : undefined,
+            refundOrReversal: l.refund_or_reversal !== null && l.refund_or_reversal !== undefined ? Number(l.refund_or_reversal) : 0,
+            changesSummary: (() => {
+              try { return JSON.parse(l.changes_summary || '[]'); } catch(e) { return [l.changes_summary || '']; }
+            })(),
+            previousSnapshot: (() => { try { return JSON.parse(l.previous_snapshot || 'null'); } catch(e) { return null; } })(),
+            newSnapshot: (() => { try { return JSON.parse(l.new_snapshot || 'null'); } catch(e) { return null; } })()
+          }));
+        } catch(e) {
+          return [];
+        }
+      })(),
       deliveryNotes: db.prepare('SELECT * FROM delivery_notes ORDER BY created_at DESC').all(),
       deliveryItems: db.prepare('SELECT * FROM delivery_items ORDER BY created_at DESC').all(),
       artworkVersions: db.prepare('SELECT * FROM artwork_versions ORDER BY version_number DESC').all(),
@@ -1054,10 +1105,10 @@ app.put('/api/company-profile', authenticateToken, requireRole(['Admin', 'Manage
 });
 
 
-// 2. CREATE PRODUCT + SPECS
+// 2. CREATE PRODUCT + SPECS + SLABS
 app.post('/api/products', (req, res) => {
   try {
-    const { product, specs } = req.body;
+    const { product, specs, slabs } = req.body;
     if (!product || !product.name) {
       return res.status(400).json({ success: false, error: "Product name is required" });
     }
@@ -1067,20 +1118,69 @@ app.post('/api/products', (req, res) => {
 
     const createTx = db.transaction(() => {
       db.prepare(`
-        INSERT INTO products (id, product_code, name, category, description, unit, default_rate, estimated_cost, gst_rate, hsn_code, default_vendor, default_material, is_custom)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO products (id, product_code, name, category, description, unit, default_rate, estimated_cost, gst_rate, hsn_code, default_vendor, default_vendor_id, is_outsource, default_material, is_custom)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        productId, productCode, product.name, product.category || 'Printing', product.description || '', product.unit || 'Sq.Ft', Number(product.defaultRate || 0), Number(product.estimatedCost || 0), Number(product.gstRate || 18), product.hsnCode || '9989', product.defaultVendor || '', product.defaultMaterial || '', product.isCustom ? 1 : 0
+        productId,
+        productCode,
+        product.name,
+        product.category || 'Printing',
+        product.description || '',
+        product.unit || 'Sq.Ft',
+        Number(product.defaultRate || 0),
+        Number(product.estimatedCost || 0),
+        Number(product.gstRate || 18),
+        product.hsnCode || '9989',
+        product.defaultVendor || '',
+        product.defaultVendorId || product.default_vendor_id || '',
+        product.isOutsource || product.defaultVendor ? 1 : 0,
+        product.defaultMaterial || '',
+        product.isCustom ? 1 : 0
       );
 
       if (specs && Array.isArray(specs)) {
         const insertSpec = db.prepare(`
-          INSERT INTO product_specifications (id, product_id, spec_name, material_name, selling_price, cost_price, unit, description, is_default, gst_rate, hsn_code, status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO product_specifications (id, product_id, spec_name, material_name, selling_price, cost_price, unit, description, is_default, gst_rate, hsn_code, status, is_outsource, default_vendor_id, default_vendor)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         for (const s of specs) {
           const specId = s.id || `SPEC-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
-          insertSpec.run(specId, productId, s.specName, s.materialName || s.specName, Number(s.sellingPrice || 0), Number(s.costPrice || 0), s.unit || product.unit || 'Sq.Ft', s.description || '', s.isDefault ? 1 : 0, Number(s.gstRate || 18), s.hsnCode || '9989', s.status || 'Active');
+          insertSpec.run(
+            specId,
+            productId,
+            s.specName,
+            s.materialName || s.specName,
+            Number(s.sellingPrice || 0),
+            Number(s.costPrice || 0),
+            s.unit || product.unit || 'Sq.Ft',
+            s.description || '',
+            s.isDefault ? 1 : 0,
+            Number(s.gstRate || 18),
+            s.hsnCode || '9989',
+            s.status || 'Active',
+            s.isOutsource || s.defaultVendor || s.defaultVendorId ? 1 : 0,
+            s.defaultVendorId || s.default_vendor_id || '',
+            s.defaultVendor || s.default_vendor || ''
+          );
+        }
+      }
+
+      if (slabs && Array.isArray(slabs)) {
+        const insertSlab = db.prepare(`
+          INSERT INTO product_pricing_slabs (id, product_id, spec_id, min_qty, max_qty, rate, cost_rate)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const slab of slabs) {
+          const slabId = slab.id || `SLAB-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+          insertSlab.run(
+            slabId,
+            productId,
+            slab.specId || slab.spec_id || null,
+            Number(slab.minQty ?? slab.min_qty ?? 1),
+            (slab.maxQty !== null && slab.maxQty !== undefined && slab.maxQty !== '') ? Number(slab.maxQty) : null,
+            Number(slab.rate || 0),
+            Number(slab.costRate || slab.cost_rate || 0)
+          );
         }
       }
     });
@@ -1093,11 +1193,11 @@ app.post('/api/products', (req, res) => {
   }
 });
 
-// UPDATE PRODUCT
+// UPDATE PRODUCT + SPECS + SLABS
 app.put('/api/products/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const { product, specs } = req.body;
+    const { product, specs, slabs } = req.body;
     if (!product || !product.name) {
       return res.status(400).json({ success: false, error: "Product name is required" });
     }
@@ -1114,6 +1214,8 @@ app.put('/api/products/:id', (req, res) => {
           gst_rate = ?,
           hsn_code = ?,
           default_vendor = ?,
+          default_vendor_id = ?,
+          is_outsource = ?,
           default_material = ?
         WHERE id = ?
       `).run(
@@ -1126,6 +1228,8 @@ app.put('/api/products/:id', (req, res) => {
         Number(product.gstRate || product.gst_rate || 18),
         product.hsnCode || product.hsn_code || '9989',
         product.defaultVendor || product.default_vendor || '',
+        product.defaultVendorId || product.default_vendor_id || '',
+        product.isOutsource || product.defaultVendor ? 1 : 0,
         product.defaultMaterial || product.default_material || '',
         id
       );
@@ -1133,12 +1237,48 @@ app.put('/api/products/:id', (req, res) => {
       if (specs && Array.isArray(specs)) {
         db.prepare('DELETE FROM product_specifications WHERE product_id = ?').run(id);
         const insertSpec = db.prepare(`
-          INSERT INTO product_specifications (id, product_id, spec_name, material_name, selling_price, cost_price, unit, description, is_default, gst_rate, hsn_code, status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO product_specifications (id, product_id, spec_name, material_name, selling_price, cost_price, unit, description, is_default, gst_rate, hsn_code, status, is_outsource, default_vendor_id, default_vendor)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         for (const s of specs) {
           const specId = s.id || `SPEC-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
-          insertSpec.run(specId, id, s.specName, s.materialName || s.specName, Number(s.sellingPrice || 0), Number(s.costPrice || 0), s.unit || product.unit || 'Sq.Ft', s.description || '', s.isDefault ? 1 : 0, Number(s.gstRate || 18), s.hsnCode || '9989', s.status || 'Active');
+          insertSpec.run(
+            specId,
+            id,
+            s.specName,
+            s.materialName || s.specName,
+            Number(s.sellingPrice || 0),
+            Number(s.costPrice || 0),
+            s.unit || product.unit || 'Sq.Ft',
+            s.description || '',
+            s.isDefault ? 1 : 0,
+            Number(s.gstRate || 18),
+            s.hsnCode || '9989',
+            s.status || 'Active',
+            s.isOutsource || s.defaultVendor || s.defaultVendorId ? 1 : 0,
+            s.defaultVendorId || s.default_vendor_id || '',
+            s.defaultVendor || s.default_vendor || ''
+          );
+        }
+      }
+
+      if (slabs && Array.isArray(slabs)) {
+        db.prepare('DELETE FROM product_pricing_slabs WHERE product_id = ?').run(id);
+        const insertSlab = db.prepare(`
+          INSERT INTO product_pricing_slabs (id, product_id, spec_id, min_qty, max_qty, rate, cost_rate)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const slab of slabs) {
+          const slabId = slab.id || `SLAB-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+          insertSlab.run(
+            slabId,
+            id,
+            slab.specId || slab.spec_id || null,
+            Number(slab.minQty ?? slab.min_qty ?? 1),
+            (slab.maxQty !== null && slab.maxQty !== undefined && slab.maxQty !== '') ? Number(slab.maxQty) : null,
+            Number(slab.rate || 0),
+            Number(slab.costRate || slab.cost_rate || 0)
+          );
         }
       }
     });
@@ -1151,15 +1291,215 @@ app.put('/api/products/:id', (req, res) => {
   }
 });
 
+// GET PRODUCT PRICING SLABS
+app.get('/api/products/:id/slabs', (req, res) => {
+  try {
+    const { id } = req.params;
+    const slabs = db.prepare('SELECT * FROM product_pricing_slabs WHERE product_id = ? ORDER BY min_qty ASC').all(id);
+    res.json({
+      success: true,
+      slabs: slabs.map(s => ({
+        id: s.id,
+        productId: s.product_id,
+        specId: s.spec_id || null,
+        minQty: Number(s.min_qty),
+        maxQty: s.max_qty !== null && s.max_qty !== undefined ? Number(s.max_qty) : null,
+        rate: Number(s.rate),
+        costRate: Number(s.cost_rate || 0)
+      }))
+    });
+  } catch (err) {
+    console.error("GET /api/products/:id/slabs Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// BATCH SAVE PRODUCT PRICING SLABS
+app.post('/api/products/:id/slabs', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { slabs, specId } = req.body;
+    if (!Array.isArray(slabs)) {
+      return res.status(400).json({ success: false, error: "slabs array is required" });
+    }
+
+    const saveTx = db.transaction(() => {
+      if (specId !== undefined && specId !== 'ALL') {
+        if (specId) {
+          db.prepare('DELETE FROM product_pricing_slabs WHERE product_id = ? AND spec_id = ?').run(id, specId);
+        } else {
+          db.prepare('DELETE FROM product_pricing_slabs WHERE product_id = ? AND (spec_id IS NULL OR spec_id = "")').run(id);
+        }
+      } else {
+        db.prepare('DELETE FROM product_pricing_slabs WHERE product_id = ?').run(id);
+      }
+
+      const insertSlab = db.prepare(`
+        INSERT INTO product_pricing_slabs (id, product_id, spec_id, min_qty, max_qty, rate, cost_rate)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const slab of slabs) {
+        const slabId = slab.id || `SLAB-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+        const rowSpecId = slab.specId !== undefined ? slab.specId : (specId !== undefined && specId !== 'ALL' ? specId : null);
+        insertSlab.run(
+          slabId,
+          id,
+          rowSpecId || null,
+          Number(slab.minQty ?? slab.min_qty ?? 1),
+          (slab.maxQty !== null && slab.maxQty !== undefined && slab.maxQty !== '') ? Number(slab.maxQty) : null,
+          Number(slab.rate || 0),
+          Number(slab.costRate || slab.cost_rate || 0)
+        );
+      }
+    });
+
+    saveTx();
+
+    const updatedSlabs = db.prepare('SELECT * FROM product_pricing_slabs WHERE product_id = ? ORDER BY min_qty ASC').all(id);
+    res.json({
+      success: true,
+      slabs: updatedSlabs.map(s => ({
+        id: s.id,
+        productId: s.product_id,
+        specId: s.spec_id || null,
+        minQty: Number(s.min_qty),
+        maxQty: s.max_qty !== null && s.max_qty !== undefined ? Number(s.max_qty) : null,
+        rate: Number(s.rate),
+        costRate: Number(s.cost_rate || 0)
+      }))
+    });
+  } catch (err) {
+    console.error("POST /api/products/:id/slabs Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE A SINGLE SLAB
+app.delete('/api/products/slabs/:slabId', (req, res) => {
+  try {
+    const { slabId } = req.params;
+    db.prepare('DELETE FROM product_pricing_slabs WHERE id = ?').run(slabId);
+    res.json({ success: true, message: `Slab ${slabId} deleted` });
+  } catch (err) {
+    console.error("DELETE /api/products/slabs/:slabId Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // DELETE PRODUCT
 app.delete('/api/products/:id', (req, res) => {
   try {
     const { id } = req.params;
+    db.prepare('DELETE FROM product_pricing_slabs WHERE product_id = ?').run(id);
     db.prepare('DELETE FROM product_specifications WHERE product_id = ?').run(id);
     db.prepare('DELETE FROM products WHERE id = ?').run(id);
     res.json({ success: true, message: `Product ${id} deleted` });
   } catch (err) {
     console.error("DELETE /api/products Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2.2b DYNAMIC PRODUCT SPECIFICATION ENDPOINTS (CRUD & OUTSOURCE LINKING)
+app.post('/api/products/:productId/specifications', (req, res) => {
+  try {
+    const { productId } = req.params;
+    const spec = req.body;
+    const specId = spec.id || `SPEC-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+
+    if (spec.isDefault) {
+      db.prepare('UPDATE product_specifications SET is_default = 0 WHERE product_id = ?').run(productId);
+    }
+
+    db.prepare(`
+      INSERT INTO product_specifications (
+        id, product_id, spec_name, material_name, selling_price, cost_price, unit,
+        description, is_default, gst_rate, hsn_code, status, is_outsource, default_vendor_id, default_vendor
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      specId,
+      productId,
+      spec.specName,
+      spec.materialName || spec.specName,
+      Number(spec.sellingPrice || 0),
+      Number(spec.costPrice || 0),
+      spec.unit || 'Sq.Ft',
+      spec.description || '',
+      spec.isDefault ? 1 : 0,
+      Number(spec.gstRate || 18),
+      spec.hsnCode || '9989',
+      spec.status || 'Active',
+      spec.isOutsource || spec.defaultVendor || spec.defaultVendorId ? 1 : 0,
+      spec.defaultVendorId || spec.default_vendor_id || '',
+      spec.defaultVendor || spec.default_vendor || ''
+    );
+
+    res.json({ success: true, id: specId, spec: { ...spec, id: specId, productId } });
+  } catch (err) {
+    console.error("POST /api/products/:productId/specifications Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/products/:productId/specifications/:id', (req, res) => {
+  try {
+    const { productId, id } = req.params;
+    const spec = req.body;
+
+    if (spec.isDefault) {
+      db.prepare('UPDATE product_specifications SET is_default = 0 WHERE product_id = ?').run(productId);
+    }
+
+    db.prepare(`
+      UPDATE product_specifications
+      SET spec_name = COALESCE(?, spec_name),
+          material_name = COALESCE(?, material_name),
+          selling_price = COALESCE(?, selling_price),
+          cost_price = COALESCE(?, cost_price),
+          unit = COALESCE(?, unit),
+          description = COALESCE(?, description),
+          is_default = COALESCE(?, is_default),
+          gst_rate = COALESCE(?, gst_rate),
+          hsn_code = COALESCE(?, hsn_code),
+          status = COALESCE(?, status),
+          is_outsource = COALESCE(?, is_outsource),
+          default_vendor_id = COALESCE(?, default_vendor_id),
+          default_vendor = COALESCE(?, default_vendor),
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND product_id = ?
+    `).run(
+      spec.specName,
+      spec.materialName,
+      spec.sellingPrice !== undefined ? Number(spec.sellingPrice) : null,
+      spec.costPrice !== undefined ? Number(spec.costPrice) : null,
+      spec.unit,
+      spec.description,
+      spec.isDefault !== undefined ? (spec.isDefault ? 1 : 0) : null,
+      spec.gstRate !== undefined ? Number(spec.gstRate) : null,
+      spec.hsnCode,
+      spec.status,
+      spec.isOutsource !== undefined ? (spec.isOutsource ? 1 : 0) : (spec.defaultVendor || spec.defaultVendorId ? 1 : null),
+      spec.defaultVendorId ?? spec.default_vendor_id ?? null,
+      spec.defaultVendor ?? spec.default_vendor ?? null,
+      id,
+      productId
+    );
+
+    res.json({ success: true, id, message: 'Specification updated' });
+  } catch (err) {
+    console.error("PUT /api/products/:productId/specifications/:id Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/products/:productId/specifications/:id', (req, res) => {
+  try {
+    const { productId, id } = req.params;
+    db.prepare('DELETE FROM product_pricing_slabs WHERE product_id = ? AND spec_id = ?').run(productId, id);
+    db.prepare('DELETE FROM product_specifications WHERE id = ? AND product_id = ?').run(id, productId);
+    res.json({ success: true, id, message: 'Specification deleted' });
+  } catch (err) {
+    console.error("DELETE /api/products/:productId/specifications/:id Error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -4099,7 +4439,7 @@ app.post('/api/biometric/import-users', (req, res) => {
     db.prepare('UPDATE biometric_devices SET last_sync_time = ?, status = ? WHERE id = ?').run(syncTime, 'Online', deviceId);
 
     const allEmployees = db.prepare('SELECT * FROM employees').all();
-    const currentMappings = db.prepare('SELECT * FROM biometric_user_mappings WHERE device_id = ?').all();
+    const currentMappings = db.prepare('SELECT * FROM biometric_user_mappings WHERE device_id = ?').all(deviceId);
 
     let matchedCount = 0;
     let unmappedCount = 0;

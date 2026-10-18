@@ -2,14 +2,16 @@ import React, { useState } from 'react';
 import { useERP } from '../context/ERPContext';
 import { CreateProductModal } from '../components/modals/CreateProductModal';
 import { MaterialSpecModal } from '../components/modals/MaterialSpecModal';
-import { Package, Plus, Search, Layers, Trash2, Edit } from 'lucide-react';
+import { ProductSlabsModal } from '../components/modals/ProductSlabsModal';
+import { Package, Plus, Search, Layers, Trash2, Edit, Tag } from 'lucide-react';
 
 export const ProductsView = () => {
-  const { products, productMaterialSpecs, deleteProduct } = useERP();
+  const { products, productMaterialSpecs, productPricingSlabs, deleteProduct } = useERP();
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [selectedProductForSpecs, setSelectedProductForSpecs] = useState(null);
+  const [selectedProductForSlabs, setSelectedProductForSlabs] = useState(null);
 
   const filteredProducts = (products || []).filter((p) => {
     const q = (searchQuery || '').toLowerCase();
@@ -35,7 +37,7 @@ export const ProductsView = () => {
             <Package size={24} color="#2563eb" /> Product & Dynamic Material Specification Master
           </h2>
           <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-            Manage Products, linked dynamic Material Specifications (PVC, Vinyl, Transparent, Stamps), GST & Pricing
+            Manage Products, linked dynamic Material Specifications, Quantity Rate Slabs (Volume Pricing), GST & Pricing
           </span>
         </div>
 
@@ -70,6 +72,7 @@ export const ProductsView = () => {
                 <th>Unit</th>
                 <th>Default Rate</th>
                 <th>Estimated Cost</th>
+                <th>Quantity Slabs (Tiered)</th>
                 <th>Linked Dynamic Specs</th>
                 <th>HSN / GST</th>
                 <th style={{ textAlign: 'center' }}>Action</th>
@@ -81,24 +84,82 @@ export const ProductsView = () => {
                 const estimatedCost = Number(p.estimatedCost ?? p.estimated_cost ?? 0);
                 const specs = (productMaterialSpecs || []).filter((s) => s.productId === p.id);
                 const defaultSpec = specs.find((s) => s.isDefault);
+                const slabs = (productPricingSlabs || []).filter((s) => s.productId === p.id).sort((a, b) => Number(a.minQty) - Number(b.minQty));
 
                 return (
                   <tr key={p.id}>
                     <td style={{ fontWeight: 700, color: '#64748b' }}>{p.id}</td>
                     <td style={{ fontWeight: 800, color: '#0f172a' }}>
                       {p.name}
-                      {defaultSpec && (
-                        <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600 }}>
-                          Default: {defaultSpec.specName} (₹{defaultSpec.sellingPrice}/{defaultSpec.unit})
+                      {specs.length > 0 && (
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>
+                          Standard Base: ₹{defaultRate}/{p.unit || 'Pcs'}
+                          {defaultSpec ? ` • Default: ${defaultSpec.specName} (₹${defaultSpec.sellingPrice}/${defaultSpec.unit})` : ` • ${specs.length} specs available`}
                         </div>
                       )}
                     </td>
-                    <td><span className="badge badge-blue">{p.category || 'Standard'}</span></td>
+                    <td>
+                      <span className="badge badge-blue">{p.category || 'Standard'}</span>
+                      {p.defaultVendor && (
+                        <div style={{ marginTop: '3px' }}>
+                          <span
+                            style={{
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              background: '#faf5ff',
+                              color: '#7c3aed',
+                              border: '1px solid #ddd6fe',
+                              borderRadius: '4px',
+                              padding: '1px 5px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '2px'
+                            }}
+                            title={`Default Outsource Vendor: ${p.defaultVendor}`}
+                          >
+                            🏬 {p.defaultVendor}
+                          </span>
+                        </div>
+                      )}
+                    </td>
                     <td>{p.unit || 'Sq.Ft'}</td>
                     <td style={{ fontWeight: 800, color: '#1e40af' }}>
-                      ₹{defaultSpec ? defaultSpec.sellingPrice : defaultRate} / {defaultSpec ? defaultSpec.unit : (p.unit || 'Sq.Ft')}
+                      ₹{defaultRate} / {p.unit || 'Pcs'}
+                      {defaultSpec && (
+                        <span style={{ display: 'block', fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>
+                          Spec: ₹{defaultSpec.sellingPrice}/{defaultSpec.unit}
+                        </span>
+                      )}
                     </td>
-                    <td style={{ color: '#64748b' }}>₹{defaultSpec ? defaultSpec.costPrice : estimatedCost}</td>
+                    <td style={{ color: '#64748b' }}>
+                      ₹{estimatedCost}
+                      {defaultSpec && (
+                        <span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b' }}>
+                          Spec: ₹{defaultSpec.costPrice}
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      {/* QUANTITY RATE SLABS BUTTON */}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProductForSlabs(p)}
+                        className="btn btn-sm btn-secondary"
+                        style={{
+                          background: slabs.length > 0 ? '#eff6ff' : '#f8fafc',
+                          color: slabs.length > 0 ? '#1d4ed8' : '#64748b',
+                          fontWeight: 700,
+                          borderColor: slabs.length > 0 ? '#bfdbfe' : '#e2e8f0',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.35rem'
+                        }}
+                        title="Configure quantity rate ranges / volume pricing slabs"
+                      >
+                        <Tag size={13} color={slabs.length > 0 ? '#2563eb' : '#94a3b8'} />
+                        {slabs.length > 0 ? `${slabs.length} Slab${slabs.length === 1 ? '' : 's'}` : '+ Rate Slabs'}
+                      </button>
+                    </td>
                     <td>
                       {/* SINGLE UNIFIED DYNAMIC SPEC BUTTON */}
                       <button
@@ -109,6 +170,11 @@ export const ProductsView = () => {
                         title="Click to view and configure dynamic material specifications"
                       >
                         <Layers size={14} color="#7c3aed" /> {specs.length} Dynamic Spec{specs.length === 1 ? '' : 's'}
+                        {specs.some(s => s.isOutsource || s.defaultVendor) && (
+                          <span style={{ fontSize: '0.65rem', background: '#e9d5ff', color: '#581c87', padding: '1px 4px', borderRadius: '3px', marginLeft: '3px' }}>
+                            🏬 Outsource
+                          </span>
+                        )}
                       </button>
                     </td>
                     <td style={{ fontFamily: 'var(--font-mono)' }}>
@@ -163,6 +229,12 @@ export const ProductsView = () => {
         isOpen={!!selectedProductForSpecs}
         onClose={() => setSelectedProductForSpecs(null)}
         product={selectedProductForSpecs}
+      />
+
+      <ProductSlabsModal
+        isOpen={!!selectedProductForSlabs}
+        onClose={() => setSelectedProductForSlabs(null)}
+        product={selectedProductForSlabs}
       />
     </div>
   );

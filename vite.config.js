@@ -5,8 +5,9 @@ export default defineConfig({
   plugins: [react()],
   envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
   server: {
+    host: true,
     port: 5180,
-    open: true,
+    open: false,
     watch: {
       ignored: ['**/database/**', '**/*.sqlite*']
     },

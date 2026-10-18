@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "server": "node server/index.js",
+    "seed": "node server/seedDemoData.js",
     "dev": "concurrently \"node server/index.js\" \"npx vite\"",
     "build": "npx vite build",
     "preview": "npx vite preview",

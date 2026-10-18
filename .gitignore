@@ -21,3 +21,6 @@ database/backups/
 
 .vercel
 scratch/
+
+.vercel
+.env*

@@ -3,7 +3,8 @@ import { useERP } from '../context/ERPContext';
 import { CUSTOMER_TYPES } from '../types';
 import { CreateCustomerModal } from '../components/modals/CreateCustomerModal';
 import EditCustomerModal from '../components/modals/EditCustomerModal';
-import { Users, UserPlus, Search, Phone, Mail, Building, AlertTriangle, ShieldCheck, FileText, ShoppingCart, CreditCard, Clock, CheckCircle2, X, Edit, UserCheck, Wallet, BookOpen, Download, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import BulkCustomerImportModal from '../components/modals/BulkCustomerImportModal';
+import { Users, UserPlus, Search, Phone, Mail, Building, AlertTriangle, ShieldCheck, FileText, ShoppingCart, CreditCard, Clock, CheckCircle2, X, Edit, UserCheck, Wallet, BookOpen, Download, ArrowDownLeft, ArrowUpRight, Upload, FileSpreadsheet } from 'lucide-react';
 import { formatINR } from '../utils/reportEngine';
 
 export const CustomersView = ({ onNavigate }) => {
@@ -11,6 +12,7 @@ export const CustomersView = ({ onNavigate }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [editingCust, setEditingCust] = useState(null);
   const [historyCust, setHistoryCust] = useState(null);
   const [historyTab, setHistoryTab] = useState('statement');
@@ -148,9 +150,20 @@ export const CustomersView = ({ onNavigate }) => {
           </span>
         </div>
 
-        <button onClick={() => setIsModalOpen(true)} className="btn btn-primary">
-          <UserPlus size={16} /> + Add Customer
-        </button>
+        <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center' }}>
+          <button 
+            onClick={() => setIsBulkImportOpen(true)} 
+            className="btn btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 700, borderColor: '#bfdbfe', color: '#1d4ed8' }}
+            title="Import multiple customers from Excel / CSV"
+          >
+            <Upload size={16} color="#2563eb" /> Bulk Upload (CSV)
+          </button>
+
+          <button onClick={() => setIsModalOpen(true)} className="btn btn-primary">
+            <UserPlus size={16} /> + Add Customer
+          </button>
+        </div>
       </div>
 
       {/* Summary KPI Cards */}
@@ -679,6 +692,11 @@ export const CustomersView = ({ onNavigate }) => {
       <CreateCustomerModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
+      />
+
+      <BulkCustomerImportModal
+        isOpen={isBulkImportOpen}
+        onClose={() => setIsBulkImportOpen(false)}
       />
 
       <EditCustomerModal
