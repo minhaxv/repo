@@ -12,6 +12,7 @@ import { JobDetailModal } from '../components/modals/JobDetailModal';
 import { TaxInvoicePrintModal } from '../components/modals/TaxInvoicePrintModal';
 import { SearchableSelect } from '../components/common/SearchableSelect';
 import { handleSendWhatsApp } from '../utils/whatsapp';
+import { resolveItemPricingAndCost } from '../utils/pricingEngine';
 import {
   Plus,
   Search,
@@ -53,6 +54,9 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
     products,
     productMaterialSpecs,
     productPricingSlabs,
+    productBoms,
+    productYieldConfigs,
+    customerPricingRules,
     getProductSlabInfo,
     employees,
     salesPersons,
@@ -291,10 +295,45 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
     internalEstOutsourceCost: '',
     actualVendorBill: 0,
     sellingRate: '',
+    originalSellingPrice: '',
+    appliedPricingRule: 'FIXED_UNIT',
+    pricingRuleDetails: '',
+    estimatedMaterialCost: 0,
+    estimatedLabourCost: 0,
+    estimatedMachineCost: 0,
+    estimatedOverheadCost: 0,
+    isRateOverridden: false,
+    overrideReason: '',
+    yieldResult: null,
     discount: 0,
     gstRate: 18,
     isCustom: false
   });
+
+  const evaluateDynamicPricing = (baseItem, overrideRate = undefined) => {
+    if (!baseItem.productId) return null;
+    const prod = (products || []).find((p) => p.id === baseItem.productId);
+    const spec = (productMaterialSpecs || []).find((s) => s.id === baseItem.specId);
+    const cust = selectedCust || (customers || []).find((c) => c.id === orderHeader.customerId);
+    const allSlabs = (productPricingSlabs || []).filter((s) => s.productId === baseItem.productId);
+    const custRules = (customerPricingRules || []);
+    const bom = (productBoms || []).find((b) => b.productId === baseItem.productId && (baseItem.specId ? b.specId === baseItem.specId : b.isDefault)) || (productBoms || []).find((b) => b.productId === baseItem.productId);
+    const yieldCfg = (productYieldConfigs || []).find((y) => y.productId === baseItem.productId);
+
+    return resolveItemPricingAndCost({
+      item: {
+        ...baseItem,
+        customPrice: overrideRate !== undefined ? overrideRate : (baseItem.isRateOverridden ? baseItem.sellingRate : undefined)
+      },
+      product: prod,
+      spec,
+      customer: cust,
+      allSlabs,
+      customerRules: custRules,
+      bom,
+      yieldConfig: yieldCfg
+    });
+  };
 
   const [items, setItems] = useState([createEmptyItem(1)]);
 
@@ -720,7 +759,20 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
           ...it,
           qty: hasQty ? parseFloat(it.qty) : null,
           sellingRate: hasRate ? parseFloat(it.sellingRate) : null,
+          originalSellingPrice: it.originalSellingPrice !== undefined && it.originalSellingPrice !== null && !isNaN(Number(it.originalSellingPrice)) ? Number(it.originalSellingPrice) : (hasRate ? parseFloat(it.sellingRate) : 0),
+          appliedPricingRule: it.appliedPricingRule || 'FIXED_UNIT',
+          pricingRuleDetails: it.pricingRuleDetails || '',
           estimatedCost: hasCost ? parseFloat(it.estimatedCost) : null,
+          estimatedMaterialCost: Number(it.estimatedMaterialCost || 0),
+          estimatedLabourCost: Number(it.estimatedLabourCost || 0),
+          estimatedMachineCost: Number(it.estimatedMachineCost || 0),
+          estimatedOverheadCost: Number(it.estimatedOverheadCost || 0),
+          isRateOverridden: Boolean(it.isRateOverridden),
+          overrideReason: it.overrideReason || '',
+          overriddenByUserId: it.isRateOverridden ? (it.overriddenByUserId || activeUser?.id || '') : '',
+          overriddenByName: it.isRateOverridden ? (it.overriddenByName || activeUser?.name || activeUser?.username || '') : '',
+          grossProfit: Number(it.grossProfit || 0),
+          grossProfitMargin: Number(it.grossProfitMargin || 0),
           deliveryDate: it.deliveryDate || null,
           vendorName: vendorObj?.name || '',
           designerName: designerObj?.name || ''
@@ -1408,9 +1460,17 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                               const newItems = [...items];
                               const isCustom = p?.isCustom || (p.name || '').includes('Custom');
                               const currentQty = Number(newItems[idx].qty) || 1;
-                              const slabInfo = getProductSlabInfo ? getProductSlabInfo(p.id, currentQty, defSpec?.id || null) : null;
-                              const baseProdRate = p?.defaultRate ?? p?.sellingPrice ?? p?.selling_price ?? newItems[idx].sellingRate ?? '';
-                              const resolvedRate = slabInfo ? slabInfo.rate : (defSpec ? defSpec.sellingPrice : baseProdRate);
+                              const pricing = evaluateDynamicPricing({
+                                productId: p.id,
+                                specId: defSpec?.id || '',
+                                qty: currentQty,
+                                width: Number(newItems[idx].width || 0),
+                                height: Number(newItems[idx].height || 0),
+                                unit: defSpec ? defSpec.unit : (p?.unit || 'Pcs')
+                              });
+
+                              const resolvedRate = pricing ? pricing.sellingRate : (defSpec ? defSpec.sellingPrice : (p?.defaultRate ?? 0));
+                              const resolvedCost = pricing && pricing.estimatedCost > 0 ? pricing.estimatedCost : defaultCost;
 
                               newItems[idx] = {
                                 ...newItems[idx],
@@ -1420,10 +1480,21 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                                 specId: defSpec?.id || '',
                                 specName: defSpec?.specName || '',
                                 sellingRate: resolvedRate,
-                                appliedSlab: slabInfo,
+                                originalSellingPrice: pricing ? pricing.originalSellingPrice : resolvedRate,
+                                appliedPricingRule: pricing ? pricing.appliedPricingRule : 'FIXED_UNIT',
+                                pricingRuleDetails: pricing ? pricing.pricingRuleDetails : '',
+                                appliedSlab: pricing?.appliedPricingRule === 'QUANTITY_SLAB' ? { minQty: currentQty, rate: resolvedRate } : null,
                                 isRateOverridden: false,
-                                estimatedCost: defaultCost,
-                                internalEstOutsourceCost: defaultCost,
+                                overrideReason: '',
+                                estimatedCost: resolvedCost,
+                                estimatedMaterialCost: pricing?.estimatedMaterialCost || 0,
+                                estimatedLabourCost: pricing?.estimatedLabourCost || 0,
+                                estimatedMachineCost: pricing?.estimatedMachineCost || 0,
+                                estimatedOverheadCost: pricing?.estimatedOverheadCost || 0,
+                                yieldResult: pricing?.yieldResult || null,
+                                grossProfit: pricing?.grossProfit || 0,
+                                grossProfitMargin: pricing?.grossProfitMargin || 0,
+                                internalEstOutsourceCost: resolvedCost,
                                 unit: defSpec ? defSpec.unit : (p?.unit || newItems[idx].unit || 'Pcs'),
                                 material: defSpec ? (defSpec.materialName || defSpec.specName) : (p?.defaultMaterial || newItems[idx].material || ''),
                                 description: defSpec ? (defSpec.description || defSpec.specName) : (newItems[idx].description || p?.description || ''),
@@ -1602,21 +1673,25 @@ export const SalesOrdersView = ({ initialCreate = false, initialSelectId = null,
                               const newItems = [...items];
                               newItems[idx].qty = newQty;
 
-                              if (item.productId && !item.isRateOverridden && getProductSlabInfo) {
-                                const slab = getProductSlabInfo(item.productId, newQty, item.specId || null);
-                                if (slab) {
-                                  newItems[idx].sellingRate = slab.rate;
-                                  newItems[idx].appliedSlab = slab;
-                                } else {
-                                  const pSpecs = (productMaterialSpecs || []).filter((s) => s.productId === item.productId);
-                                  const currSpec = pSpecs.find((s) => s.id === item.specId);
-                                  const prod = (products || []).find((p) => p.id === item.productId);
-                                  if (currSpec) {
-                                    newItems[idx].sellingRate = currSpec.sellingPrice;
-                                  } else if (prod) {
-                                    newItems[idx].sellingRate = prod.defaultRate ?? prod.sellingPrice ?? newItems[idx].sellingRate;
-                                  }
-                                  newItems[idx].appliedSlab = null;
+                              if (item.productId && !item.isRateOverridden) {
+                                const pricing = evaluateDynamicPricing({
+                                  ...item,
+                                  qty: Number(newQty) || 1
+                                });
+                                if (pricing) {
+                                  newItems[idx].sellingRate = pricing.sellingRate;
+                                  newItems[idx].originalSellingPrice = pricing.originalSellingPrice;
+                                  newItems[idx].appliedPricingRule = pricing.appliedPricingRule;
+                                  newItems[idx].pricingRuleDetails = pricing.pricingRuleDetails;
+                                  newItems[idx].estimatedCost = pricing.estimatedCost;
+                                  newItems[idx].estimatedMaterialCost = pricing.estimatedMaterialCost;
+                                  newItems[idx].estimatedLabourCost = pricing.estimatedLabourCost;
+                                  newItems[idx].estimatedMachineCost = pricing.estimatedMachineCost;
+                                  newItems[idx].estimatedOverheadCost = pricing.estimatedOverheadCost;
+                                  newItems[idx].yieldResult = pricing.yieldResult;
+                                  newItems[idx].grossProfit = pricing.grossProfit;
+                                  newItems[idx].grossProfitMargin = pricing.grossProfitMargin;
+                                  newItems[idx].appliedSlab = pricing.appliedPricingRule === 'QUANTITY_SLAB' ? { minQty: Number(newQty) || 1, rate: pricing.sellingRate } : null;
                                 }
                               }
 

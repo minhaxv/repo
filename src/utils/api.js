@@ -144,6 +144,151 @@ export const api = {
     return await res.json();
   },
 
+  // Pricing Engine & Production Yield
+  async evaluatePricing(params) {
+    const res = await fetch(`${API_BASE}/pricing/evaluate`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(params)
+    });
+    if (!res.ok) throw new Error('API evaluatePricing failed');
+    return await res.json();
+  },
+
+  async calculateYield(orderQty, yieldConfig) {
+    const res = await fetch(`${API_BASE}/pricing/calculate-yield`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ orderQty, yieldConfig })
+    });
+    if (!res.ok) throw new Error('API calculateYield failed');
+    return await res.json();
+  },
+
+  // Customer Pricing Rules
+  async fetchCustomerPricingRules(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_BASE}/customer-pricing-rules${query ? '?' + query : ''}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('API fetchCustomerPricingRules failed');
+    return await res.json();
+  },
+
+  async saveCustomerPricingRule(rule) {
+    const res = await fetch(`${API_BASE}/customer-pricing-rules`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(rule)
+    });
+    if (!res.ok) throw new Error('API saveCustomerPricingRule failed');
+    return await res.json();
+  },
+
+  async deleteCustomerPricingRule(id) {
+    const res = await fetch(`${API_BASE}/customer-pricing-rules/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('API deleteCustomerPricingRule failed');
+    return await res.json();
+  },
+
+  // Product BOM
+  async fetchProductBOM(productId) {
+    const res = await fetch(`${API_BASE}/products/${productId}/bom`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('API fetchProductBOM failed');
+    return await res.json();
+  },
+
+  async saveProductBOM(productId, bom) {
+    const res = await fetch(`${API_BASE}/products/${productId}/bom`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(bom)
+    });
+    if (!res.ok) throw new Error('API saveProductBOM failed');
+    return await res.json();
+  },
+
+  async deleteProductBOM(productId, bomId) {
+    const res = await fetch(`${API_BASE}/products/${productId}/bom/${bomId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('API deleteProductBOM failed');
+    return await res.json();
+  },
+
+  // Product Yield Config
+  async fetchProductYieldConfig(productId) {
+    const res = await fetch(`${API_BASE}/products/${productId}/yield-config`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('API fetchProductYieldConfig failed');
+    return await res.json();
+  },
+
+  async saveProductYieldConfig(productId, config) {
+    const res = await fetch(`${API_BASE}/products/${productId}/yield-config`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(config)
+    });
+    if (!res.ok) throw new Error('API saveProductYieldConfig failed');
+    return await res.json();
+  },
+
+  // Pricing Override Logging
+  async logPricingOverride(data) {
+    const res = await fetch(`${API_BASE}/pricing/override-log`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('API logPricingOverride failed');
+    return await res.json();
+  },
+
+  // Costing & Profitability Reports
+  async fetchReportProfitabilityProduct() {
+    const res = await fetch(`${API_BASE}/reports/profitability-product`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('API fetchReportProfitabilityProduct failed');
+    return await res.json();
+  },
+
+  async fetchReportProfitabilityCustomer() {
+    const res = await fetch(`${API_BASE}/reports/profitability-customer`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('API fetchReportProfitabilityCustomer failed');
+    return await res.json();
+  },
+
+  async fetchReportCostVariance() {
+    const res = await fetch(`${API_BASE}/reports/cost-variance`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('API fetchReportCostVariance failed');
+    return await res.json();
+  },
+
+  async fetchReportMaterialConsumption() {
+    const res = await fetch(`${API_BASE}/reports/material-consumption`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('API fetchReportMaterialConsumption failed');
+    return await res.json();
+  },
+
+  async fetchReportWastage() {
+    const res = await fetch(`${API_BASE}/reports/wastage`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('API fetchReportWastage failed');
+    return await res.json();
+  },
+
+  async fetchReportPricingOverrides() {
+    const res = await fetch(`${API_BASE}/reports/pricing-overrides`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('API fetchReportPricingOverrides failed');
+    return await res.json();
+  },
+
+  async fetchReportLowMargin(threshold = 15) {
+    const res = await fetch(`${API_BASE}/reports/low-margin?threshold=${threshold}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('API fetchReportLowMargin failed');
+    return await res.json();
+  },
+
   async searchProducts(query = '', limit = 25) {
     const params = new URLSearchParams({ q: query, limit: String(limit) });
     const res = await fetch(`${API_BASE}/products/search?${params.toString()}`, { headers: getHeaders() });

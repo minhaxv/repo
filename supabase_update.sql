@@ -263,3 +263,149 @@ CREATE INDEX IF NOT EXISTS idx_worker_incentives_order ON public.worker_job_ince
 ALTER TABLE public.worker_job_incentives ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow authenticated read to worker_job_incentives" ON public.worker_job_incentives FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Allow authenticated write to worker_job_incentives" ON public.worker_job_incentives FOR ALL TO authenticated USING (true);
+
+-- =====================================================================================
+-- 14. MIGRATION 020: ADVANCED PRINTING PRODUCT CATALOGUE, DYNAMIC PRICING & BOM COSTING
+-- =====================================================================================
+
+-- Product Master Extensions
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS sku TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS barcode TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS image_url TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS min_order_qty NUMERIC DEFAULT 1;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS pricing_method TEXT DEFAULT 'FIXED';
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS variants_json JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS production_settings_json JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS tax_inclusive BOOLEAN DEFAULT false;
+
+-- Slabs Extensions
+ALTER TABLE public.product_pricing_slabs ADD COLUMN IF NOT EXISTS customer_id TEXT;
+ALTER TABLE public.product_pricing_slabs ADD COLUMN IF NOT EXISTS customer_type TEXT;
+ALTER TABLE public.product_pricing_slabs ADD COLUMN IF NOT EXISTS start_date TIMESTAMPTZ;
+ALTER TABLE public.product_pricing_slabs ADD COLUMN IF NOT EXISTS end_date TIMESTAMPTZ;
+ALTER TABLE public.product_pricing_slabs ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 1;
+ALTER TABLE public.product_pricing_slabs ADD COLUMN IF NOT EXISTS pricing_rule_name TEXT;
+
+-- Customer-Specific Pricing Rules (Method 5: Negotiated Contracts & Tier Discounts)
+CREATE TABLE IF NOT EXISTS public.customer_pricing_rules (
+    id TEXT PRIMARY KEY,
+    customer_id TEXT NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
+    customer_name TEXT,
+    product_id TEXT REFERENCES public.products(id) ON DELETE CASCADE,
+    product_category TEXT,
+    spec_id TEXT,
+    pricing_type TEXT DEFAULT 'CONTRACT_RATE',
+    custom_rate NUMERIC,
+    discount_pct NUMERIC,
+    min_qty NUMERIC DEFAULT 1,
+    start_date TIMESTAMPTZ,
+    end_date TIMESTAMPTZ,
+    priority INTEGER DEFAULT 1,
+    active BOOLEAN DEFAULT true,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_cpr_cust ON public.customer_pricing_rules(customer_id);
+CREATE INDEX IF NOT EXISTS idx_cpr_prod ON public.customer_pricing_rules(product_id);
+CREATE INDEX IF NOT EXISTS idx_cpr_active ON public.customer_pricing_rules(active);
+ALTER TABLE public.customer_pricing_rules ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow authenticated read to customer_pricing_rules" ON public.customer_pricing_rules FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated write to customer_pricing_rules" ON public.customer_pricing_rules FOR ALL TO authenticated USING (true);
+
+-- Product Bill of Materials (BOM)
+CREATE TABLE IF NOT EXISTS public.product_bom (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
+    spec_id TEXT,
+    bom_name TEXT NOT NULL DEFAULT 'Standard BOM',
+    output_qty NUMERIC NOT NULL DEFAULT 1,
+    output_unit TEXT DEFAULT 'Pcs',
+    is_default BOOLEAN DEFAULT true,
+    raw_materials_json JSONB DEFAULT '[]'::jsonb,
+    machine_cost NUMERIC DEFAULT 0,
+    machine_id TEXT,
+    machine_name TEXT,
+    labour_cost NUMERIC DEFAULT 0,
+    electricity_cost NUMERIC DEFAULT 0,
+    finishing_cost NUMERIC DEFAULT 0,
+    packaging_cost NUMERIC DEFAULT 0,
+    outsourced_cost NUMERIC DEFAULT 0,
+    outsourced_vendor_id TEXT,
+    outsourced_process TEXT,
+    total_estimated_unit_cost NUMERIC DEFAULT 0,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pbom_prod ON public.product_bom(product_id);
+ALTER TABLE public.product_bom ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow authenticated read to product_bom" ON public.product_bom FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated write to product_bom" ON public.product_bom FOR ALL TO authenticated USING (true);
+
+-- Production Imposition & Yield Configurations (Business Cards, Label Sheets)
+CREATE TABLE IF NOT EXISTS public.product_yield_configs (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL UNIQUE REFERENCES public.products(id) ON DELETE CASCADE,
+    sheet_name TEXT DEFAULT 'Standard Sheet',
+    sheet_width_in NUMERIC DEFAULT 12,
+    sheet_height_in NUMERIC DEFAULT 18,
+    cards_per_sheet INTEGER NOT NULL DEFAULT 30,
+    paper_material_id TEXT,
+    paper_gsm NUMERIC DEFAULT 300,
+    paper_sheet_cost NUMERIC DEFAULT 6.50,
+    printing_side TEXT DEFAULT 'DOUBLE',
+    printing_cost_per_sheet NUMERIC DEFAULT 8.00,
+    ink_cost_per_sheet NUMERIC DEFAULT 1.50,
+    lamination_type TEXT DEFAULT 'Thermal Matte',
+    lamination_cost_per_sheet NUMERIC DEFAULT 4.00,
+    cutting_cost_per_sheet NUMERIC DEFAULT 1.50,
+    wastage_pct NUMERIC DEFAULT 5.0,
+    overhead_per_sheet NUMERIC DEFAULT 0.50,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_yield_prod ON public.product_yield_configs(product_id);
+ALTER TABLE public.product_yield_configs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow authenticated read to product_yield_configs" ON public.product_yield_configs FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated write to product_yield_configs" ON public.product_yield_configs FOR ALL TO authenticated USING (true);
+
+-- Sales Order Line Costing & Margin Audit Snapshots
+ALTER TABLE public.sales_order_items ADD COLUMN IF NOT EXISTS original_selling_price NUMERIC;
+ALTER TABLE public.sales_order_items ADD COLUMN IF NOT EXISTS applied_pricing_rule TEXT;
+ALTER TABLE public.sales_order_items ADD COLUMN IF NOT EXISTS pricing_rule_details JSONB;
+ALTER TABLE public.sales_order_items ADD COLUMN IF NOT EXISTS estimated_material_cost NUMERIC DEFAULT 0;
+ALTER TABLE public.sales_order_items ADD COLUMN IF NOT EXISTS estimated_labour_cost NUMERIC DEFAULT 0;
+ALTER TABLE public.sales_order_items ADD COLUMN IF NOT EXISTS estimated_machine_cost NUMERIC DEFAULT 0;
+ALTER TABLE public.sales_order_items ADD COLUMN IF NOT EXISTS estimated_overhead_cost NUMERIC DEFAULT 0;
+ALTER TABLE public.sales_order_items ADD COLUMN IF NOT EXISTS is_rate_overridden BOOLEAN DEFAULT false;
+ALTER TABLE public.sales_order_items ADD COLUMN IF NOT EXISTS override_reason TEXT;
+ALTER TABLE public.sales_order_items ADD COLUMN IF NOT EXISTS overridden_by_user_id TEXT;
+ALTER TABLE public.sales_order_items ADD COLUMN IF NOT EXISTS overridden_by_name TEXT;
+ALTER TABLE public.sales_order_items ADD COLUMN IF NOT EXISTS gross_profit NUMERIC DEFAULT 0;
+ALTER TABLE public.sales_order_items ADD COLUMN IF NOT EXISTS gross_profit_margin NUMERIC DEFAULT 0;
+
+-- Pricing Overrides Audit Log
+CREATE TABLE IF NOT EXISTS public.pricing_overrides_log (
+    id TEXT PRIMARY KEY,
+    order_id TEXT,
+    order_number TEXT,
+    item_id TEXT,
+    product_id TEXT,
+    product_name TEXT,
+    customer_id TEXT,
+    customer_name TEXT,
+    original_rate NUMERIC,
+    overridden_rate NUMERIC,
+    reason TEXT,
+    user_id TEXT,
+    user_name TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pol_order ON public.pricing_overrides_log(order_id);
+CREATE INDEX IF NOT EXISTS idx_pol_product ON public.pricing_overrides_log(product_id);
+CREATE INDEX IF NOT EXISTS idx_pol_cust ON public.pricing_overrides_log(customer_id);
+ALTER TABLE public.pricing_overrides_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow authenticated read to pricing_overrides_log" ON public.pricing_overrides_log FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated write to pricing_overrides_log" ON public.pricing_overrides_log FOR ALL TO authenticated USING (true);

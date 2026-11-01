@@ -16,7 +16,14 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated, productT
 
   const [formData, setFormData] = useState({
     name: '',
+    sku: '',
+    barcode: '',
+    imageUrl: '',
+    description: '',
     unit: 'Sq.Ft',
+    pricingMethod: 'FIXED',
+    minOrderQty: 1,
+    taxInclusive: false,
     defaultRate: 25,
     estimatedCost: 12,
     gstRate: 18,
@@ -25,7 +32,8 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated, productT
     defaultMaterial: 'Standard Substrate',
     defaultVendor: '',
     defaultVendorId: '',
-    isOutsource: false
+    isOutsource: false,
+    variants: []
   });
 
   const isDirty = Boolean(
@@ -54,9 +62,25 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated, productT
       setErrorMsg('');
       setIsSubmitting(false);
       if (productToEdit) {
+        let parsedVariants = [];
+        try {
+          if (typeof productToEdit.variantsJson === 'string') {
+            parsedVariants = JSON.parse(productToEdit.variantsJson || '[]');
+          } else if (Array.isArray(productToEdit.variants)) {
+            parsedVariants = productToEdit.variants;
+          }
+        } catch(e) {}
+
         setFormData({
           name: productToEdit.name || '',
+          sku: productToEdit.sku || '',
+          barcode: productToEdit.barcode || '',
+          imageUrl: productToEdit.imageUrl || productToEdit.image_url || '',
+          description: productToEdit.description || '',
           unit: productToEdit.unit || 'Sq.Ft',
+          pricingMethod: productToEdit.pricingMethod || productToEdit.pricing_method || 'FIXED',
+          minOrderQty: Number(productToEdit.minOrderQty ?? productToEdit.min_order_qty ?? 1),
+          taxInclusive: Boolean(productToEdit.taxInclusive ?? productToEdit.tax_inclusive),
           defaultRate: Number(productToEdit.defaultRate ?? productToEdit.default_rate ?? 0),
           estimatedCost: Number(productToEdit.estimatedCost ?? productToEdit.estimated_cost ?? 0),
           gstRate: Number(productToEdit.gstRate ?? productToEdit.gst_rate ?? 18),
@@ -65,10 +89,11 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated, productT
           defaultMaterial: productToEdit.defaultMaterial || productToEdit.default_material || 'Standard Substrate',
           defaultVendor: productToEdit.defaultVendor || productToEdit.default_vendor || '',
           defaultVendorId: productToEdit.defaultVendorId || productToEdit.default_vendor_id || '',
-          isOutsource: Boolean(productToEdit.isOutsource || productToEdit.is_outsource || productToEdit.defaultVendor || productToEdit.default_vendor)
+          isOutsource: Boolean(productToEdit.isOutsource || productToEdit.is_outsource || productToEdit.defaultVendor || productToEdit.default_vendor),
+          variants: parsedVariants
         });
         const existingSlabs = (productPricingSlabs || []).filter(s => s.productId === productToEdit.id);
-        if (existingSlabs.length > 0) {
+        if (existingSlabs.length > 0 || (productToEdit.pricingMethod === 'SLAB' || productToEdit.pricing_method === 'SLAB')) {
           setSlabs(existingSlabs.map(s => ({ ...s })));
           setEnableSlabs(true);
         } else {
@@ -78,7 +103,14 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated, productT
       } else {
         setFormData({
           name: '',
+          sku: '',
+          barcode: '',
+          imageUrl: '',
+          description: '',
           unit: 'Pcs',
+          pricingMethod: 'FIXED',
+          minOrderQty: 1,
+          taxInclusive: false,
           defaultRate: 25,
           estimatedCost: 12,
           gstRate: 18,
@@ -87,7 +119,8 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated, productT
           defaultMaterial: 'Standard Substrate',
           defaultVendor: '',
           defaultVendorId: '',
-          isOutsource: false
+          isOutsource: false,
+          variants: []
         });
         setSlabs([]);
         setEnableSlabs(false);
@@ -201,6 +234,30 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated, productT
             </div>
 
             <div className="form-group">
+              <label className="form-label">SKU Code</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="e.g. PRD-BC-300"
+                value={formData.sku}
+                onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                disabled={isSubmitting}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Barcode / EAN</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="e.g. 8901234567890"
+                value={formData.barcode}
+                onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                disabled={isSubmitting}
+              />
+            </div>
+
+            <div className="form-group">
               <label className="form-label">Measurement Unit</label>
               <select
                 className="form-select"
@@ -215,6 +272,27 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated, productT
             </div>
 
             <div className="form-group">
+              <label className="form-label">Pricing Method</label>
+              <select
+                className="form-select"
+                style={{ fontWeight: 700, color: '#2563eb' }}
+                value={formData.pricingMethod}
+                onChange={(e) => {
+                  const m = e.target.value;
+                  setFormData({ ...formData, pricingMethod: m });
+                  if (m === 'SLAB') setEnableSlabs(true);
+                }}
+                disabled={isSubmitting}
+              >
+                <option value="FIXED">1. Fixed Unit Price</option>
+                <option value="SLAB">2. Quantity Slab Pricing</option>
+                <option value="CUSTOM_QUOTE">3. Custom Quotation Pricing</option>
+                <option value="DIMENSION">4. Material & Dimension-Based (Sq.Ft/Sq.M)</option>
+                <option value="CUSTOMER_NEGOTIATED">5. Customer-Specific Negotiated</option>
+              </select>
+            </div>
+
+            <div className="form-group">
               <label className="form-label">Category</label>
               <input
                 type="text"
@@ -222,6 +300,30 @@ export const CreateProductModal = ({ isOpen, onClose, onProductCreated, productT
                 placeholder="e.g. Signage / Flex / Offset / Service"
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                disabled={isSubmitting}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Minimum Order Qty (MOQ)</label>
+              <input
+                type="number"
+                min="1"
+                className="form-control"
+                value={formData.minOrderQty}
+                onChange={(e) => setFormData({ ...formData, minOrderQty: Math.max(1, parseInt(e.target.value) || 1) })}
+                disabled={isSubmitting}
+              />
+            </div>
+
+            <div className="form-group" style={{ gridColumn: 'span 2' }}>
+              <label className="form-label">Product Image URL</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="https://... image URL for product catalogue"
+                value={formData.imageUrl}
+                onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
                 disabled={isSubmitting}
               />
             </div>

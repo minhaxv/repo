@@ -78,7 +78,7 @@ function setupTestData() {
       VALUES ('USR-EMP-101', 'EMP-101', 'billing', 'billing@test.com', ?, ?, 'Sales', 'Sales', '["CREATE","VIEW","EDIT"]', 'Active')
     `).run(staffPassA.hash, staffPassA.salt);
   } else {
-    db.prepare(`UPDATE users SET password_hash = ?, salt = ?, employee_id = 'EMP-101' WHERE username = 'billing'`).run(staffPassA.hash, staffPassA.salt);
+    db.prepare(`UPDATE users SET id = 'USR-EMP-101', password_hash = ?, salt = ?, employee_id = 'EMP-101' WHERE username = 'billing'`).run(staffPassA.hash, staffPassA.salt);
   }
 
   // Ensure Staff B employee exists
@@ -99,7 +99,7 @@ function setupTestData() {
       VALUES ('USR-EMP-102', 'EMP-102', 'emp-sls-02', 'priya@test.com', ?, ?, 'Sales', 'Sales', '["CREATE","VIEW","EDIT"]', 'Active')
     `).run(staffPassB.hash, staffPassB.salt);
   } else {
-    db.prepare(`UPDATE users SET password_hash = ?, salt = ?, employee_id = 'EMP-102' WHERE username = 'emp-sls-02'`).run(staffPassB.hash, staffPassB.salt);
+    db.prepare(`UPDATE users SET id = 'USR-EMP-102', password_hash = ?, salt = ?, employee_id = 'EMP-102' WHERE username = 'emp-sls-02'`).run(staffPassB.hash, staffPassB.salt);
   }
 
   // Ensure historical order fixture exists for Test 7
@@ -118,8 +118,8 @@ function cleanupTestData() {
   db.prepare("DELETE FROM payments WHERE order_id LIKE 'SO-TEST-ATTR-%' OR id LIKE 'PAY-SO-TEST-ATTR-%'").run();
   db.prepare("DELETE FROM job_work WHERE sales_order_id LIKE 'SO-TEST-ATTR-%'").run();
   db.prepare("DELETE FROM audit_logs WHERE record_id LIKE 'SO-TEST-ATTR-%'").run();
-  db.prepare("DELETE FROM users WHERE id IN ('USR-EMP-101', 'USR-EMP-102')").run();
-  db.prepare("DELETE FROM employees WHERE id IN ('EMP-101', 'EMP-102')").run();
+  db.prepare("DELETE FROM users WHERE username = 'emp-sls-02'").run();
+  db.prepare("DELETE FROM employees WHERE id = 'EMP-102'").run();
 }
 
 async function runTests() {

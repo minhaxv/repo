@@ -1,0 +1,357 @@
+/**
+ * SCREENARTS / PRINTFLOW ERP - CLIENT PRICING ENGINE & YIELD CALCULATOR
+ * 
+ * Synchronized with server/pricingEngine.js for instant live UI pricing,
+ * yield calculations, margin alerts, and cost estimates in React views.
+ */
+
+export function calculateProductionYield(yieldConfig, orderQuantity) {
+  const qty = Math.max(1, Number(orderQuantity || 1));
+  const cardsPerSheet = Math.max(1, Number(yieldConfig?.cards_per_sheet ?? yieldConfig?.cardsPerSheet ?? 30));
+  const requiredSheets = Math.ceil(qty / cardsPerSheet);
+  const wastagePct = Number(yieldConfig?.wastage_pct ?? yieldConfig?.wastagePct ?? 5.0);
+  const actualProductionSheets = Math.ceil(requiredSheets * (1 + wastagePct / 100));
+
+  const paperSheetCost = Number(yieldConfig?.paper_sheet_cost ?? yieldConfig?.paperSheetCost ?? 6.50);
+  const printingCostPerSheet = Number(yieldConfig?.printing_cost_per_sheet ?? yieldConfig?.printingCostPerSheet ?? 8.00);
+  const inkCostPerSheet = Number(yieldConfig?.ink_cost_per_sheet ?? yieldConfig?.inkCostPerSheet ?? 1.50);
+  const laminationCostPerSheet = Number(yieldConfig?.lamination_cost_per_sheet ?? yieldConfig?.laminationCostPerSheet ?? 4.00);
+  const cuttingCostPerSheet = Number(yieldConfig?.cutting_cost_per_sheet ?? yieldConfig?.cuttingCostPerSheet ?? 1.50);
+  const overheadPerSheet = Number(yieldConfig?.overhead_per_sheet ?? yieldConfig?.overheadPerSheet ?? 0.50);
+
+  const paperCost = Number((actualProductionSheets * paperSheetCost).toFixed(2));
+  const printingCost = Number((actualProductionSheets * printingCostPerSheet).toFixed(2));
+  const inkCost = Number((actualProductionSheets * inkCostPerSheet).toFixed(2));
+  const laminationCost = Number((actualProductionSheets * laminationCostPerSheet).toFixed(2));
+  const cuttingCost = Number((actualProductionSheets * cuttingCostPerSheet).toFixed(2));
+  const overheadCost = Number((actualProductionSheets * overheadPerSheet).toFixed(2));
+
+  const totalProductionCost = Number((paperCost + printingCost + inkCost + laminationCost + cuttingCost + overheadCost).toFixed(2));
+  const unitProductionCost = Number((totalProductionCost / qty).toFixed(4));
+
+  return {
+    orderQuantity: qty,
+    sheetDimensions: `${yieldConfig?.sheet_width_in || 12}x${yieldConfig?.sheet_height_in || 18} Inch`,
+    paperGsm: Number(yieldConfig?.paper_gsm || yieldConfig?.paperGsm || 300),
+    cardsPerSheet,
+    requiredSheets,
+    wastagePct,
+    actualProductionSheets,
+    breakdown: {
+      paperCost,
+      printingCost,
+      inkCost,
+      laminationCost,
+      cuttingCost,
+      overheadCost
+    },
+    totalProductionCost,
+    unitProductionCost
+  };
+}
+
+export function calculateBOMCost(bom, quantity = 1) {
+  const qty = Math.max(1, Number(quantity || 1));
+  if (!bom) {
+    return {
+      quantity: qty,
+      materials: [],
+      totalMaterialCost: 0,
+      machineCost: 0,
+      labourCost: 0,
+      electricityCost: 0,
+      finishingCost: 0,
+      packagingCost: 0,
+      outsourcedCost: 0,
+      totalOverheadCost: 0,
+      totalCost: 0,
+      unitCost: 0
+    };
+  }
+
+  let materials = [];
+  try {
+    materials = typeof bom.raw_materials_json === 'string'
+      ? JSON.parse(bom.raw_materials_json || '[]')
+      : (bom.raw_materials_json || bom.rawMaterials || []);
+  } catch (e) {
+    materials = [];
+  }
+
+  let totalMaterialCost = 0;
+  const materialAllocations = materials.map(mat => {
+    const qtyPerUnit = Number(mat.qty_per_unit || mat.qtyPerUnit || 1);
+    const unitCost = Number(mat.unit_cost || mat.unitCost || 0);
+    const wastagePct = Number(mat.wastage_pct || mat.wastagePct || 0);
+    const grossQtyPerUnit = qtyPerUnit * (1 + wastagePct / 100);
+    const totalRequiredQty = Number((grossQtyPerUnit * qty).toFixed(4));
+    const lineCost = Number((totalRequiredQty * unitCost).toFixed(2));
+    totalMaterialCost += lineCost;
+
+    return {
+      inventoryId: mat.inventory_id || mat.inventoryId || '',
+      materialName: mat.material_name || mat.materialName || '',
+      unit: mat.unit || 'Pcs',
+      qtyPerUnit,
+      grossQtyPerUnit: Number(grossQtyPerUnit.toFixed(4)),
+      totalRequiredQty,
+      unitCost,
+      wastagePct,
+      lineCost
+    };
+  });
+
+  const machineCost = Number(((Number(bom.machine_cost ?? bom.machineCost ?? 0)) * qty).toFixed(2));
+  const labourCost = Number(((Number(bom.labour_cost ?? bom.labourCost ?? 0)) * qty).toFixed(2));
+  const electricityCost = Number(((Number(bom.electricity_cost ?? bom.electricityCost ?? 0)) * qty).toFixed(2));
+  const finishingCost = Number(((Number(bom.finishing_cost ?? bom.finishingCost ?? 0)) * qty).toFixed(2));
+  const packagingCost = Number(((Number(bom.packaging_cost ?? bom.packagingCost ?? 0)) * qty).toFixed(2));
+  const outsourcedCost = Number(((Number(bom.outsourced_cost ?? bom.outsourcedCost ?? 0)) * qty).toFixed(2));
+
+  const totalOverheadCost = Number((machineCost + labourCost + electricityCost + finishingCost + packagingCost + outsourcedCost).toFixed(2));
+  const totalCost = Number((totalMaterialCost + totalOverheadCost).toFixed(2));
+  const unitCost = Number((totalCost / qty).toFixed(4));
+
+  return {
+    quantity: qty,
+    materials: materialAllocations,
+    totalMaterialCost: Number(totalMaterialCost.toFixed(2)),
+    machineCost,
+    labourCost,
+    electricityCost,
+    finishingCost,
+    packagingCost,
+    outsourcedCost,
+    totalOverheadCost,
+    totalCost,
+    unitCost
+  };
+}
+
+export function resolveItemPricingAndCost({
+  product,
+  spec = null,
+  quantity = 1,
+  width = 0,
+  height = 0,
+  unit = null,
+  customer = null,
+  customerPricingRules = [],
+  pricingSlabs = [],
+  yieldConfig = null,
+  bom = null,
+  manualRate = null,
+  overrideReason = '',
+  authorizedUser = null
+}) {
+  const qty = Math.max(1, Number(quantity || 1));
+  const numWidth = Number(width || 0);
+  const numHeight = Number(height || 0);
+  const effectiveUnit = (unit || spec?.unit || product?.unit || 'Pcs').trim();
+  const effectiveCategory = product?.category || '';
+
+  const catalogueBaseRate = Number(spec?.sellingPrice ?? spec?.selling_price ?? product?.defaultRate ?? product?.default_rate ?? 0);
+  const baseCost = Number(spec?.costPrice ?? spec?.cost_price ?? product?.estimatedCost ?? product?.estimated_cost ?? 0);
+
+  let dimensionMultiplier = 1;
+  const isDimensionUnit = ['sq.ft', 'sqft', 'sq.m', 'sqm', 'rft', 'running ft'].includes(effectiveUnit.toLowerCase());
+  if (effectiveUnit.toLowerCase().includes('sq')) {
+    if (numWidth > 0 && numHeight > 0) {
+      dimensionMultiplier = numWidth * numHeight;
+    }
+  } else if (effectiveUnit.toLowerCase().includes('rft') || effectiveUnit.toLowerCase().includes('running')) {
+    dimensionMultiplier = numWidth > 0 ? numWidth : (numHeight > 0 ? numHeight : 1);
+  }
+
+  const chargeableUnits = Number((qty * dimensionMultiplier).toFixed(2));
+
+  let estimatedMaterialCost = 0;
+  let estimatedLabourCost = 0;
+  let estimatedMachineCost = 0;
+  let estimatedOverheadCost = 0;
+  let totalEstimatedUnitCost = baseCost;
+
+  if (yieldConfig) {
+    const yieldRes = calculateProductionYield(yieldConfig, qty);
+    totalEstimatedUnitCost = yieldRes.unitProductionCost;
+    estimatedMaterialCost = yieldRes.breakdown.paperCost + yieldRes.breakdown.inkCost + yieldRes.breakdown.laminationCost;
+    estimatedLabourCost = yieldRes.breakdown.cuttingCost;
+    estimatedMachineCost = yieldRes.breakdown.printingCost;
+    estimatedOverheadCost = yieldRes.breakdown.overheadCost;
+  } else if (bom) {
+    const bomRes = calculateBOMCost(bom, qty);
+    totalEstimatedUnitCost = bomRes.unitCost;
+    estimatedMaterialCost = bomRes.totalMaterialCost;
+    estimatedLabourCost = bomRes.labourCost;
+    estimatedMachineCost = bomRes.machineCost;
+    estimatedOverheadCost = bomRes.electricityCost + bomRes.finishingCost + bomRes.packagingCost + bomRes.outsourcedCost;
+  } else {
+    totalEstimatedUnitCost = baseCost;
+    estimatedMaterialCost = Number((baseCost * 0.65).toFixed(2));
+    estimatedLabourCost = Number((baseCost * 0.15).toFixed(2));
+    estimatedMachineCost = Number((baseCost * 0.15).toFixed(2));
+    estimatedOverheadCost = Number((baseCost * 0.05).toFixed(2));
+  }
+
+  let appliedPricingRule = 'FIXED_UNIT';
+  let appliedRate = catalogueBaseRate;
+  let ruleDetails = 'Standard catalogue unit price';
+  let matchedRuleId = null;
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Customer Rule
+  let matchedCustomerRule = null;
+  if (customer && customer.id && Array.isArray(customerPricingRules)) {
+    const activeRules = customerPricingRules.filter(r => {
+      if (!r.active && r.active !== 1 && r.active !== undefined) return false;
+      if (r.start_date && r.start_date > todayStr) return false;
+      if (r.end_date && r.end_date < todayStr) return false;
+      if (r.min_qty && qty < Number(r.min_qty)) return false;
+
+      const matchesCustomer = r.customer_id === customer.id ||
+                              r.customerId === customer.id ||
+                              (r.customer_type && (customer.customer_type === r.customer_type || customer.customerType === r.customer_type));
+      if (!matchesCustomer) return false;
+
+      if (r.spec_id && spec && (r.spec_id === spec.id || r.specId === spec.id)) return true;
+      if (r.product_id && product && (r.product_id === product.id || r.productId === product.id)) return true;
+      if (r.product_category && effectiveCategory && r.product_category.toLowerCase() === effectiveCategory.toLowerCase()) return true;
+      return false;
+    });
+
+    activeRules.sort((a, b) => {
+      const scoreA = (a.spec_id ? 4 : 0) + (a.product_id ? 2 : 0) + (a.priority || 0);
+      const scoreB = (b.spec_id ? 4 : 0) + (b.product_id ? 2 : 0) + (b.priority || 0);
+      return scoreB - scoreA;
+    });
+
+    if (activeRules.length > 0) {
+      matchedCustomerRule = activeRules[0];
+    }
+  }
+
+  if (matchedCustomerRule) {
+    appliedPricingRule = 'CUSTOMER_NEGOTIATED';
+    matchedRuleId = matchedCustomerRule.id;
+
+    if (matchedCustomerRule.pricing_type === 'FIXED_RATE' || matchedCustomerRule.pricingType === 'FIXED_RATE') {
+      appliedRate = Number(matchedCustomerRule.custom_rate ?? matchedCustomerRule.customRate ?? catalogueBaseRate);
+      ruleDetails = `Contracted Negotiated Rate (₹${appliedRate}/${effectiveUnit}) for ${customer?.name || 'Customer'}`;
+    } else if (matchedCustomerRule.pricing_type === 'PERCENT_DISCOUNT' || matchedCustomerRule.pricingType === 'PERCENT_DISCOUNT') {
+      const discPct = Number(matchedCustomerRule.discount_pct ?? matchedCustomerRule.discountPct ?? 0);
+      appliedRate = Number((catalogueBaseRate * (1 - discPct / 100)).toFixed(2));
+      ruleDetails = `Customer Agreement Discount: ${discPct}% off standard rate (₹${catalogueBaseRate} -> ₹${appliedRate})`;
+    } else if (matchedCustomerRule.pricing_type === 'MARKUP_OVER_COST' || matchedCustomerRule.pricingType === 'MARKUP_OVER_COST') {
+      const markupPct = Number(matchedCustomerRule.discount_pct ?? matchedCustomerRule.discountPct ?? 25);
+      appliedRate = Number((totalEstimatedUnitCost * (1 + markupPct / 100)).toFixed(2));
+      ruleDetails = `Cost-Plus Agreement: Cost ₹${totalEstimatedUnitCost} + ${markupPct}% markup`;
+    }
+  } else {
+    // Slabs
+    const availableSlabs = (pricingSlabs || []).filter(s => {
+      if (s.productId !== product?.id && s.product_id !== product?.id) return false;
+      if (s.start_date && s.start_date > todayStr) return false;
+      if (s.end_date && s.end_date < todayStr) return false;
+      if (s.customer_id && customer && s.customer_id !== customer.id) return false;
+      if (s.customer_type && customer && s.customer_type !== customer.customer_type && s.customer_type !== customer.customerType) return false;
+      return true;
+    });
+
+    let matchedSlab = null;
+    if (spec && spec.id) {
+      const specSlabs = availableSlabs
+        .filter(s => s.spec_id === spec.id || s.specId === spec.id)
+        .sort((a, b) => Number(a.min_qty || a.minQty) - Number(b.min_qty || b.minQty));
+      matchedSlab = specSlabs.find(s => {
+        const min = Number(s.min_qty ?? s.minQty ?? 0);
+        const max = s.max_qty !== null && s.max_qty !== undefined && s.max_qty !== '' ? Number(s.max_qty) : (s.maxQty ? Number(s.maxQty) : Infinity);
+        return qty >= min && qty <= max;
+      });
+    }
+
+    if (!matchedSlab) {
+      const generalSlabs = availableSlabs
+        .filter(s => !s.spec_id && !s.specId)
+        .sort((a, b) => Number(a.min_qty || a.minQty) - Number(b.min_qty || b.minQty));
+      matchedSlab = generalSlabs.find(s => {
+        const min = Number(s.min_qty ?? s.minQty ?? 0);
+        const max = s.max_qty !== null && s.max_qty !== undefined && s.max_qty !== '' ? Number(s.max_qty) : (s.maxQty ? Number(s.maxQty) : Infinity);
+        return qty >= min && qty <= max;
+      });
+    }
+
+    if (matchedSlab) {
+      appliedPricingRule = 'QUANTITY_SLAB';
+      appliedRate = Number(matchedSlab.rate);
+      matchedRuleId = matchedSlab.id;
+      const minTxt = matchedSlab.min_qty ?? matchedSlab.minQty ?? 1;
+      const maxTxt = matchedSlab.max_qty ?? matchedSlab.maxQty ?? '+';
+      ruleDetails = `Quantity Slab Tier [${minTxt}-${maxTxt}]: ₹${appliedRate}/${effectiveUnit}`;
+    } else if (isDimensionUnit) {
+      appliedPricingRule = 'MATERIAL_DIMENSION';
+      appliedRate = catalogueBaseRate;
+      ruleDetails = `Dimension Pricing: ₹${catalogueBaseRate}/${effectiveUnit} × ${dimensionMultiplier.toFixed(2)} ${effectiveUnit}/pc`;
+    } else if (product?.pricing_method === 'YIELD_CALCULATOR' || product?.pricingMethod === 'YIELD_CALCULATOR') {
+      appliedPricingRule = 'YIELD_CALCULATOR';
+      appliedRate = catalogueBaseRate;
+      ruleDetails = `Yield Formula Pricing: ₹${catalogueBaseRate}/${effectiveUnit}`;
+    } else {
+      appliedPricingRule = 'FIXED_UNIT';
+      appliedRate = catalogueBaseRate;
+      ruleDetails = `Fixed Standard Rate: ₹${catalogueBaseRate}/${effectiveUnit}`;
+    }
+  }
+
+  let isRateOverridden = 0;
+  let systemCalculatedPrice = appliedRate;
+
+  if (manualRate !== null && manualRate !== undefined && manualRate !== '' && !isNaN(Number(manualRate))) {
+    const overrideVal = Number(manualRate);
+    if (Math.abs(overrideVal - appliedRate) > 0.001) {
+      isRateOverridden = 1;
+      appliedRate = overrideVal;
+      appliedPricingRule = 'MANUAL_OVERRIDE';
+      ruleDetails = `Authorized Override: ${overrideReason || 'Manual Rate Adjustment'} (System: ₹${systemCalculatedPrice} -> ₹${appliedRate})`;
+    }
+  }
+
+  const totalSellingAmount = Number((chargeableUnits * appliedRate).toFixed(2));
+  const totalProductionCost = Number((chargeableUnits * totalEstimatedUnitCost).toFixed(2));
+  const grossProfit = Number((totalSellingAmount - totalProductionCost).toFixed(2));
+  const grossProfitMargin = totalSellingAmount > 0
+    ? Number(((grossProfit / totalSellingAmount) * 100).toFixed(2))
+    : 0;
+
+  return {
+    productId: product?.id || '',
+    productName: product?.name || '',
+    specId: spec?.id || null,
+    specName: spec?.specName || spec?.spec_name || null,
+    quantity: qty,
+    width: numWidth,
+    height: numHeight,
+    dimensionMultiplier,
+    chargeableUnits,
+    unit: effectiveUnit,
+    originalSellingPrice: catalogueBaseRate,
+    systemCalculatedPrice,
+    sellingRate: appliedRate,
+    appliedPricingRule,
+    matchedRuleId,
+    pricingRuleDetails: ruleDetails,
+    estimatedCost: totalEstimatedUnitCost,
+    estimatedMaterialCost,
+    estimatedLabourCost,
+    estimatedMachineCost,
+    estimatedOverheadCost,
+    totalSellingAmount,
+    totalProductionCost,
+    grossProfit,
+    grossProfitMargin,
+    isRateOverridden,
+    overrideReason,
+    overriddenByUserId: authorizedUser?.id || authorizedUser?.userId || null,
+    overriddenByName: authorizedUser?.name || null
+  };
+}

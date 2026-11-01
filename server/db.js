@@ -582,6 +582,136 @@ export function initDatabase() {
   try { db.prepare("ALTER TABLE product_specifications ADD COLUMN is_outsource INTEGER DEFAULT 0").run(); } catch(e) {}
   try { db.prepare("ALTER TABLE product_specifications ADD COLUMN default_vendor_id TEXT").run(); } catch(e) {}
   try { db.prepare("ALTER TABLE product_specifications ADD COLUMN default_vendor TEXT").run(); } catch(e) {}
+
+  // Migration 020 tables & columns
+  try { db.prepare("ALTER TABLE products ADD COLUMN sku TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE products ADD COLUMN barcode TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE products ADD COLUMN image_url TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE products ADD COLUMN min_order_qty REAL DEFAULT 1").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE products ADD COLUMN pricing_method TEXT DEFAULT 'FIXED'").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE products ADD COLUMN variants_json TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE products ADD COLUMN production_settings_json TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE products ADD COLUMN tax_inclusive INTEGER DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE product_pricing_slabs ADD COLUMN customer_id TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE product_pricing_slabs ADD COLUMN customer_type TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE product_pricing_slabs ADD COLUMN start_date TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE product_pricing_slabs ADD COLUMN end_date TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE product_pricing_slabs ADD COLUMN priority INTEGER DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE product_pricing_slabs ADD COLUMN pricing_rule_name TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN original_selling_price REAL DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN applied_pricing_rule TEXT DEFAULT 'FIXED'").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN pricing_rule_details TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN estimated_material_cost REAL DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN estimated_labour_cost REAL DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN estimated_machine_cost REAL DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN estimated_overhead_cost REAL DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN is_rate_overridden INTEGER DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN override_reason TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN overridden_by_user_id TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN overridden_by_name TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN gross_profit REAL DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN gross_profit_margin REAL DEFAULT 0").run(); } catch(e) {}
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS customer_pricing_rules (
+      id TEXT PRIMARY KEY,
+      customer_id TEXT NOT NULL,
+      customer_name TEXT,
+      product_id TEXT,
+      product_category TEXT,
+      spec_id TEXT,
+      pricing_type TEXT NOT NULL,
+      custom_rate REAL,
+      discount_pct REAL,
+      min_qty REAL DEFAULT 1,
+      start_date TEXT,
+      end_date TEXT,
+      priority INTEGER DEFAULT 1,
+      active INTEGER DEFAULT 1,
+      notes TEXT,
+      created_by TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS product_bom (
+      id TEXT PRIMARY KEY,
+      product_id TEXT NOT NULL,
+      spec_id TEXT,
+      bom_name TEXT NOT NULL,
+      output_qty REAL DEFAULT 1,
+      output_unit TEXT DEFAULT 'Pcs',
+      is_default INTEGER DEFAULT 1,
+      raw_materials_json TEXT,
+      machine_cost REAL DEFAULT 0,
+      machine_id TEXT,
+      machine_name TEXT,
+      labour_cost REAL DEFAULT 0,
+      electricity_cost REAL DEFAULT 0,
+      finishing_cost REAL DEFAULT 0,
+      packaging_cost REAL DEFAULT 0,
+      outsourced_cost REAL DEFAULT 0,
+      outsourced_vendor_id TEXT,
+      outsourced_process TEXT,
+      total_estimated_unit_cost REAL DEFAULT 0,
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS product_yield_configs (
+      id TEXT PRIMARY KEY,
+      product_id TEXT NOT NULL UNIQUE,
+      sheet_name TEXT DEFAULT '12x18 Inch',
+      sheet_width_in REAL DEFAULT 12,
+      sheet_height_in REAL DEFAULT 18,
+      cards_per_sheet INTEGER DEFAULT 30,
+      paper_material_id TEXT,
+      paper_gsm INTEGER DEFAULT 300,
+      paper_sheet_cost REAL DEFAULT 6.50,
+      printing_side TEXT DEFAULT 'DOUBLE',
+      printing_cost_per_sheet REAL DEFAULT 8.00,
+      ink_cost_per_sheet REAL DEFAULT 1.50,
+      lamination_type TEXT DEFAULT 'Thermal Matte',
+      lamination_cost_per_sheet REAL DEFAULT 4.00,
+      cutting_cost_per_sheet REAL DEFAULT 1.50,
+      wastage_pct REAL DEFAULT 5.0,
+      overhead_per_sheet REAL DEFAULT 0.50,
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS pricing_overrides_log (
+      id TEXT PRIMARY KEY,
+      order_id TEXT NOT NULL,
+      order_number TEXT,
+      item_id TEXT NOT NULL,
+      product_id TEXT,
+      product_name TEXT,
+      customer_id TEXT,
+      customer_name TEXT,
+      system_calculated_price REAL NOT NULL,
+      overridden_price REAL NOT NULL,
+      price_difference REAL NOT NULL,
+      original_rate REAL,
+      overridden_rate REAL,
+      discount_pct REAL DEFAULT 0,
+      estimated_cost REAL DEFAULT 0,
+      expected_profit REAL DEFAULT 0,
+      expected_margin_pct REAL DEFAULT 0,
+      reason TEXT NOT NULL,
+      authorized_by_user_id TEXT NOT NULL,
+      authorized_by_name TEXT NOT NULL,
+      user_id TEXT,
+      user_name TEXT,
+      authorized_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
 }
 
 // Call schema initialization & migration runner

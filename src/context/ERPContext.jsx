@@ -121,6 +121,10 @@ export const ERPProvider = ({ children }) => {
   const [products, setProducts] = useState(() => loadStorage('products', []));
   const [productMaterialSpecs, setProductMaterialSpecs] = useState(() => loadStorage('product_material_specs', []));
   const [productPricingSlabs, setProductPricingSlabs] = useState(() => loadStorage('product_pricing_slabs', []));
+  const [customerPricingRules, setCustomerPricingRules] = useState(() => loadStorage('customer_pricing_rules', []));
+  const [productBoms, setProductBoms] = useState(() => loadStorage('product_boms', []));
+  const [productYieldConfigs, setProductYieldConfigs] = useState(() => loadStorage('product_yield_configs', []));
+  const [pricingOverrides, setPricingOverrides] = useState(() => loadStorage('pricing_overrides', []));
   const [vendors, setVendors] = useState(() => loadStorage('vendors', []));
   const [employees, setEmployees] = useState(() => loadStorage('employees', []));
   const [designers, setDesigners] = useState(() => loadStorage('designers', []));
@@ -238,6 +242,22 @@ export const ERPProvider = ({ children }) => {
         if (data.productPricingSlabs) {
           setProductPricingSlabs(data.productPricingSlabs);
           try { localStorage.setItem('stitch_erp_product_pricing_slabs', JSON.stringify(data.productPricingSlabs)); } catch (e) {}
+        }
+        if (data.customerPricingRules) {
+          setCustomerPricingRules(data.customerPricingRules);
+          try { localStorage.setItem('stitch_erp_customer_pricing_rules', JSON.stringify(data.customerPricingRules)); } catch (e) {}
+        }
+        if (data.productBoms) {
+          setProductBoms(data.productBoms);
+          try { localStorage.setItem('stitch_erp_product_boms', JSON.stringify(data.productBoms)); } catch (e) {}
+        }
+        if (data.productYieldConfigs) {
+          setProductYieldConfigs(data.productYieldConfigs);
+          try { localStorage.setItem('stitch_erp_product_yield_configs', JSON.stringify(data.productYieldConfigs)); } catch (e) {}
+        }
+        if (data.pricingOverrides) {
+          setPricingOverrides(data.pricingOverrides);
+          try { localStorage.setItem('stitch_erp_pricing_overrides', JSON.stringify(data.pricingOverrides)); } catch (e) {}
         }
         if (data.vendors || data.suppliers) {
           const v = data.vendors || data.suppliers;
@@ -1402,6 +1422,105 @@ export const ERPProvider = ({ children }) => {
   const getProductSlabRate = (productId, qty, defaultRate = 0, specId = null) => {
     const slab = getProductSlabInfo(productId, qty, specId);
     return slab ? slab.rate : defaultRate;
+  };
+
+  // Advanced Customer Pricing Rules
+  const saveCustomerPricingRule = async (ruleData) => {
+    try {
+      const res = await api.saveCustomerPricingRule(ruleData);
+      const ruleId = res.id || ruleData.id;
+      setCustomerPricingRules(prev => {
+        const updated = [ { ...ruleData, id: ruleId }, ...prev.filter(r => r.id !== ruleId) ];
+        try { localStorage.setItem('stitch_erp_customer_pricing_rules', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+      return res;
+    } catch (err) {
+      console.warn("api.saveCustomerPricingRule error, updating local state:", err);
+      const ruleId = ruleData.id || `CPR-${Date.now()}`;
+      setCustomerPricingRules(prev => {
+        const updated = [ { ...ruleData, id: ruleId }, ...prev.filter(r => r.id !== ruleId) ];
+        try { localStorage.setItem('stitch_erp_customer_pricing_rules', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+      return { success: true, id: ruleId };
+    }
+  };
+
+  const deleteCustomerPricingRule = async (ruleId) => {
+    try {
+      await api.deleteCustomerPricingRule(ruleId);
+    } catch (err) {
+      console.warn("api.deleteCustomerPricingRule error:", err);
+    }
+    setCustomerPricingRules(prev => {
+      const updated = prev.filter(r => r.id !== ruleId);
+      try { localStorage.setItem('stitch_erp_customer_pricing_rules', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+  };
+
+  // Product BOM Recipe
+  const saveProductBOM = async (productId, bomData) => {
+    try {
+      const res = await api.saveProductBOM(productId, bomData);
+      const bomId = res.id || bomData.id;
+      const totalCost = Number(res.totalEstimatedUnitCost || bomData.totalEstimatedUnitCost || 0);
+      setProductBoms(prev => {
+        const updated = [ { ...bomData, id: bomId, productId, totalEstimatedUnitCost: totalCost }, ...prev.filter(b => b.id !== bomId) ];
+        try { localStorage.setItem('stitch_erp_product_boms', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+      if (bomData.isDefault && totalCost > 0) {
+        setProducts(prev => prev.map(p => p.id === productId ? { ...p, estimatedCost: totalCost } : p));
+      }
+      return res;
+    } catch (err) {
+      console.warn("api.saveProductBOM error, updating local state:", err);
+      const bomId = bomData.id || `BOM-${Date.now()}`;
+      setProductBoms(prev => {
+        const updated = [ { ...bomData, id: bomId, productId }, ...prev.filter(b => b.id !== bomId) ];
+        try { localStorage.setItem('stitch_erp_product_boms', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+      return { success: true, id: bomId };
+    }
+  };
+
+  const deleteProductBOM = async (productId, bomId) => {
+    try {
+      await api.deleteProductBOM(productId, bomId);
+    } catch (err) {
+      console.warn("api.deleteProductBOM error:", err);
+    }
+    setProductBoms(prev => {
+      const updated = prev.filter(b => b.id !== bomId);
+      try { localStorage.setItem('stitch_erp_product_boms', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+  };
+
+  // Product Production Yield Config
+  const saveProductYieldConfig = async (productId, configData) => {
+    try {
+      const res = await api.saveProductYieldConfig(productId, configData);
+      const configId = res.id || configData.id;
+      setProductYieldConfigs(prev => {
+        const updated = [ { ...configData, id: configId, productId }, ...prev.filter(y => y.productId !== productId) ];
+        try { localStorage.setItem('stitch_erp_product_yield_configs', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+      return res;
+    } catch (err) {
+      console.warn("api.saveProductYieldConfig error, updating local state:", err);
+      const configId = configData.id || `YLD-${productId}`;
+      setProductYieldConfigs(prev => {
+        const updated = [ { ...configData, id: configId, productId }, ...prev.filter(y => y.productId !== productId) ];
+        try { localStorage.setItem('stitch_erp_product_yield_configs', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+      return { success: true, id: configId };
+    }
   };
 
   const addVendor = async (vendorData) => {
@@ -4690,7 +4809,20 @@ export const ERPProvider = ({ children }) => {
         fetchCustomerReconciliation,
         backups,
         fetchBackups,
-        createBackup
+        createBackup,
+        customerPricingRules,
+        setCustomerPricingRules,
+        productBoms,
+        setProductBoms,
+        productYieldConfigs,
+        setProductYieldConfigs,
+        pricingOverrides,
+        setPricingOverrides,
+        saveCustomerPricingRule,
+        deleteCustomerPricingRule,
+        saveProductBOM,
+        deleteProductBOM,
+        saveProductYieldConfig
       }}
     >
       {children}

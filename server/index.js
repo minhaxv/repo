@@ -9,6 +9,7 @@ import { loginUser, generateToken, authenticateToken, requireRole, requirePermis
 import { hashPassword } from './migrations.js';
 import { calculateOrderTotals, calculateLineItem } from './billingEngine.js';
 import { consumeInventoryForItem, recordInventoryTransaction, TRANSACTION_TYPES } from './inventoryEngine.js';
+import { resolveItemPricingAndCost, calculateProductionYield, calculateBOMCost } from './pricingEngine.js';
 import {
   initialCompanyProfile,
   initialCustomers,
@@ -600,6 +601,24 @@ app.get('/api/all', authenticateToken, (req, res) => {
     } catch(e) {
       productPricingSlabs = [];
     }
+    let customerPricingRules = [];
+    try {
+      customerPricingRules = db.prepare('SELECT * FROM customer_pricing_rules ORDER BY priority DESC, created_at DESC').all();
+    } catch(e) {
+      customerPricingRules = [];
+    }
+    let productBoms = [];
+    try {
+      productBoms = db.prepare('SELECT * FROM product_bom ORDER BY is_default DESC, created_at DESC').all();
+    } catch(e) {
+      productBoms = [];
+    }
+    let productYieldConfigs = [];
+    try {
+      productYieldConfigs = db.prepare('SELECT * FROM product_yield_configs ORDER BY created_at DESC').all();
+    } catch(e) {
+      productYieldConfigs = [];
+    }
     const suppliers = db.prepare('SELECT * FROM suppliers ORDER BY name ASC').all();
     const rawPurchaseOrders = db.prepare('SELECT * FROM purchase_orders ORDER BY order_date DESC').all();
     const purchaseOrders = rawPurchaseOrders.map(po => {
@@ -675,7 +694,20 @@ app.get('/api/all', authenticateToken, (req, res) => {
         finisherId: i.finisher_id,
         finisherName: i.finisher_name,
         deliveryWorkerId: i.delivery_worker_id,
-        productionStatus: i.production_status
+        productionStatus: i.production_status,
+        originalSellingPrice: Number(i.original_selling_price || i.selling_rate || 0),
+        appliedPricingRule: i.applied_pricing_rule || 'FIXED_UNIT',
+        pricingRuleDetails: i.pricing_rule_details || '',
+        estimatedMaterialCost: canViewFinancials ? Number(i.estimated_material_cost || 0) : null,
+        estimatedLabourCost: canViewFinancials ? Number(i.estimated_labour_cost || 0) : null,
+        estimatedMachineCost: canViewFinancials ? Number(i.estimated_machine_cost || 0) : null,
+        estimatedOverheadCost: canViewFinancials ? Number(i.estimated_overhead_cost || 0) : null,
+        isRateOverridden: Boolean(i.is_rate_overridden),
+        overrideReason: i.override_reason || '',
+        overriddenByUserId: i.overridden_by_user_id || null,
+        overriddenByName: i.overridden_by_name || null,
+        grossProfit: canViewFinancials ? Number(i.gross_profit || 0) : null,
+        grossProfitMargin: canViewFinancials ? Number(i.gross_profit_margin || 0) : null
       }));
 
       return {
@@ -917,6 +949,14 @@ app.get('/api/all', authenticateToken, (req, res) => {
       products: products.map(p => ({
         ...p,
         code: p.product_code,
+        sku: p.sku || '',
+        barcode: p.barcode || '',
+        imageUrl: p.image_url || '',
+        minOrderQty: Number(p.min_order_qty || 1),
+        pricingMethod: p.pricing_method || 'FIXED',
+        variantsJson: p.variants_json || '[]',
+        productionSettingsJson: p.production_settings_json || '{}',
+        taxInclusive: Boolean(p.tax_inclusive),
         defaultRate: Number(p.default_rate),
         defaultVendor: p.default_vendor || '',
         defaultVendorId: p.default_vendor_id || '',
@@ -944,7 +984,76 @@ app.get('/api/all', authenticateToken, (req, res) => {
         minQty: Number(s.min_qty),
         maxQty: s.max_qty !== null && s.max_qty !== undefined ? Number(s.max_qty) : null,
         rate: Number(s.rate),
-        costRate: canViewFinancials ? Number(s.cost_rate || 0) : null
+        costRate: canViewFinancials ? Number(s.cost_rate || 0) : null,
+        customerId: s.customer_id || null,
+        customerType: s.customer_type || null,
+        startDate: s.start_date || null,
+        endDate: s.end_date || null,
+        priority: Number(s.priority || 0),
+        pricingRuleName: s.pricing_rule_name || null
+      })),
+      customerPricingRules: customerPricingRules.map(r => ({
+        id: r.id,
+        customerId: r.customer_id,
+        customerName: r.customer_name,
+        productId: r.product_id,
+        productCategory: r.product_category,
+        specId: r.spec_id,
+        pricingType: r.pricing_type,
+        customRate: r.custom_rate !== null ? Number(r.custom_rate) : null,
+        discountPct: r.discount_pct !== null ? Number(r.discount_pct) : null,
+        minQty: Number(r.min_qty || 1),
+        startDate: r.start_date,
+        endDate: r.end_date,
+        priority: Number(r.priority || 1),
+        active: Boolean(r.active),
+        notes: r.notes || ''
+      })),
+      productBoms: productBoms.map(b => {
+        let mats = [];
+        try { mats = JSON.parse(b.raw_materials_json || '[]'); } catch(e){}
+        return {
+          id: b.id,
+          productId: b.product_id,
+          specId: b.spec_id || null,
+          bomName: b.bom_name,
+          outputQty: Number(b.output_qty || 1),
+          outputUnit: b.output_unit || 'Pcs',
+          isDefault: Boolean(b.is_default),
+          rawMaterials: mats,
+          machineCost: Number(b.machine_cost || 0),
+          machineId: b.machine_id,
+          machineName: b.machine_name,
+          labourCost: Number(b.labour_cost || 0),
+          electricityCost: Number(b.electricity_cost || 0),
+          finishingCost: Number(b.finishing_cost || 0),
+          packagingCost: Number(b.packaging_cost || 0),
+          outsourcedCost: Number(b.outsourced_cost || 0),
+          outsourcedVendorId: b.outsourced_vendor_id,
+          outsourcedProcess: b.outsourced_process,
+          totalEstimatedUnitCost: Number(b.total_estimated_unit_cost || 0),
+          notes: b.notes || ''
+        };
+      }),
+      productYieldConfigs: productYieldConfigs.map(y => ({
+        id: y.id,
+        productId: y.product_id,
+        sheetName: y.sheet_name,
+        sheetWidthIn: Number(y.sheet_width_in || 12),
+        sheetHeightIn: Number(y.sheet_height_in || 18),
+        cardsPerSheet: Number(y.cards_per_sheet || 30),
+        paperMaterialId: y.paper_material_id,
+        paperGsm: Number(y.paper_gsm || 300),
+        paperSheetCost: Number(y.paper_sheet_cost || 6.50),
+        printingSide: y.printing_side || 'DOUBLE',
+        printingCostPerSheet: Number(y.printing_cost_per_sheet || 8.00),
+        inkCostPerSheet: Number(y.ink_cost_per_sheet || 1.50),
+        laminationType: y.lamination_type || 'Thermal Matte',
+        laminationCostPerSheet: Number(y.lamination_cost_per_sheet || 4.00),
+        cuttingCostPerSheet: Number(y.cutting_cost_per_sheet || 1.50),
+        wastagePct: Number(y.wastage_pct ?? 5.0),
+        overheadPerSheet: Number(y.overhead_per_sheet ?? 0.50),
+        notes: y.notes || ''
       })),
       vendors: suppliers.map(s => ({ ...s, code: s.supplier_code, pendingPayment: Number(s.pending_payment), avgTurnaroundDays: Number(s.avg_turnaround_days) })),
       salesPersons: salesPersons.map(sp => ({
@@ -1108,7 +1217,9 @@ app.put('/api/company-profile', authenticateToken, requireRole(['Admin', 'Manage
 // 2. CREATE PRODUCT + SPECS + SLABS
 app.post('/api/products', (req, res) => {
   try {
-    const { product, specs, slabs } = req.body;
+    const product = req.body.product || (req.body.name ? req.body : null);
+    const specs = req.body.specs || [];
+    const slabs = req.body.slabs || [];
     if (!product || !product.name) {
       return res.status(400).json({ success: false, error: "Product name is required" });
     }
@@ -1118,8 +1229,12 @@ app.post('/api/products', (req, res) => {
 
     const createTx = db.transaction(() => {
       db.prepare(`
-        INSERT INTO products (id, product_code, name, category, description, unit, default_rate, estimated_cost, gst_rate, hsn_code, default_vendor, default_vendor_id, is_outsource, default_material, is_custom)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO products (
+          id, product_code, name, category, description, unit, default_rate, estimated_cost,
+          gst_rate, hsn_code, default_vendor, default_vendor_id, is_outsource, default_material,
+          is_custom, sku, barcode, image_url, min_order_qty, pricing_method, variants_json,
+          production_settings_json, tax_inclusive
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         productId,
         productCode,
@@ -1127,15 +1242,23 @@ app.post('/api/products', (req, res) => {
         product.category || 'Printing',
         product.description || '',
         product.unit || 'Sq.Ft',
-        Number(product.defaultRate || 0),
-        Number(product.estimatedCost || 0),
-        Number(product.gstRate || 18),
-        product.hsnCode || '9989',
-        product.defaultVendor || '',
+        Number(product.defaultRate || product.default_rate || 0),
+        Number(product.estimatedCost || product.estimated_cost || 0),
+        Number(product.gstRate || product.gst_rate || 18),
+        product.hsnCode || product.hsn_code || '9989',
+        product.defaultVendor || product.default_vendor || '',
         product.defaultVendorId || product.default_vendor_id || '',
         product.isOutsource || product.defaultVendor ? 1 : 0,
-        product.defaultMaterial || '',
-        product.isCustom ? 1 : 0
+        product.defaultMaterial || product.default_material || '',
+        product.isCustom ? 1 : 0,
+        product.sku || '',
+        product.barcode || '',
+        product.imageUrl || product.image_url || '',
+        Number(product.minOrderQty || product.min_order_qty || 1),
+        product.pricingMethod || product.pricing_method || 'FIXED',
+        typeof product.variantsJson === 'string' ? product.variantsJson : JSON.stringify(product.variants || product.variants_json || []),
+        typeof product.productionSettingsJson === 'string' ? product.productionSettingsJson : JSON.stringify(product.productionSettings || product.production_settings_json || {}),
+        product.taxInclusive ? 1 : 0
       );
 
       if (specs && Array.isArray(specs)) {
@@ -1167,8 +1290,10 @@ app.post('/api/products', (req, res) => {
 
       if (slabs && Array.isArray(slabs)) {
         const insertSlab = db.prepare(`
-          INSERT INTO product_pricing_slabs (id, product_id, spec_id, min_qty, max_qty, rate, cost_rate)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO product_pricing_slabs (
+            id, product_id, spec_id, min_qty, max_qty, rate, cost_rate,
+            customer_id, customer_type, start_date, end_date, priority, pricing_rule_name
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         for (const slab of slabs) {
           const slabId = slab.id || `SLAB-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
@@ -1179,7 +1304,13 @@ app.post('/api/products', (req, res) => {
             Number(slab.minQty ?? slab.min_qty ?? 1),
             (slab.maxQty !== null && slab.maxQty !== undefined && slab.maxQty !== '') ? Number(slab.maxQty) : null,
             Number(slab.rate || 0),
-            Number(slab.costRate || slab.cost_rate || 0)
+            Number(slab.costRate || slab.cost_rate || 0),
+            slab.customerId || slab.customer_id || null,
+            slab.customerType || slab.customer_type || null,
+            slab.startDate || slab.start_date || null,
+            slab.endDate || slab.end_date || null,
+            Number(slab.priority || 0),
+            slab.pricingRuleName || slab.pricing_rule_name || null
           );
         }
       }
@@ -1216,7 +1347,15 @@ app.put('/api/products/:id', (req, res) => {
           default_vendor = ?,
           default_vendor_id = ?,
           is_outsource = ?,
-          default_material = ?
+          default_material = ?,
+          sku = COALESCE(?, sku),
+          barcode = COALESCE(?, barcode),
+          image_url = COALESCE(?, image_url),
+          min_order_qty = COALESCE(?, min_order_qty),
+          pricing_method = COALESCE(?, pricing_method),
+          variants_json = COALESCE(?, variants_json),
+          production_settings_json = COALESCE(?, production_settings_json),
+          tax_inclusive = COALESCE(?, tax_inclusive)
         WHERE id = ?
       `).run(
         product.name,
@@ -1231,6 +1370,14 @@ app.put('/api/products/:id', (req, res) => {
         product.defaultVendorId || product.default_vendor_id || '',
         product.isOutsource || product.defaultVendor ? 1 : 0,
         product.defaultMaterial || product.default_material || '',
+        product.sku !== undefined ? product.sku : null,
+        product.barcode !== undefined ? product.barcode : null,
+        product.imageUrl !== undefined ? product.imageUrl : (product.image_url !== undefined ? product.image_url : null),
+        product.minOrderQty !== undefined ? Number(product.minOrderQty) : (product.min_order_qty !== undefined ? Number(product.min_order_qty) : null),
+        product.pricingMethod || product.pricing_method || null,
+        product.variantsJson !== undefined ? (typeof product.variantsJson === 'string' ? product.variantsJson : JSON.stringify(product.variantsJson)) : (product.variants ? JSON.stringify(product.variants) : null),
+        product.productionSettingsJson !== undefined ? (typeof product.productionSettingsJson === 'string' ? product.productionSettingsJson : JSON.stringify(product.productionSettingsJson)) : (product.productionSettings ? JSON.stringify(product.productionSettings) : null),
+        product.taxInclusive !== undefined ? (product.taxInclusive ? 1 : 0) : null,
         id
       );
 
@@ -1265,8 +1412,10 @@ app.put('/api/products/:id', (req, res) => {
       if (slabs && Array.isArray(slabs)) {
         db.prepare('DELETE FROM product_pricing_slabs WHERE product_id = ?').run(id);
         const insertSlab = db.prepare(`
-          INSERT INTO product_pricing_slabs (id, product_id, spec_id, min_qty, max_qty, rate, cost_rate)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO product_pricing_slabs (
+            id, product_id, spec_id, min_qty, max_qty, rate, cost_rate,
+            customer_id, customer_type, start_date, end_date, priority, pricing_rule_name
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         for (const slab of slabs) {
           const slabId = slab.id || `SLAB-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
@@ -1277,7 +1426,13 @@ app.put('/api/products/:id', (req, res) => {
             Number(slab.minQty ?? slab.min_qty ?? 1),
             (slab.maxQty !== null && slab.maxQty !== undefined && slab.maxQty !== '') ? Number(slab.maxQty) : null,
             Number(slab.rate || 0),
-            Number(slab.costRate || slab.cost_rate || 0)
+            Number(slab.costRate || slab.cost_rate || 0),
+            slab.customerId || slab.customer_id || null,
+            slab.customerType || slab.customer_type || null,
+            slab.startDate || slab.start_date || null,
+            slab.endDate || slab.end_date || null,
+            Number(slab.priority || 0),
+            slab.pricingRuleName || slab.pricing_rule_name || null
           );
         }
       }
@@ -1305,7 +1460,13 @@ app.get('/api/products/:id/slabs', (req, res) => {
         minQty: Number(s.min_qty),
         maxQty: s.max_qty !== null && s.max_qty !== undefined ? Number(s.max_qty) : null,
         rate: Number(s.rate),
-        costRate: Number(s.cost_rate || 0)
+        costRate: Number(s.cost_rate || 0),
+        customerId: s.customer_id || null,
+        customerType: s.customer_type || null,
+        startDate: s.start_date || null,
+        endDate: s.end_date || null,
+        priority: Number(s.priority || 0),
+        pricingRuleName: s.pricing_rule_name || null
       }))
     });
   } catch (err) {
@@ -1335,8 +1496,10 @@ app.post('/api/products/:id/slabs', (req, res) => {
       }
 
       const insertSlab = db.prepare(`
-        INSERT INTO product_pricing_slabs (id, product_id, spec_id, min_qty, max_qty, rate, cost_rate)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO product_pricing_slabs (
+          id, product_id, spec_id, min_qty, max_qty, rate, cost_rate,
+          customer_id, customer_type, start_date, end_date, priority, pricing_rule_name
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const slab of slabs) {
         const slabId = slab.id || `SLAB-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
@@ -1348,7 +1511,13 @@ app.post('/api/products/:id/slabs', (req, res) => {
           Number(slab.minQty ?? slab.min_qty ?? 1),
           (slab.maxQty !== null && slab.maxQty !== undefined && slab.maxQty !== '') ? Number(slab.maxQty) : null,
           Number(slab.rate || 0),
-          Number(slab.costRate || slab.cost_rate || 0)
+          Number(slab.costRate || slab.cost_rate || 0),
+          slab.customerId || slab.customer_id || null,
+          slab.customerType || slab.customer_type || null,
+          slab.startDate || slab.start_date || null,
+          slab.endDate || slab.end_date || null,
+          Number(slab.priority || 0),
+          slab.pricingRuleName || slab.pricing_rule_name || null
         );
       }
     });
@@ -1365,7 +1534,13 @@ app.post('/api/products/:id/slabs', (req, res) => {
         minQty: Number(s.min_qty),
         maxQty: s.max_qty !== null && s.max_qty !== undefined ? Number(s.max_qty) : null,
         rate: Number(s.rate),
-        costRate: Number(s.cost_rate || 0)
+        costRate: Number(s.cost_rate || 0),
+        customerId: s.customer_id || null,
+        customerType: s.customer_type || null,
+        startDate: s.start_date || null,
+        endDate: s.end_date || null,
+        priority: Number(s.priority || 0),
+        pricingRuleName: s.pricing_rule_name || null
       }))
     });
   } catch (err) {
@@ -1561,6 +1736,751 @@ app.get('/api/products/search', authenticateToken, (req, res) => {
     });
 
     res.json({ success: true, products: sanitized });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// ADVANCED PRICING & JOB COSTING ENGINE ROUTES
+// ==========================================
+
+// 1. DYNAMIC PRICING EVALUATION
+app.post('/api/pricing/evaluate', (req, res) => {
+  try {
+    const { productId, specId, customerId, qty, width, height, customPrice } = req.body;
+    if (!productId) {
+      return res.status(400).json({ success: false, error: "productId is required" });
+    }
+    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(productId);
+    if (!product) {
+      return res.status(404).json({ success: false, error: "Product not found" });
+    }
+    const spec = specId ? db.prepare('SELECT * FROM product_specifications WHERE id = ? AND product_id = ?').get(specId, productId) : null;
+    const customer = customerId ? db.prepare('SELECT * FROM customers WHERE id = ?').get(customerId) : null;
+    const allSlabs = db.prepare('SELECT * FROM product_pricing_slabs WHERE product_id = ? ORDER BY priority DESC, min_qty ASC').all(productId);
+    const customerRules = db.prepare('SELECT * FROM customer_pricing_rules WHERE active = 1 ORDER BY priority DESC').all();
+    const bom = db.prepare('SELECT * FROM product_bom WHERE product_id = ? AND is_default = 1').get(productId) || db.prepare('SELECT * FROM product_bom WHERE product_id = ?').get(productId);
+    const yieldConfig = db.prepare('SELECT * FROM product_yield_configs WHERE product_id = ?').get(productId);
+
+    const pricing = resolveItemPricingAndCost({
+      item: { productId, specId, qty, width, height, customPrice },
+      product,
+      spec,
+      customer,
+      allSlabs,
+      customerRules,
+      bom,
+      yieldConfig
+    });
+
+    res.json({ success: true, pricing });
+  } catch (err) {
+    console.error("POST /api/pricing/evaluate Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2. PRODUCTION YIELD CALCULATOR
+app.post('/api/pricing/calculate-yield', (req, res) => {
+  try {
+    const { orderQty, yieldConfig } = req.body;
+    const result = calculateProductionYield({ orderQty, yieldConfig });
+    res.json({ success: true, yield: result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 3. CUSTOMER-SPECIFIC PRICING RULES
+app.get('/api/customer-pricing-rules', (req, res) => {
+  try {
+    const { customerId, productId } = req.query;
+    let query = 'SELECT * FROM customer_pricing_rules WHERE 1=1';
+    const params = [];
+    if (customerId) {
+      query += ' AND customer_id = ?';
+      params.push(customerId);
+    }
+    if (productId) {
+      query += ' AND product_id = ?';
+      params.push(productId);
+    }
+    query += ' ORDER BY priority DESC, created_at DESC';
+    const rules = db.prepare(query).all(...params);
+    res.json({
+      success: true,
+      rules: rules.map(r => ({
+        id: r.id,
+        customerId: r.customer_id,
+        customerName: r.customer_name,
+        productId: r.product_id,
+        productCategory: r.product_category,
+        specId: r.spec_id,
+        pricingType: r.pricing_type,
+        customRate: r.custom_rate !== null ? Number(r.custom_rate) : null,
+        discountPct: r.discount_pct !== null ? Number(r.discount_pct) : null,
+        minQty: Number(r.min_qty || 1),
+        startDate: r.start_date,
+        endDate: r.end_date,
+        priority: Number(r.priority || 1),
+        active: Boolean(r.active),
+        notes: r.notes || ''
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/customer-pricing-rules', (req, res) => {
+  try {
+    const rule = req.body;
+    if (!rule.customerId) {
+      return res.status(400).json({ success: false, error: "customerId is required" });
+    }
+    const ruleId = rule.id || `CPR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+    
+    let custName = rule.customerName;
+    if (!custName && rule.customerId) {
+      const cust = db.prepare('SELECT name FROM customers WHERE id = ?').get(rule.customerId);
+      custName = cust ? cust.name : '';
+    }
+
+    const stmt = db.prepare(`
+      INSERT INTO customer_pricing_rules (
+        id, customer_id, customer_name, product_id, product_category,
+        spec_id, pricing_type, custom_rate, discount_pct, min_qty,
+        start_date, end_date, priority, active, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        customer_id = excluded.customer_id,
+        customer_name = excluded.customer_name,
+        product_id = excluded.product_id,
+        product_category = excluded.product_category,
+        spec_id = excluded.spec_id,
+        pricing_type = excluded.pricing_type,
+        custom_rate = excluded.custom_rate,
+        discount_pct = excluded.discount_pct,
+        min_qty = excluded.min_qty,
+        start_date = excluded.start_date,
+        end_date = excluded.end_date,
+        priority = excluded.priority,
+        active = excluded.active,
+        notes = excluded.notes,
+        updated_at = CURRENT_TIMESTAMP
+    `);
+
+    stmt.run(
+      ruleId,
+      rule.customerId,
+      custName || '',
+      rule.productId || null,
+      rule.productCategory || null,
+      rule.specId || null,
+      rule.pricingType || 'CONTRACT_RATE',
+      rule.customRate !== null && rule.customRate !== undefined && rule.customRate !== '' ? Number(rule.customRate) : null,
+      rule.discountPct !== null && rule.discountPct !== undefined && rule.discountPct !== '' ? Number(rule.discountPct) : null,
+      Number(rule.minQty || 1),
+      rule.startDate || null,
+      rule.endDate || null,
+      Number(rule.priority || 1),
+      rule.active !== false ? 1 : 0,
+      rule.notes || ''
+    );
+
+    res.json({ success: true, id: ruleId, message: "Customer pricing rule saved" });
+  } catch (err) {
+    console.error("POST /api/customer-pricing-rules Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/customer-pricing-rules/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    db.prepare('DELETE FROM customer_pricing_rules WHERE id = ?').run(id);
+    res.json({ success: true, message: `Rule ${id} deleted` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4. PRODUCT BILL OF MATERIALS (BOM)
+app.get('/api/products/:id/bom', (req, res) => {
+  try {
+    const { id } = req.params;
+    const boms = db.prepare('SELECT * FROM product_bom WHERE product_id = ? ORDER BY is_default DESC, created_at DESC').all(id);
+    res.json({
+      success: true,
+      boms: boms.map(b => {
+        let mats = [];
+        try { mats = JSON.parse(b.raw_materials_json || '[]'); } catch(e){}
+        return {
+          id: b.id,
+          productId: b.product_id,
+          specId: b.spec_id || null,
+          bomName: b.bom_name,
+          outputQty: Number(b.output_qty || 1),
+          outputUnit: b.output_unit || 'Pcs',
+          isDefault: Boolean(b.is_default),
+          rawMaterials: mats,
+          machineCost: Number(b.machine_cost || 0),
+          machineId: b.machine_id,
+          machineName: b.machine_name,
+          labourCost: Number(b.labour_cost || 0),
+          electricityCost: Number(b.electricity_cost || 0),
+          finishingCost: Number(b.finishing_cost || 0),
+          packagingCost: Number(b.packaging_cost || 0),
+          outsourcedCost: Number(b.outsourced_cost || 0),
+          outsourcedVendorId: b.outsourced_vendor_id,
+          outsourcedProcess: b.outsourced_process,
+          totalEstimatedUnitCost: Number(b.total_estimated_unit_cost || 0),
+          notes: b.notes || ''
+        };
+      })
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/products/:id/bom', (req, res) => {
+  try {
+    const { id } = req.params;
+    const b = req.body;
+    const bomId = b.id || `BOM-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+
+    const matsJson = typeof b.rawMaterials === 'string' ? b.rawMaterials : JSON.stringify(b.rawMaterials || []);
+    
+    let unitCost = Number(b.totalEstimatedUnitCost || 0);
+    if (!unitCost) {
+      const calc = calculateBOMCost({
+        bom: {
+          output_qty: b.outputQty || 1,
+          raw_materials_json: matsJson,
+          machine_cost: b.machineCost || 0,
+          labour_cost: b.labourCost || 0,
+          electricity_cost: b.electricityCost || 0,
+          finishing_cost: b.finishingCost || 0,
+          packaging_cost: b.packagingCost || 0,
+          outsourced_cost: b.outsourcedCost || 0
+        },
+        orderQty: b.outputQty || 1
+      });
+      unitCost = calc.unitCost;
+    }
+
+    if (b.isDefault) {
+      db.prepare('UPDATE product_bom SET is_default = 0 WHERE product_id = ?').run(id);
+    }
+
+    const stmt = db.prepare(`
+      INSERT INTO product_bom (
+        id, product_id, spec_id, bom_name, output_qty, output_unit, is_default,
+        raw_materials_json, machine_cost, machine_id, machine_name,
+        labour_cost, electricity_cost, finishing_cost, packaging_cost,
+        outsourced_cost, outsourced_vendor_id, outsourced_process,
+        total_estimated_unit_cost, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        product_id = excluded.product_id,
+        spec_id = excluded.spec_id,
+        bom_name = excluded.bom_name,
+        output_qty = excluded.output_qty,
+        output_unit = excluded.output_unit,
+        is_default = excluded.is_default,
+        raw_materials_json = excluded.raw_materials_json,
+        machine_cost = excluded.machine_cost,
+        machine_id = excluded.machine_id,
+        machine_name = excluded.machine_name,
+        labour_cost = excluded.labour_cost,
+        electricity_cost = excluded.electricity_cost,
+        finishing_cost = excluded.finishing_cost,
+        packaging_cost = excluded.packaging_cost,
+        outsourced_cost = excluded.outsourced_cost,
+        outsourced_vendor_id = excluded.outsourced_vendor_id,
+        outsourced_process = excluded.outsourced_process,
+        total_estimated_unit_cost = excluded.total_estimated_unit_cost,
+        notes = excluded.notes,
+        updated_at = CURRENT_TIMESTAMP
+    `);
+
+    stmt.run(
+      bomId,
+      id,
+      b.specId || null,
+      b.bomName || 'Production BOM Recipe',
+      Number(b.outputQty || 1),
+      b.outputUnit || 'Pcs',
+      b.isDefault ? 1 : 0,
+      matsJson,
+      Number(b.machineCost || 0),
+      b.machineId || null,
+      b.machineName || null,
+      Number(b.labourCost || 0),
+      Number(b.electricityCost || 0),
+      Number(b.finishingCost || 0),
+      Number(b.packagingCost || 0),
+      Number(b.outsourcedCost || 0),
+      b.outsourcedVendorId || null,
+      b.outsourcedProcess || null,
+      unitCost,
+      b.notes || ''
+    );
+
+    if (b.isDefault && unitCost > 0) {
+      db.prepare('UPDATE products SET estimated_cost = ? WHERE id = ?').run(unitCost, id);
+    }
+
+    res.json({ success: true, id: bomId, totalEstimatedUnitCost: unitCost, message: "BOM saved successfully" });
+  } catch (err) {
+    console.error("POST /api/products/:id/bom Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/products/:id/bom/:bomId', (req, res) => {
+  try {
+    const { id, bomId } = req.params;
+    db.prepare('DELETE FROM product_bom WHERE id = ? AND product_id = ?').run(bomId, id);
+    res.json({ success: true, message: `BOM ${bomId} deleted` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 5. PRODUCT PRODUCTION YIELD CONFIG
+app.get('/api/products/:id/yield-config', (req, res) => {
+  try {
+    const { id } = req.params;
+    const y = db.prepare('SELECT * FROM product_yield_configs WHERE product_id = ?').get(id);
+    if (!y) {
+      return res.json({ success: true, yieldConfig: null });
+    }
+    res.json({
+      success: true,
+      yieldConfig: {
+        id: y.id,
+        productId: y.product_id,
+        sheetName: y.sheet_name,
+        sheetWidthIn: Number(y.sheet_width_in || 12),
+        sheetHeightIn: Number(y.sheet_height_in || 18),
+        cardsPerSheet: Number(y.cards_per_sheet || 30),
+        paperMaterialId: y.paper_material_id,
+        paperGsm: Number(y.paper_gsm || 300),
+        paperSheetCost: Number(y.paper_sheet_cost || 6.50),
+        printingSide: y.printing_side || 'DOUBLE',
+        printingCostPerSheet: Number(y.printing_cost_per_sheet || 8.00),
+        inkCostPerSheet: Number(y.ink_cost_per_sheet || 1.50),
+        laminationType: y.lamination_type || 'Thermal Matte',
+        laminationCostPerSheet: Number(y.lamination_cost_per_sheet || 4.00),
+        cuttingCostPerSheet: Number(y.cutting_cost_per_sheet || 1.50),
+        wastagePct: Number(y.wastage_pct ?? 5.0),
+        overheadPerSheet: Number(y.overhead_per_sheet ?? 0.50),
+        notes: y.notes || ''
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/products/:id/yield-config', (req, res) => {
+  try {
+    const { id } = req.params;
+    const y = req.body;
+    const configId = y.id || `YLD-${id}`;
+
+    const stmt = db.prepare(`
+      INSERT INTO product_yield_configs (
+        id, product_id, sheet_name, sheet_width_in, sheet_height_in,
+        cards_per_sheet, paper_material_id, paper_gsm, paper_sheet_cost,
+        printing_side, printing_cost_per_sheet, ink_cost_per_sheet,
+        lamination_type, lamination_cost_per_sheet, cutting_cost_per_sheet,
+        wastage_pct, overhead_per_sheet, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        sheet_name = excluded.sheet_name,
+        sheet_width_in = excluded.sheet_width_in,
+        sheet_height_in = excluded.sheet_height_in,
+        cards_per_sheet = excluded.cards_per_sheet,
+        paper_material_id = excluded.paper_material_id,
+        paper_gsm = excluded.paper_gsm,
+        paper_sheet_cost = excluded.paper_sheet_cost,
+        printing_side = excluded.printing_side,
+        printing_cost_per_sheet = excluded.printing_cost_per_sheet,
+        ink_cost_per_sheet = excluded.ink_cost_per_sheet,
+        lamination_type = excluded.lamination_type,
+        lamination_cost_per_sheet = excluded.lamination_cost_per_sheet,
+        cutting_cost_per_sheet = excluded.cutting_cost_per_sheet,
+        wastage_pct = excluded.wastage_pct,
+        overhead_per_sheet = excluded.overhead_per_sheet,
+        notes = excluded.notes,
+        updated_at = CURRENT_TIMESTAMP
+    `);
+
+    stmt.run(
+      configId,
+      id,
+      y.sheetName || '12x18 Digital Sheet',
+      Number(y.sheetWidthIn || 12),
+      Number(y.sheetHeightIn || 18),
+      Number(y.cardsPerSheet || 30),
+      y.paperMaterialId || null,
+      Number(y.paperGsm || 300),
+      Number(y.paperSheetCost || 6.50),
+      y.printingSide || 'DOUBLE',
+      Number(y.printingCostPerSheet || 8.00),
+      Number(y.inkCostPerSheet || 1.50),
+      y.laminationType || 'Thermal Matte',
+      Number(y.laminationCostPerSheet || 4.00),
+      Number(y.cuttingCostPerSheet || 1.50),
+      Number(y.wastagePct ?? 5.0),
+      Number(y.overheadPerSheet ?? 0.50),
+      y.notes || ''
+    );
+
+    res.json({ success: true, id: configId, message: "Yield configuration saved" });
+  } catch (err) {
+    console.error("POST /api/products/:id/yield-config Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. PRICING OVERRIDE AUDIT LOGGING
+app.post('/api/pricing/override-log', authenticateToken, (req, res) => {
+  try {
+    const { orderId, orderNumber, itemId, productId, productName, customerId, customerName, originalRate, overriddenRate, reason } = req.body;
+    const user = req.user || {};
+    const logId = `POL-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+
+    db.prepare(`
+      INSERT INTO pricing_overrides_log (
+        id, order_id, order_number, item_id, product_id, product_name,
+        customer_id, customer_name, original_rate, overridden_rate,
+        reason, user_id, user_name
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      logId,
+      orderId || '',
+      orderNumber || '',
+      itemId || '',
+      productId || '',
+      productName || '',
+      customerId || '',
+      customerName || '',
+      Number(originalRate || 0),
+      Number(overriddenRate || 0),
+      reason || 'Authorized quotation adjustment',
+      user.id || '',
+      user.name || user.username || 'Staff'
+    );
+
+    res.json({ success: true, id: logId });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/pricing/override-log', authenticateToken, (req, res) => {
+  try {
+    const logs = db.prepare('SELECT * FROM pricing_overrides_log ORDER BY created_at DESC LIMIT 200').all();
+    res.json({ success: true, logs });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 7. PROFITABILITY & ADVANCED REPORTS
+app.get('/api/reports/profitability-product', authenticateToken, (req, res) => {
+  try {
+    const rows = db.prepare(`
+      SELECT 
+        soi.product_id,
+        COALESCE(p.name, soi.product_name_snapshot) AS product_name,
+        COALESCE(p.category, 'General') AS category,
+        COALESCE(p.pricing_method, 'FIXED') AS pricing_method,
+        COUNT(DISTINCT so.id) AS total_orders,
+        SUM(COALESCE(soi.qty, 1)) AS total_qty,
+        SUM(COALESCE(soi.amount, 0)) AS total_revenue,
+        SUM(
+          CASE 
+            WHEN (COALESCE(soi.estimated_material_cost, 0) + COALESCE(soi.estimated_labour_cost, 0) + COALESCE(soi.estimated_machine_cost, 0) + COALESCE(soi.estimated_overhead_cost, 0)) > 0
+            THEN (COALESCE(soi.estimated_material_cost, 0) + COALESCE(soi.estimated_labour_cost, 0) + COALESCE(soi.estimated_machine_cost, 0) + COALESCE(soi.estimated_overhead_cost, 0)) * COALESCE(soi.qty, 1)
+            ELSE COALESCE(soi.estimated_cost, 0) * COALESCE(soi.qty, 1)
+          END
+        ) AS total_cost,
+        SUM(COALESCE(soi.actual_cost, 0) * COALESCE(soi.qty, 1)) AS total_actual_cost
+      FROM sales_order_items soi
+      JOIN sales_orders so ON soi.sales_order_id = so.id
+      LEFT JOIN products p ON soi.product_id = p.id
+      WHERE so.production_status != 'Cancelled' AND (so.order_type IS NULL OR so.order_type != 'Quotation') AND so.id NOT LIKE 'QT-%'
+      GROUP BY soi.product_id
+      ORDER BY total_revenue DESC
+    `).all();
+
+    const report = rows.map(r => {
+      const revenue = Number(r.total_revenue || 0);
+      const cost = Number(r.total_cost || 0);
+      const grossProfit = revenue - cost;
+      const marginPct = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
+      return {
+        productId: r.product_id,
+        productName: r.product_name,
+        category: r.category,
+        pricingMethod: r.pricing_method,
+        totalOrders: Number(r.total_orders || 0),
+        totalQty: Number(r.total_qty || 0),
+        totalRevenue: Math.round(revenue * 100) / 100,
+        totalCost: Math.round(cost * 100) / 100,
+        totalActualCost: Math.round(Number(r.total_actual_cost || 0) * 100) / 100,
+        grossProfit: Math.round(grossProfit * 100) / 100,
+        marginPct: Math.round(marginPct * 10) / 10
+      };
+    });
+
+    res.json({ success: true, report });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/reports/profitability-customer', authenticateToken, (req, res) => {
+  try {
+    const rows = db.prepare(`
+      SELECT 
+        so.customer_id,
+        so.customer_name,
+        c.customer_type,
+        COUNT(DISTINCT so.id) AS total_orders,
+        SUM(COALESCE(soi.amount, 0)) AS total_revenue,
+        SUM(
+          CASE 
+            WHEN (COALESCE(soi.estimated_material_cost, 0) + COALESCE(soi.estimated_labour_cost, 0) + COALESCE(soi.estimated_machine_cost, 0) + COALESCE(soi.estimated_overhead_cost, 0)) > 0
+            THEN (COALESCE(soi.estimated_material_cost, 0) + COALESCE(soi.estimated_labour_cost, 0) + COALESCE(soi.estimated_machine_cost, 0) + COALESCE(soi.estimated_overhead_cost, 0)) * COALESCE(soi.qty, 1)
+            ELSE COALESCE(soi.estimated_cost, 0) * COALESCE(soi.qty, 1)
+          END
+        ) AS total_cost
+      FROM sales_orders so
+      LEFT JOIN customers c ON so.customer_id = c.id
+      JOIN sales_order_items soi ON so.id = soi.sales_order_id
+      WHERE so.production_status != 'Cancelled' AND (so.order_type IS NULL OR so.order_type != 'Quotation') AND so.id NOT LIKE 'QT-%'
+      GROUP BY so.customer_id
+      ORDER BY total_revenue DESC
+    `).all();
+
+    const report = rows.map(r => {
+      const revenue = Number(r.total_revenue || 0);
+      const cost = Number(r.total_cost || 0);
+      const grossProfit = revenue - cost;
+      const marginPct = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
+      return {
+        customerId: r.customer_id,
+        customerName: r.customer_name,
+        customerType: r.customer_type || 'Regular',
+        totalOrders: Number(r.total_orders || 0),
+        totalRevenue: Math.round(revenue * 100) / 100,
+        totalCost: Math.round(cost * 100) / 100,
+        grossProfit: Math.round(grossProfit * 100) / 100,
+        marginPct: Math.round(marginPct * 10) / 10
+      };
+    });
+
+    res.json({ success: true, report });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/reports/cost-variance', authenticateToken, (req, res) => {
+  try {
+    const rows = db.prepare(`
+      SELECT 
+        so.id AS order_id,
+        so.order_number,
+        so.order_date,
+        so.customer_name,
+        soi.product_id,
+        soi.product_name_snapshot AS product_name,
+        soi.qty,
+        soi.unit,
+        soi.selling_rate,
+        soi.amount AS line_revenue,
+        (COALESCE(soi.estimated_material_cost, 0) + COALESCE(soi.estimated_labour_cost, 0) + COALESCE(soi.estimated_machine_cost, 0) + COALESCE(soi.estimated_overhead_cost, 0)) AS unit_estimated_cost,
+        soi.actual_cost AS unit_actual_cost
+      FROM sales_order_items soi
+      JOIN sales_orders so ON soi.sales_order_id = so.id
+      WHERE so.production_status != 'Cancelled' AND soi.actual_cost > 0
+      ORDER BY so.order_date DESC LIMIT 100
+    `).all();
+
+    const report = rows.map(r => {
+      const estUnitCost = Number(r.unit_estimated_cost || 0);
+      const actUnitCost = Number(r.unit_actual_cost || 0);
+      const qty = Number(r.qty || 1);
+      const estTotal = estUnitCost * qty;
+      const actTotal = actUnitCost * qty;
+      const variance = actTotal - estTotal;
+      const variancePct = estTotal > 0 ? (variance / estTotal) * 100 : 0;
+      return {
+        orderId: r.order_id,
+        orderNumber: r.order_number,
+        orderDate: r.order_date,
+        customerName: r.customer_name,
+        productId: r.product_id,
+        productName: r.product_name,
+        qty,
+        unit: r.unit,
+        estimatedUnitCost: estUnitCost,
+        actualUnitCost: actUnitCost,
+        estimatedTotal: Math.round(estTotal * 100) / 100,
+        actualTotal: Math.round(actTotal * 100) / 100,
+        variance: Math.round(variance * 100) / 100,
+        variancePct: Math.round(variancePct * 10) / 10
+      };
+    });
+
+    res.json({ success: true, report });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/reports/material-consumption', authenticateToken, (req, res) => {
+  try {
+    const rows = db.prepare(`
+      SELECT 
+        it.material_id AS inventory_id,
+        COALESCE(inv.name, it.material_name) AS item_name,
+        COALESCE(inv.category, 'Raw Material') AS category,
+        COALESCE(it.unit, inv.unit, 'Pcs') AS unit,
+        SUM(ABS(it.quantity)) AS total_consumed_qty,
+        SUM(ABS(it.quantity) * COALESCE(inv.unit_cost, 0)) AS total_consumed_cost
+      FROM inventory_transactions it
+      LEFT JOIN inventory inv ON it.material_id = inv.id
+      WHERE it.transaction_type IN ('CONSUMPTION', 'JOB_ISSUE', 'SCRAP', 'ISSUE', 'OUT')
+      GROUP BY it.material_id
+      ORDER BY total_consumed_cost DESC
+    `).all();
+
+    res.json({
+      success: true,
+      report: rows.map(r => ({
+        inventoryId: r.inventory_id,
+        itemName: r.item_name,
+        category: r.category,
+        unit: r.unit,
+        totalConsumedQty: Number(r.total_consumed_qty || 0),
+        totalConsumedCost: Math.round(Number(r.total_consumed_cost || 0) * 100) / 100
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/reports/wastage', authenticateToken, (req, res) => {
+  try {
+    const rows = db.prepare(`
+      SELECT 
+        it.id,
+        it.created_at AS date,
+        it.material_id AS inventory_id,
+        COALESCE(inv.name, it.material_name) AS item_name,
+        COALESCE(it.wastage_qty, ABS(it.quantity)) AS wastage_qty,
+        COALESCE(it.unit, inv.unit, 'Pcs') AS unit,
+        COALESCE(inv.unit_cost, 0) AS unit_cost,
+        (COALESCE(it.wastage_qty, ABS(it.quantity)) * COALESCE(inv.unit_cost, 0)) AS total_scrap_cost,
+        it.reference_id AS reference,
+        COALESCE(it.wastage_reason, it.remarks, '') AS notes
+      FROM inventory_transactions it
+      LEFT JOIN inventory inv ON it.material_id = inv.id
+      WHERE it.transaction_type = 'SCRAP' OR it.wastage_qty > 0 OR it.remarks LIKE '%wastage%' OR it.remarks LIKE '%scrap%'
+      ORDER BY it.created_at DESC LIMIT 100
+    `).all();
+
+    res.json({
+      success: true,
+      report: rows.map(r => ({
+        id: r.id,
+        date: r.date,
+        inventoryId: r.inventory_id,
+        itemName: r.item_name,
+        wastageQty: Number(r.wastage_qty || 0),
+        unit: r.unit,
+        unitCost: Number(r.unit_cost || 0),
+        totalScrapCost: Math.round(Number(r.total_scrap_cost || 0) * 100) / 100,
+        reference: r.reference,
+        notes: r.notes
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/reports/pricing-overrides', authenticateToken, (req, res) => {
+  try {
+    const logs = db.prepare('SELECT * FROM pricing_overrides_log ORDER BY created_at DESC LIMIT 200').all();
+    res.json({ success: true, report: logs });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/reports/low-margin', authenticateToken, (req, res) => {
+  try {
+    const threshold = parseFloat(req.query.threshold) || 15.0;
+    const rows = db.prepare(`
+      SELECT 
+        so.id AS order_id,
+        so.order_number,
+        so.order_date,
+        so.customer_name,
+        soi.id AS item_id,
+        soi.product_id,
+        soi.product_name_snapshot AS product_name,
+        soi.qty,
+        soi.selling_rate,
+        soi.amount AS line_revenue,
+        soi.original_selling_price,
+        soi.applied_pricing_rule,
+        soi.is_rate_overridden,
+        soi.override_reason,
+        (COALESCE(soi.estimated_material_cost, 0) + COALESCE(soi.estimated_labour_cost, 0) + COALESCE(soi.estimated_machine_cost, 0) + COALESCE(soi.estimated_overhead_cost, 0)) AS unit_cost,
+        soi.gross_profit,
+        soi.gross_profit_margin
+      FROM sales_order_items soi
+      JOIN sales_orders so ON soi.sales_order_id = so.id
+      WHERE so.production_status != 'Cancelled'
+        AND soi.amount > 0
+        AND (soi.gross_profit_margin < ? OR soi.is_rate_overridden = 1)
+      ORDER BY soi.gross_profit_margin ASC LIMIT 100
+    `).all(threshold);
+
+    res.json({
+      success: true,
+      report: rows.map(r => ({
+        orderId: r.order_id,
+        orderNumber: r.order_number,
+        orderDate: r.order_date,
+        customerName: r.customer_name,
+        itemId: r.item_id,
+        productId: r.product_id,
+        productName: r.product_name,
+        qty: Number(r.qty || 1),
+        sellingRate: Number(r.selling_rate || 0),
+        lineRevenue: Number(r.line_revenue || 0),
+        originalSellingPrice: Number(r.original_selling_price || 0),
+        appliedPricingRule: r.applied_pricing_rule,
+        isRateOverridden: Boolean(r.is_rate_overridden),
+        overrideReason: r.override_reason,
+        unitCost: Number(r.unit_cost || 0),
+        grossProfit: Number(r.gross_profit || 0),
+        grossProfitMargin: Number(r.gross_profit_margin || 0)
+      }))
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -2352,7 +3272,10 @@ app.post('/api/admin/reset-database', authenticateToken, async (req, res) => {
 app.post('/api/sales-orders', authenticateToken, (req, res) => {
   try {
     const orderData = req.body;
-    const { orderHeader, items, advanceAmount, paymentMethod } = orderData;
+    const orderHeader = orderData.orderHeader || orderData;
+    const items = orderData.items || orderHeader.items || [];
+    const advanceAmount = orderData.advanceAmount ?? orderHeader.advanceAmount ?? 0;
+    const paymentMethod = orderData.paymentMethod || orderHeader.paymentMethod;
     const user = req.user;
 
     if (!orderHeader || !items || items.length === 0) {
@@ -2477,8 +3400,16 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
           estimated_cost, actual_cost, discount, tax_type, gst_rate, hsn_code, amount,
           designer_required, designer_id, designer_name, design_status, artwork_status,
           artwork_url, outsource, vendor_id, vendor_name, estimated_vendor_cost, printer_id,
-          printer_name, finisher_id, finisher_name, production_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          printer_name, finisher_id, finisher_name, production_status,
+          original_selling_price, applied_pricing_rule, pricing_rule_details,
+          estimated_material_cost, estimated_labour_cost, estimated_machine_cost, estimated_overhead_cost,
+          is_rate_overridden, override_reason, overridden_by_user_id, overridden_by_name,
+          gross_profit, gross_profit_margin
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
       `);
 
       const insertJob = db.prepare(`
@@ -2499,9 +3430,34 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
       `);
 
       for (let idx = 0; idx < totals.items.length; idx++) {
-        const it = totals.items[idx];
+        const inputIt = items[idx] || {};
+        const it = { ...inputIt, ...totals.items[idx] };
         const itemId = `SOI-${orderId}-${idx + 1}-${Math.random().toString(36).substr(2, 4)}`;
         const jobCardId = `JC-${orderId}-${idx + 1}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+
+        const lineSellingRate = Number(it.sellingRate || it.rate || inputIt.sellingRate || inputIt.rate || 0);
+        const lineOriginalSellingPrice = inputIt.originalSellingPrice !== undefined && inputIt.originalSellingPrice !== null && !isNaN(Number(inputIt.originalSellingPrice))
+          ? Number(inputIt.originalSellingPrice)
+          : (it.originalSellingPrice !== undefined && it.originalSellingPrice !== null && !isNaN(Number(it.originalSellingPrice)) ? Number(it.originalSellingPrice) : lineSellingRate);
+        const appliedPricingRule = inputIt.appliedPricingRule || it.appliedPricingRule || (it.pricingMethod || 'FIXED_UNIT');
+        const pricingRuleDetails = (inputIt.pricingRuleDetails || it.pricingRuleDetails) ? (typeof (inputIt.pricingRuleDetails || it.pricingRuleDetails) === 'string' ? (inputIt.pricingRuleDetails || it.pricingRuleDetails) : JSON.stringify(inputIt.pricingRuleDetails || it.pricingRuleDetails)) : '';
+        const estMatCost = Number(inputIt.estimatedMaterialCost ?? it.estimatedMaterialCost ?? 0);
+        const estLabCost = Number(inputIt.estimatedLabourCost ?? it.estimatedLabourCost ?? 0);
+        const estMacCost = Number(inputIt.estimatedMachineCost ?? it.estimatedMachineCost ?? 0);
+        const estOvhCost = Number(inputIt.estimatedOverheadCost ?? it.estimatedOverheadCost ?? 0);
+        const isRateOverridden = Boolean(inputIt.isRateOverridden || it.isRateOverridden || (lineOriginalSellingPrice > 0 && Math.abs(lineSellingRate - lineOriginalSellingPrice) > 0.01 && (inputIt.overrideReason || it.overrideReason)));
+        const overrideReason = inputIt.overrideReason || it.overrideReason || '';
+        const overriddenByUserId = isRateOverridden ? (inputIt.overriddenByUserId || it.overriddenByUserId || verifiedCreatedByUserId) : '';
+        const overriddenByName = isRateOverridden ? (inputIt.overriddenByName || it.overriddenByName || verifiedCreatedByName) : '';
+
+        const lineAmount = Number(it.lineTotal || it.amount || 0);
+        const lineTaxableAmount = Number(it.taxableAmount !== undefined ? it.taxableAmount : (it.amount || it.lineTotal || 0));
+        const itemQty = it.qty !== null && it.qty !== undefined && it.qty !== '' && !isNaN(Number(it.qty)) ? Number(it.qty) : 1;
+        const totalUnitEstCost = (estMatCost + estLabCost + estMacCost + estOvhCost > 0)
+          ? (estMatCost + estLabCost + estMacCost + estOvhCost)
+          : Number(inputIt.estimatedCost ?? it.estimatedCost ?? 0);
+        const grossProfit = lineTaxableAmount - (totalUnitEstCost * itemQty);
+        const grossProfitMargin = lineTaxableAmount > 0 ? Number(((grossProfit / lineTaxableAmount) * 100).toFixed(2)) : 0;
 
         insertItem.run(
           itemId, orderId, it.productId || '', it.productName || 'Printing Item', jobCardId,
@@ -2509,16 +3465,54 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
           it.description || '', Number(it.width || 0), Number(it.height || 0),
           it.qty !== null && it.qty !== undefined && it.qty !== '' && !isNaN(Number(it.qty)) ? Number(it.qty) : null,
           it.unit || 'Pcs',
-          it.sellingRate !== null && it.sellingRate !== undefined && it.sellingRate !== '' && !isNaN(Number(it.sellingRate)) ? Number(it.sellingRate) : null,
-          it.estimatedCost !== null && it.estimatedCost !== undefined && it.estimatedCost !== '' && !isNaN(Number(it.estimatedCost)) ? Number(it.estimatedCost) : null,
+          lineSellingRate,
+          it.estimatedCost !== null && it.estimatedCost !== undefined && it.estimatedCost !== '' && !isNaN(Number(it.estimatedCost)) ? Number(it.estimatedCost) : totalUnitEstCost,
           Number(it.actualCost || 0), Number(it.discount || 0), it.taxType || 'ETR',
-          Number(it.gstRate || 18), it.hsnCode || '9989', Number(it.lineTotal || it.amount || 0),
+          Number(it.gstRate || 18), it.hsnCode || '9989', lineAmount,
           it.designerRequired || 'NO', it.designerId || '', it.designerName || '',
           it.designStatus || 'Pending', it.artworkStatus || 'Pending', it.artworkUrl || '',
           it.outsource ? 1 : 0, it.vendorId || '', it.vendorName || '',
           Number(it.estimatedVendorCost || 0), it.printerId || '', it.printerName || '',
-          it.finisherId || '', it.finisherName || '', it.productionStatus || 'New'
+          it.finisherId || '', it.finisherName || '', it.productionStatus || 'New',
+          lineOriginalSellingPrice, appliedPricingRule, pricingRuleDetails,
+          estMatCost, estLabCost, estMacCost, estOvhCost,
+          isRateOverridden ? 1 : 0, overrideReason, overriddenByUserId, overriddenByName,
+          Math.round(grossProfit * 100) / 100, Math.round(grossProfitMargin * 100) / 100
         );
+
+        if (isRateOverridden) {
+          try {
+            db.prepare(`
+              INSERT INTO pricing_overrides_log (
+                id, order_id, order_number, item_id, product_id, product_name,
+                customer_id, customer_name, system_calculated_price, overridden_price,
+                price_difference, original_rate, overridden_rate, reason,
+                authorized_by_user_id, authorized_by_name, user_id, user_name
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              `POL-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+              orderId,
+              orderHeader.orderNumber || orderId,
+              itemId,
+              it.productId || '',
+              it.productName || 'Printing Item',
+              orderHeader.customerId || '',
+              orderHeader.customerName || '',
+              lineOriginalSellingPrice,
+              lineSellingRate,
+              Number((lineSellingRate - lineOriginalSellingPrice).toFixed(2)),
+              lineOriginalSellingPrice,
+              lineSellingRate,
+              overrideReason,
+              overriddenByUserId || user?.id || 'Staff',
+              overriddenByName || user?.name || 'Staff',
+              overriddenByUserId || user?.id || 'Staff',
+              overriddenByName || user?.name || 'Staff'
+            );
+          } catch(e) {
+            console.error("Pricing override log insert error:", e);
+          }
+        }
 
         insertJob.run(
           `JW-${jobCardId}`, `JW-${jobCardId}`, orderId, itemId, it.productName,
@@ -2662,6 +3656,7 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
       success: true,
       orderId,
       orderNumber,
+      order: { id: orderId, orderNumber, ...totals },
       totals,
       billedByStaff: verifiedBilledByStaff,
       billedById: verifiedBilledById,
@@ -2942,8 +3937,16 @@ app.post('/api/quotations/:id/convert', authenticateToken, (req, res) => {
           estimated_cost, actual_cost, discount, tax_type, gst_rate, hsn_code, amount,
           designer_required, designer_id, designer_name, design_status, artwork_status,
           artwork_url, outsource, vendor_id, vendor_name, estimated_vendor_cost, printer_id,
-          printer_name, finisher_id, finisher_name, production_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          printer_name, finisher_id, finisher_name, production_status,
+          original_selling_price, applied_pricing_rule, pricing_rule_details,
+          estimated_material_cost, estimated_labour_cost, estimated_machine_cost, estimated_overhead_cost,
+          is_rate_overridden, override_reason, overridden_by_user_id, overridden_by_name,
+          gross_profit, gross_profit_margin
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
       `);
 
       for (const item of items) {
@@ -2958,7 +3961,20 @@ app.post('/api/quotations/:id/convert', authenticateToken, (req, res) => {
           item.designer_required || 'NO', item.designer_id || '', item.designer_name || '', item.design_status || 'Pending',
           item.artwork_status || 'Pending', item.artwork_url || '', item.outsource || 0, item.vendor_id || '', item.vendor_name || '',
           item.estimated_vendor_cost || 0, item.printer_id || '', item.printer_name || '', item.finisher_id || '', item.finisher_name || '',
-          'Pending'
+          'Pending',
+          item.original_selling_price || item.selling_rate || 0,
+          item.applied_pricing_rule || 'FIXED_UNIT',
+          item.pricing_rule_details || '',
+          item.estimated_material_cost || 0,
+          item.estimated_labour_cost || 0,
+          item.estimated_machine_cost || 0,
+          item.estimated_overhead_cost || 0,
+          item.is_rate_overridden ? 1 : 0,
+          item.override_reason || '',
+          item.overridden_by_user_id || '',
+          item.overridden_by_name || '',
+          item.gross_profit || 0,
+          item.gross_profit_margin || 0
         );
 
         // Auto-spawn initial production tasks
@@ -4876,6 +5892,8 @@ app.post('/api/payments', authenticateToken, (req, res) => {
     const payId = req.body.id || generateNextSequence(db, 'PAY');
     const user = req.user;
     const paymentDateVal = date || paidDate || paid_date || new Date().toISOString().split('T')[0];
+    let targetCustomerId = customerId || null;
+    let targetCustomerName = customerName || 'Customer';
 
     const payTx = db.transaction(() => {
       let ord = null;
@@ -4890,8 +5908,8 @@ app.post('/api/payments', authenticateToken, (req, res) => {
         }
       }
 
-      const targetCustomerId = customerId || ord?.customer_id || null;
-      const targetCustomerName = customerName || ord?.customer_name || 'Customer';
+      targetCustomerId = customerId || ord?.customer_id || null;
+      targetCustomerName = customerName || ord?.customer_name || 'Customer';
 
       db.prepare(`
         INSERT INTO payments (id, order_id, customer_id, customer_name, amount, method, ref_no, status, paid_date, notes)

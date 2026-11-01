@@ -20,6 +20,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { filterSalesOrders, groupOrdersBy, formatINR, exportToCSV, printReportPDF } from '../utils/reportEngine';
+import { api } from '../utils/api';
 import { ReportFilterBar } from '../components/reports/ReportFilterBar';
 import { BarChartWidget, DonutChartWidget, TrendLineWidget } from '../components/reports/ReportCharts';
 import { PivotReportView } from '../components/reports/PivotReportView';
@@ -60,6 +61,12 @@ export const ReportsView = ({ initialReportKey = 'SALES' }) => {
       case 'report-accounts': return { category: 'PNL', subReport: 'STATEMENT' };
       case 'report-gst': return { category: 'GST', subReport: 'GSTR1' };
       case 'report-profit': return { category: 'PROFIT', subReport: 'PROFITABILITY' };
+      case 'report-job-costing': return { category: 'JOB_COSTING', subReport: 'PROFIT_PRODUCT' };
+      case 'report-cost-variance': return { category: 'JOB_COSTING', subReport: 'COST_VARIANCE' };
+      case 'report-material-consumption': return { category: 'JOB_COSTING', subReport: 'MATERIAL_CONSUMPTION' };
+      case 'report-wastage': return { category: 'JOB_COSTING', subReport: 'WASTAGE' };
+      case 'report-pricing-overrides': return { category: 'JOB_COSTING', subReport: 'PRICING_OVERRIDES' };
+      case 'report-low-margin': return { category: 'JOB_COSTING', subReport: 'LOW_MARGIN' };
       default: return { category: 'SALES', subReport: 'DAILY' };
     }
   };
@@ -68,24 +75,53 @@ export const ReportsView = ({ initialReportKey = 'SALES' }) => {
 
   // Active Category & Sub-Report State
   const [activeCategory, setActiveCategory] = useState(() => {
-    if (!isAdminOrManager && (initialResolved.category === 'PNL' || initialResolved.category === 'PROFIT' || initialResolved.category === 'INCENTIVES')) {
+    if (!isAdminOrManager && (initialResolved.category === 'PNL' || initialResolved.category === 'PROFIT' || initialResolved.category === 'INCENTIVES' || initialResolved.category === 'JOB_COSTING')) {
       return 'SALES';
     }
     return initialResolved.category;
   });
   const [activeSubReport, setActiveSubReport] = useState(() => {
-    if (!isAdminOrManager && (initialResolved.category === 'PNL' || initialResolved.category === 'PROFIT' || initialResolved.category === 'INCENTIVES')) {
+    if (!isAdminOrManager && (initialResolved.category === 'PNL' || initialResolved.category === 'PROFIT' || initialResolved.category === 'INCENTIVES' || initialResolved.category === 'JOB_COSTING')) {
       return 'DAILY';
     }
     return initialResolved.subReport;
   });
 
+  const [jobCostingServerData, setJobCostingServerData] = useState(null);
+  const [jobCostingLoading, setJobCostingLoading] = useState(false);
+
   React.useEffect(() => {
-    if (!isAdminOrManager && (activeCategory === 'PNL' || activeCategory === 'PROFIT' || activeCategory === 'INCENTIVES')) {
+    if (!isAdminOrManager && (activeCategory === 'PNL' || activeCategory === 'PROFIT' || activeCategory === 'INCENTIVES' || activeCategory === 'JOB_COSTING')) {
       setActiveCategory('SALES');
       setActiveSubReport('DAILY');
     }
   }, [isAdminOrManager, activeCategory]);
+
+  React.useEffect(() => {
+    if (activeCategory === 'JOB_COSTING') {
+      setJobCostingLoading(true);
+      let promise;
+      switch (activeSubReport) {
+        case 'PROFIT_PRODUCT': promise = api.fetchReportProfitabilityProduct(); break;
+        case 'PROFIT_CUSTOMER': promise = api.fetchReportProfitabilityCustomer(); break;
+        case 'COST_VARIANCE': promise = api.fetchReportCostVariance(); break;
+        case 'MATERIAL_CONSUMPTION': promise = api.fetchReportMaterialConsumption(); break;
+        case 'WASTAGE': promise = api.fetchReportWastage(); break;
+        case 'PRICING_OVERRIDES': promise = api.fetchReportPricingOverrides(); break;
+        case 'LOW_MARGIN': promise = api.fetchReportLowMargin(15); break;
+        default: promise = api.fetchReportProfitabilityProduct();
+      }
+      promise.then(res => {
+        if (res && res.success) {
+          setJobCostingServerData(res.report || []);
+        }
+      }).catch(err => {
+        console.warn("Could not load server job costing report:", err);
+      }).finally(() => {
+        setJobCostingLoading(false);
+      });
+    }
+  }, [activeCategory, activeSubReport]);
 
   // Filter Bar State
   const [filters, setFilters] = useState({
@@ -141,6 +177,7 @@ export const ReportsView = ({ initialReportKey = 'SALES' }) => {
   // Categories Definition
   const reportCategories = [
     ...(isAdminOrManager ? [
+      { id: 'JOB_COSTING', label: 'Pricing & Job Costing', icon: DollarSign, count: 7 },
       { id: 'INCENTIVES', label: 'Incentive Reports', icon: Award, count: 3 },
       { id: 'PNL', label: 'Profit & Loss (P&L)', icon: DollarSign, count: 1 }
     ] : []),
@@ -163,6 +200,15 @@ export const ReportsView = ({ initialReportKey = 'SALES' }) => {
 
   // Sub-reports Map by Category
   const subReportOptions = {
+    JOB_COSTING: [
+      { id: 'PROFIT_PRODUCT', label: 'Product Profitability' },
+      { id: 'PROFIT_CUSTOMER', label: 'Customer Profitability' },
+      { id: 'COST_VARIANCE', label: 'Estimated vs Actual Cost' },
+      { id: 'MATERIAL_CONSUMPTION', label: 'Material Consumption' },
+      { id: 'WASTAGE', label: 'Wastage & Scrap' },
+      { id: 'PRICING_OVERRIDES', label: 'Pricing Override Audit' },
+      { id: 'LOW_MARGIN', label: 'Low Margin Sales (<15%)' }
+    ],
     INCENTIVES: [
       { id: 'SALES_INCENTIVES', label: 'Sales Person Incentives' },
       { id: 'CAREOF_INCENTIVES', label: 'Care Of (Referred) Incentives' },
@@ -321,7 +367,284 @@ export const ReportsView = ({ initialReportKey = 'SALES' }) => {
     let rows = [];
     let totals = null;
 
-    if (activeCategory === 'INCENTIVES') {
+    if (activeCategory === 'JOB_COSTING') {
+      if (activeSubReport === 'PROFIT_PRODUCT') {
+        cols = [
+          { key: 'productName', label: 'Product Name', align: 'left' },
+          { key: 'category', label: 'Category', align: 'left' },
+          { key: 'pricingMethod', label: 'Pricing Method', align: 'center', accessor: (r) => (
+            <span className="badge badge-primary" style={{ fontSize: '0.72rem' }}>
+              {r.pricingMethod || 'FIXED'}
+            </span>
+          ) },
+          { key: 'totalOrders', label: 'Orders', align: 'right' },
+          { key: 'totalQty', label: 'Volume Sold', align: 'right' },
+          { key: 'totalRevenue', label: 'Taxable Revenue', align: 'right', accessor: (r) => formatINR(r.totalRevenue) },
+          { key: 'totalCost', label: 'Est. Cost', align: 'right', accessor: (r) => formatINR(r.totalCost) },
+          { key: 'totalActualCost', label: 'Actual Cost', align: 'right', accessor: (r) => formatINR(r.totalActualCost) },
+          { key: 'grossProfit', label: 'Gross Profit', align: 'right', accessor: (r) => formatINR(r.grossProfit) },
+          { key: 'marginPct', label: 'Margin %', align: 'right', accessor: (r) => (
+            <span style={{ fontWeight: 700, color: (r.marginPct < 15 ? '#ef4444' : r.marginPct > 35 ? '#10b981' : '#3b82f6') }}>
+              {r.marginPct}%
+            </span>
+          ) }
+        ];
+
+        if (jobCostingServerData && activeSubReport === 'PROFIT_PRODUCT') {
+          rows = jobCostingServerData;
+        } else {
+          const pMap = {};
+          filteredOrders.forEach(o => {
+            (o.items || []).forEach(it => {
+              const pId = it.productId || it.product_id || it.productName || 'UNKNOWN';
+              if (!pMap[pId]) {
+                pMap[pId] = {
+                  productId: pId,
+                  productName: it.productName || it.product_name || 'Print Item',
+                  category: it.category || 'Printing',
+                  pricingMethod: it.appliedPricingRule || 'FIXED',
+                  totalOrders: 0,
+                  totalQty: 0,
+                  totalRevenue: 0,
+                  totalCost: 0,
+                  totalActualCost: 0
+                };
+              }
+              pMap[pId].totalOrders += 1;
+              pMap[pId].totalQty += (Number(it.qty) || 1);
+              pMap[pId].totalRevenue += (Number(it.amount) || 0);
+              const unitEst = (Number(it.estimatedMaterialCost || it.estimated_material_cost || 0) +
+                               Number(it.estimatedLabourCost || it.estimated_labour_cost || 0) +
+                               Number(it.estimatedMachineCost || it.estimated_machine_cost || 0) +
+                               Number(it.estimatedOverheadCost || it.estimated_overhead_cost || 0)) || Number(it.estimatedCost || 0);
+              pMap[pId].totalCost += unitEst * (Number(it.qty) || 1);
+              pMap[pId].totalActualCost += (Number(it.actualCost || it.actual_cost || 0)) * (Number(it.qty) || 1);
+            });
+          });
+
+          rows = Object.values(pMap).map(p => {
+            const gp = p.totalRevenue - p.totalCost;
+            const mp = p.totalRevenue > 0 ? parseFloat(((gp / p.totalRevenue) * 100).toFixed(1)) : 0;
+            return {
+              ...p,
+              grossProfit: Math.round(gp * 100) / 100,
+              marginPct: mp
+            };
+          });
+        }
+
+        const totRev = rows.reduce((a, r) => a + (Number(r.totalRevenue) || 0), 0);
+        const totCost = rows.reduce((a, r) => a + (Number(r.totalCost) || 0), 0);
+        const totAct = rows.reduce((a, r) => a + (Number(r.totalActualCost) || 0), 0);
+        const totProfit = rows.reduce((a, r) => a + (Number(r.grossProfit) || 0), 0);
+        const avgMargin = totRev > 0 ? parseFloat(((totProfit / totRev) * 100).toFixed(1)) : 0;
+
+        totals = {
+          productName: 'TOTAL PRODUCT PROFITABILITY',
+          category: `${rows.length} Items`,
+          pricingMethod: '',
+          totalOrders: rows.reduce((a, r) => a + (Number(r.totalOrders) || 0), 0),
+          totalQty: rows.reduce((a, r) => a + (Number(r.totalQty) || 0), 0),
+          totalRevenue: formatINR(totRev),
+          totalCost: formatINR(totCost),
+          totalActualCost: formatINR(totAct),
+          grossProfit: formatINR(totProfit),
+          marginPct: `${avgMargin}%`
+        };
+      } else if (activeSubReport === 'PROFIT_CUSTOMER') {
+        cols = [
+          { key: 'customerName', label: 'Client / Account', align: 'left' },
+          { key: 'customerType', label: 'Segment', align: 'left' },
+          { key: 'totalOrders', label: 'Total Orders', align: 'right' },
+          { key: 'totalRevenue', label: 'Taxable Invoiced', align: 'right', accessor: (r) => formatINR(r.totalRevenue) },
+          { key: 'totalCost', label: 'Total Production Cost', align: 'right', accessor: (r) => formatINR(r.totalCost) },
+          { key: 'grossProfit', label: 'Gross Profit', align: 'right', accessor: (r) => formatINR(r.grossProfit) },
+          { key: 'marginPct', label: 'Profit Margin %', align: 'right', accessor: (r) => (
+            <span style={{ fontWeight: 700, color: (r.marginPct < 15 ? '#ef4444' : r.marginPct > 30 ? '#10b981' : '#3b82f6') }}>
+              {r.marginPct}%
+            </span>
+          ) }
+        ];
+
+        if (jobCostingServerData && activeSubReport === 'PROFIT_CUSTOMER') {
+          rows = jobCostingServerData;
+        } else {
+          rows = (customers || []).map(c => {
+            const cOrders = filteredOrders.filter(o => o.customerId === c.id);
+            const totalRevenue = cOrders.reduce((sum, o) => sum + (Number(o.subtotal) || 0), 0);
+            const totalCost = cOrders.reduce((sum, o) => sum + (Number(o.totalActualCost || o.totalEstimatedCost) || 0), 0);
+            const grossProfit = totalRevenue - totalCost;
+            const marginPct = totalRevenue > 0 ? parseFloat(((grossProfit / totalRevenue) * 100).toFixed(1)) : 0;
+            return {
+              customerId: c.id,
+              customerName: c.name,
+              customerType: c.customerType || c.type || 'Regular',
+              totalOrders: cOrders.length,
+              totalRevenue,
+              totalCost,
+              grossProfit,
+              marginPct
+            };
+          }).filter(c => c.totalOrders > 0 || c.totalRevenue > 0);
+        }
+
+        const totRev = rows.reduce((a, r) => a + (Number(r.totalRevenue) || 0), 0);
+        const totCost = rows.reduce((a, r) => a + (Number(r.totalCost) || 0), 0);
+        const totProfit = rows.reduce((a, r) => a + (Number(r.grossProfit) || 0), 0);
+        const avgMargin = totRev > 0 ? parseFloat(((totProfit / totRev) * 100).toFixed(1)) : 0;
+
+        totals = {
+          customerName: 'TOTAL CUSTOMER PROFITABILITY',
+          customerType: `${rows.length} Accounts`,
+          totalOrders: rows.reduce((a, r) => a + (Number(r.totalOrders) || 0), 0),
+          totalRevenue: formatINR(totRev),
+          totalCost: formatINR(totCost),
+          grossProfit: formatINR(totProfit),
+          marginPct: `${avgMargin}%`
+        };
+      } else if (activeSubReport === 'COST_VARIANCE') {
+        cols = [
+          { key: 'orderNumber', label: 'Order #', align: 'left' },
+          { key: 'orderDate', label: 'Date', align: 'left' },
+          { key: 'customerName', label: 'Customer', align: 'left' },
+          { key: 'productName', label: 'Job Description', align: 'left' },
+          { key: 'qty', label: 'Qty', align: 'right' },
+          { key: 'estimatedTotal', label: 'Est. Cost', align: 'right', accessor: (r) => formatINR(r.estimatedTotal) },
+          { key: 'actualTotal', label: 'Actual Cost', align: 'right', accessor: (r) => formatINR(r.actualTotal) },
+          { key: 'variance', label: 'Variance (₹)', align: 'right', accessor: (r) => (
+            <span style={{ fontWeight: 700, color: (r.variance > 0 ? '#ef4444' : '#10b981') }}>
+              {r.variance > 0 ? `+${formatINR(r.variance)}` : formatINR(r.variance)}
+            </span>
+          ) },
+          { key: 'variancePct', label: 'Variance %', align: 'right', accessor: (r) => (
+            <span style={{ fontWeight: 700, color: (r.variancePct > 0 ? '#ef4444' : '#10b981') }}>
+              {r.variancePct > 0 ? `+${r.variancePct}%` : `${r.variancePct}%`}
+            </span>
+          ) }
+        ];
+
+        rows = (jobCostingServerData && activeSubReport === 'COST_VARIANCE') ? jobCostingServerData : [];
+        const totEst = rows.reduce((a, r) => a + (Number(r.estimatedTotal) || 0), 0);
+        const totAct = rows.reduce((a, r) => a + (Number(r.actualTotal) || 0), 0);
+        const totVar = totAct - totEst;
+        const totVarPct = totEst > 0 ? parseFloat(((totVar / totEst) * 100).toFixed(1)) : 0;
+
+        totals = {
+          orderNumber: 'TOTAL COST VARIANCE',
+          orderDate: `${rows.length} Orders`,
+          customerName: '',
+          productName: '',
+          qty: rows.reduce((a, r) => a + (Number(r.qty) || 0), 0),
+          estimatedTotal: formatINR(totEst),
+          actualTotal: formatINR(totAct),
+          variance: formatINR(totVar),
+          variancePct: `${totVarPct}%`
+        };
+      } else if (activeSubReport === 'MATERIAL_CONSUMPTION') {
+        cols = [
+          { key: 'itemName', label: 'Inventory Raw Material', align: 'left' },
+          { key: 'category', label: 'Category', align: 'left' },
+          { key: 'totalConsumedQty', label: 'Consumed Quantity', align: 'right', accessor: (r) => `${r.totalConsumedQty} ${r.unit || ''}` },
+          { key: 'totalConsumedCost', label: 'Total Value Consumed', align: 'right', accessor: (r) => formatINR(r.totalConsumedCost) }
+        ];
+
+        rows = (jobCostingServerData && activeSubReport === 'MATERIAL_CONSUMPTION') ? jobCostingServerData : [];
+        const totCost = rows.reduce((a, r) => a + (Number(r.totalConsumedCost) || 0), 0);
+        totals = {
+          itemName: 'TOTAL MATERIAL USAGE',
+          category: `${rows.length} Raw Materials`,
+          totalConsumedQty: '',
+          totalConsumedCost: formatINR(totCost)
+        };
+      } else if (activeSubReport === 'WASTAGE') {
+        cols = [
+          { key: 'date', label: 'Date', align: 'left' },
+          { key: 'itemName', label: 'Damaged / Scrapped Material', align: 'left' },
+          { key: 'wastageQty', label: 'Wastage Qty', align: 'right', accessor: (r) => `${r.wastageQty} ${r.unit || ''}` },
+          { key: 'unitCost', label: 'Unit Cost', align: 'right', accessor: (r) => formatINR(r.unitCost) },
+          { key: 'totalScrapCost', label: 'Scrap Loss (₹)', align: 'right', accessor: (r) => formatINR(r.totalScrapCost) },
+          { key: 'reference', label: 'Job Reference', align: 'left' },
+          { key: 'notes', label: 'Reason / Remarks', align: 'left' }
+        ];
+
+        rows = (jobCostingServerData && activeSubReport === 'WASTAGE') ? jobCostingServerData : [];
+        const totLoss = rows.reduce((a, r) => a + (Number(r.totalScrapCost) || 0), 0);
+        totals = {
+          date: 'TOTAL SCRAP LOSS',
+          itemName: `${rows.length} Wastage Incidents`,
+          wastageQty: '',
+          unitCost: '',
+          totalScrapCost: formatINR(totLoss),
+          reference: '',
+          notes: ''
+        };
+      } else if (activeSubReport === 'PRICING_OVERRIDES') {
+        cols = [
+          { key: 'created_at', label: 'Date & Time', align: 'left' },
+          { key: 'order_number', label: 'Order #', align: 'left' },
+          { key: 'customer_name', label: 'Customer', align: 'left' },
+          { key: 'product_name', label: 'Product', align: 'left' },
+          { key: 'original_rate', label: 'System Rate', align: 'right', accessor: (r) => formatINR(r.original_rate) },
+          { key: 'overridden_rate', label: 'Quoted Rate', align: 'right', accessor: (r) => formatINR(r.overridden_rate) },
+          { key: 'difference', label: 'Rate Delta', align: 'right', accessor: (r) => {
+            const diff = (Number(r.overridden_rate) || 0) - (Number(r.original_rate) || 0);
+            return (
+              <span style={{ fontWeight: 700, color: (diff < 0 ? '#ef4444' : '#10b981') }}>
+                {diff > 0 ? `+${formatINR(diff)}` : formatINR(diff)}
+              </span>
+            );
+          } },
+          { key: 'reason', label: 'Override Reason & Authorization', align: 'left' },
+          { key: 'user_name', label: 'Authorized By', align: 'left' }
+        ];
+
+        rows = (jobCostingServerData && activeSubReport === 'PRICING_OVERRIDES') ? jobCostingServerData : [];
+        totals = {
+          created_at: 'TOTAL OVERRIDES',
+          order_number: `${rows.length} Audited Logs`,
+          customer_name: '',
+          product_name: '',
+          original_rate: '',
+          overridden_rate: '',
+          difference: '',
+          reason: '',
+          user_name: ''
+        };
+      } else if (activeSubReport === 'LOW_MARGIN') {
+        cols = [
+          { key: 'order_number', label: 'Order #', align: 'left' },
+          { key: 'order_date', label: 'Date', align: 'left' },
+          { key: 'customer_name', label: 'Customer', align: 'left' },
+          { key: 'product_name', label: 'Product', align: 'left' },
+          { key: 'qty', label: 'Qty', align: 'right' },
+          { key: 'selling_rate', label: 'Selling Rate', align: 'right', accessor: (r) => formatINR(r.selling_rate) },
+          { key: 'unit_cost', label: 'Unit Cost', align: 'right', accessor: (r) => formatINR(r.unit_cost) },
+          { key: 'gross_profit_margin', label: 'Margin %', align: 'right', accessor: (r) => (
+            <span className="badge badge-rose" style={{ fontWeight: 800 }}>
+              {r.gross_profit_margin}%
+            </span>
+          ) },
+          { key: 'applied_pricing_rule', label: 'Pricing Rule', align: 'center' },
+          { key: 'is_rate_overridden', label: 'Overridden?', align: 'center', accessor: (r) => r.is_rate_overridden ? (
+            <span className="badge badge-amber" title={r.override_reason}>YES</span>
+          ) : 'NO' }
+        ];
+
+        rows = (jobCostingServerData && activeSubReport === 'LOW_MARGIN') ? jobCostingServerData : [];
+        totals = {
+          order_number: 'CRITICAL LOW MARGIN ORDERS',
+          order_date: `${rows.length} Flagged Orders (< 15%)`,
+          customer_name: '',
+          product_name: '',
+          qty: rows.reduce((a, r) => a + (Number(r.qty) || 0), 0),
+          selling_rate: '',
+          unit_cost: '',
+          gross_profit_margin: '',
+          applied_pricing_rule: '',
+          is_rate_overridden: ''
+        };
+      }
+    } else if (activeCategory === 'INCENTIVES') {
       if (activeSubReport === 'CAREOF_INCENTIVES') {
         cols = [
           { key: 'name', label: 'Care Of Partner / Referred Agent', align: 'left' },
@@ -872,7 +1195,7 @@ export const ReportsView = ({ initialReportKey = 'SALES' }) => {
     }
 
     return { cols, rows, totals };
-  }, [activeCategory, activeSubReport, filteredOrders, customers, products, vendors, designers, payments, inventory, salesPersons, isAdminOrManager]);
+  }, [activeCategory, activeSubReport, filteredOrders, customers, products, vendors, designers, payments, inventory, salesPersons, isAdminOrManager, jobCostingServerData]);
 
   // Paginated Rows
   const paginatedRows = useMemo(() => {

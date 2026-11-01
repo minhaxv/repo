@@ -1555,6 +1555,343 @@ export function runMigrations(db) {
     console.log(' -> Migration 019 applied: Specification outsource vendor & quantity slabs ready.');
   });
 
+  // ----------------------------------------------------
+  // MIGRATION 020: Advanced Printing Catalogue, 5 Pricing Engines, BOM & Automatic Job Costing
+  // ----------------------------------------------------
+  applyMigration('020_advanced_pricing_catalog_and_job_costing', (database) => {
+    console.log('🚀 Applying Migration 020: Advanced Product Master, Dynamic Pricing & Automatic Job Costing...');
+
+    // 1. Extend products table with SKU, Barcode, Image, MOQ, Pricing Method, Variants, Production Settings
+    const prodCols = [
+      'sku TEXT',
+      'barcode TEXT',
+      'image_url TEXT',
+      'min_order_qty REAL DEFAULT 1',
+      'pricing_method TEXT DEFAULT "FIXED"', // 'FIXED', 'SLAB', 'DIMENSION', 'YIELD_CALCULATOR', 'CUSTOM_QUOTE'
+      'variants_json TEXT',
+      'production_settings_json TEXT',
+      'tax_inclusive INTEGER DEFAULT 0'
+    ];
+    prodCols.forEach(col => {
+      try { database.prepare(`ALTER TABLE products ADD COLUMN ${col}`).run(); } catch (e) {}
+    });
+
+    // 2. Extend product_pricing_slabs with effective dates, customer specificity & priority
+    const slabCols = [
+      'customer_id TEXT',
+      'customer_type TEXT',
+      'start_date TEXT',
+      'end_date TEXT',
+      'priority INTEGER DEFAULT 0',
+      'pricing_rule_name TEXT'
+    ];
+    slabCols.forEach(col => {
+      try { database.prepare(`ALTER TABLE product_pricing_slabs ADD COLUMN ${col}`).run(); } catch (e) {}
+    });
+
+    // 3. Create customer_pricing_rules table (Method 5: Customer-specific negotiated pricing & contracts)
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS customer_pricing_rules (
+        id TEXT PRIMARY KEY,
+        customer_id TEXT NOT NULL,
+        customer_name TEXT,
+        product_id TEXT,
+        product_category TEXT,
+        spec_id TEXT,
+        pricing_type TEXT NOT NULL, -- 'FIXED_RATE', 'PERCENT_DISCOUNT', 'MARKUP_OVER_COST'
+        custom_rate REAL,
+        discount_pct REAL,
+        min_qty REAL DEFAULT 1,
+        start_date TEXT,
+        end_date TEXT,
+        priority INTEGER DEFAULT 1,
+        active INTEGER DEFAULT 1,
+        notes TEXT,
+        created_by TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_cpr_cust ON customer_pricing_rules(customer_id);
+      CREATE INDEX IF NOT EXISTS idx_cpr_prod ON customer_pricing_rules(product_id);
+      CREATE INDEX IF NOT EXISTS idx_cpr_active ON customer_pricing_rules(active);
+    `);
+
+    // 4. Create product_bom table (Bill of Materials - Recipe, Materials, Machine, Labour, Electricity, Packaging, Outsource)
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS product_bom (
+        id TEXT PRIMARY KEY,
+        product_id TEXT NOT NULL,
+        spec_id TEXT,
+        bom_name TEXT NOT NULL,
+        output_qty REAL DEFAULT 1,
+        output_unit TEXT DEFAULT 'Pcs',
+        is_default INTEGER DEFAULT 1,
+        raw_materials_json TEXT, -- [{inventory_id, material_name, unit, qty_per_unit, unit_cost, wastage_pct, total_cost}]
+        machine_cost REAL DEFAULT 0,
+        machine_id TEXT,
+        machine_name TEXT,
+        labour_cost REAL DEFAULT 0,
+        electricity_cost REAL DEFAULT 0,
+        finishing_cost REAL DEFAULT 0,
+        packaging_cost REAL DEFAULT 0,
+        outsourced_cost REAL DEFAULT 0,
+        outsourced_vendor_id TEXT,
+        outsourced_process TEXT,
+        total_estimated_unit_cost REAL DEFAULT 0,
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_bom_prod ON product_bom(product_id);
+    `);
+
+    // 5. Create product_yield_configs table (Yield Calculator Master e.g. Business Card 30/sheet yield)
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS product_yield_configs (
+        id TEXT PRIMARY KEY,
+        product_id TEXT NOT NULL UNIQUE,
+        sheet_name TEXT DEFAULT '12x18 Inch',
+        sheet_width_in REAL DEFAULT 12,
+        sheet_height_in REAL DEFAULT 18,
+        cards_per_sheet INTEGER DEFAULT 30,
+        paper_material_id TEXT,
+        paper_gsm INTEGER DEFAULT 300,
+        paper_sheet_cost REAL DEFAULT 6.50,
+        printing_side TEXT DEFAULT 'DOUBLE', -- 'SINGLE' or 'DOUBLE'
+        printing_cost_per_sheet REAL DEFAULT 8.00,
+        ink_cost_per_sheet REAL DEFAULT 1.50,
+        lamination_type TEXT DEFAULT 'Thermal Matte',
+        lamination_cost_per_sheet REAL DEFAULT 4.00,
+        cutting_cost_per_sheet REAL DEFAULT 1.50,
+        wastage_pct REAL DEFAULT 5.0,
+        overhead_per_sheet REAL DEFAULT 0.50,
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_yield_prod ON product_yield_configs(product_id);
+    `);
+
+    // 6. Extend sales_order_items with historical costing & pricing rule snapshots
+    const itemCols = [
+      'original_selling_price REAL DEFAULT 0',
+      'applied_pricing_rule TEXT DEFAULT "FIXED"', // 'FIXED_UNIT', 'QUANTITY_SLAB', 'CUSTOMER_NEGOTIATED', 'MATERIAL_DIMENSION', 'YIELD_CALCULATOR', 'MANUAL_OVERRIDE'
+      'pricing_rule_details TEXT',
+      'estimated_material_cost REAL DEFAULT 0',
+      'estimated_labour_cost REAL DEFAULT 0',
+      'estimated_machine_cost REAL DEFAULT 0',
+      'estimated_overhead_cost REAL DEFAULT 0',
+      'is_rate_overridden INTEGER DEFAULT 0',
+      'override_reason TEXT',
+      'overridden_by_user_id TEXT',
+      'overridden_by_name TEXT',
+      'gross_profit REAL DEFAULT 0',
+      'gross_profit_margin REAL DEFAULT 0'
+    ];
+    itemCols.forEach(col => {
+      try { database.prepare(`ALTER TABLE sales_order_items ADD COLUMN ${col}`).run(); } catch (e) {}
+    });
+
+    // 7. Create pricing_overrides_log table (Authorized Manual Price Overrides & Audit Logs)
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS pricing_overrides_log (
+        id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        order_number TEXT,
+        item_id TEXT NOT NULL,
+        product_id TEXT,
+        product_name TEXT,
+        customer_id TEXT,
+        customer_name TEXT,
+        system_calculated_price REAL NOT NULL,
+        overridden_price REAL NOT NULL,
+        price_difference REAL NOT NULL,
+        original_rate REAL,
+        overridden_rate REAL,
+        discount_pct REAL DEFAULT 0,
+        estimated_cost REAL DEFAULT 0,
+        expected_profit REAL DEFAULT 0,
+        expected_margin_pct REAL DEFAULT 0,
+        reason TEXT NOT NULL,
+        authorized_by_user_id TEXT NOT NULL,
+        authorized_by_name TEXT NOT NULL,
+        user_id TEXT,
+        user_name TEXT,
+        authorized_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_po_log_order ON pricing_overrides_log(order_id);
+      CREATE INDEX IF NOT EXISTS idx_po_log_prod ON pricing_overrides_log(product_id);
+      CREATE INDEX IF NOT EXISTS idx_po_log_date ON pricing_overrides_log(authorized_at DESC);
+    `);
+
+    // 8. Seed Standard Printing Catalogue Items & Pricing Rules
+    try {
+      const insertProd = database.prepare(`
+        INSERT OR REPLACE INTO products (
+          id, product_code, name, sku, barcode, category, description, unit,
+          default_rate, estimated_cost, gst_rate, hsn_code, min_order_qty,
+          pricing_method, variants_json, production_settings_json, active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+      `);
+
+      const insertSlab = database.prepare(`
+        INSERT OR REPLACE INTO product_pricing_slabs (
+          id, product_id, spec_id, min_qty, max_qty, rate, cost_rate, pricing_rule_name
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      // Item 1: Custom Ceramic Mug Printing (Quantity Slab Example from Requirement 3)
+      const mugVariants = JSON.stringify([
+        { type: 'Color', options: ['White Gloss', 'Magic Black (Color Changing)', 'Inner Color Red', 'Dual Tone Blue'] },
+        { type: 'Finishing', options: ['Glossy Sublimation', 'Matte Coating', 'Metallic Gold Rim'] }
+      ]);
+      const mugProdSettings = JSON.stringify({
+        machineType: 'Sublimation Heat Press',
+        pressTimeSeconds: 180,
+        pressTempCelsius: 200,
+        cardsPerSheet: 1,
+        wasteAllowancePct: 3.0
+      });
+      insertProd.run(
+        'PROD-MUG-01', 'PRD-MUG', 'Custom Ceramic Mug Sublimation Printing', 'MUG-WHT-11OZ', '8901234500012',
+        'Promotional Items', 'High-quality 11oz grade-A ceramic mug with permanent full-color sublimation print.',
+        'Pcs', 500, 65, 18, '4911', 1, 'SLAB', mugVariants, mugProdSettings
+      );
+
+      // Slabs for Mug Printing:
+      // 1 = ₹500
+      // 2–9 = ₹400 each
+      // 10–99 = ₹380 each
+      // 100–999 = ₹300 each
+      // 1000+ = ₹100 each
+      insertSlab.run('SLAB-MUG-1', 'PROD-MUG-01', null, 1, 1, 500, 65, 'Single Piece Retail');
+      insertSlab.run('SLAB-MUG-2', 'PROD-MUG-01', null, 2, 9, 400, 65, 'Low Volume Tier');
+      insertSlab.run('SLAB-MUG-3', 'PROD-MUG-01', null, 10, 99, 380, 60, 'Corporate Small Batch');
+      insertSlab.run('SLAB-MUG-4', 'PROD-MUG-01', null, 100, 999, 300, 55, 'Bulk Order Tier');
+      insertSlab.run('SLAB-MUG-5', 'PROD-MUG-01', null, 1000, null, 100, 45, 'Wholesale Factory Volume');
+
+      // Item 2: Balloon Printing (Quantity Slab Example from Requirement 3)
+      const balloonVariants = JSON.stringify([
+        { type: 'Color', options: ['Assorted Standard', 'Metallic Silver', 'Pastel Pink', 'Royal Blue'] },
+        { type: 'Size', options: ['9 Inch', '12 Inch'] }
+      ]);
+      insertProd.run(
+        'PROD-BLN-01', 'PRD-BLN', 'Custom Screen Printed Latex Balloons', 'BLN-LTX-9IN', '8901234500029',
+        'Promotional Items', 'Natural 100% biodegradable latex balloons with single or multi-colour screen print.',
+        'Pcs', 10, 2.5, 18, '9505', 100, 'SLAB', balloonVariants, '{}'
+      );
+
+      // Slabs for Balloon Printing:
+      // 100 = ₹10 each
+      // 200 = ₹8 each
+      // 500+ = ₹6 each
+      insertSlab.run('SLAB-BLN-1', 'PROD-BLN-01', null, 1, 199, 10, 3.2, 'Small Batch 100-Pack');
+      insertSlab.run('SLAB-BLN-2', 'PROD-BLN-01', null, 200, 499, 8, 2.5, 'Medium Batch 200-Pack');
+      insertSlab.run('SLAB-BLN-3', 'PROD-BLN-01', null, 500, null, 6, 2.0, 'Wholesale 500+ Volume');
+
+      // Item 3: Business Cards with Yield Calculator (Requirement 4)
+      const bcVariants = JSON.stringify([
+        { type: 'GSM', options: ['300 GSM Art Card', '350 GSM Art Card', '400 GSM Velvet Board'] },
+        { type: 'Finishing', options: ['Matte Lamination', 'Gloss Lamination', 'Raised Spot UV + Velvet', 'Gold Foil Stamping'] },
+        { type: 'Corners', options: ['Square Cut', 'Round Corners (6mm radius)'] }
+      ]);
+      insertProd.run(
+        'PROD-BC-01', 'PRD-BC', 'Premium Business Cards / Visiting Cards', 'BC-MATTE-300', '8901234500036',
+        'Stationery', 'Standard 3.5 x 2 inch executive visiting cards printed on 300 GSM art card with matte thermal lamination.',
+        'Pcs', 3.50, 1.25, 18, '4911', 100, 'YIELD_CALCULATOR', bcVariants, '{}'
+      );
+
+      // Yield configuration: 30 cards per 12x18 sheet (CEILING formula)
+      database.prepare(`
+        INSERT OR REPLACE INTO product_yield_configs (
+          id, product_id, sheet_name, sheet_width_in, sheet_height_in, cards_per_sheet,
+          paper_gsm, paper_sheet_cost, printing_side, printing_cost_per_sheet, ink_cost_per_sheet,
+          lamination_type, lamination_cost_per_sheet, cutting_cost_per_sheet, wastage_pct, overhead_per_sheet, notes
+        ) VALUES (
+          'YIELD-PROD-BC-01', 'PROD-BC-01', '12x18 Inch Art Card', 12, 18, 30,
+          300, 6.50, 'DOUBLE', 8.00, 1.50,
+          'Thermal Matte', 4.00, 1.50, 5.0, 0.50, '30 business cards per sheet standard gang run yield'
+        )
+      `).run();
+
+      // Slabs for Business Cards
+      insertSlab.run('SLAB-BC-1', 'PROD-BC-01', null, 100, 499, 3.50, 1.30, 'Short Run 100-500');
+      insertSlab.run('SLAB-BC-2', 'PROD-BC-01', null, 500, 999, 2.20, 0.95, 'Standard Run 500-1000');
+      insertSlab.run('SLAB-BC-3', 'PROD-BC-01', null, 1000, null, 1.60, 0.75, 'Bulk Gang Run 1000+');
+
+      // 9. Seed Bill of Materials (BOM) Recipes (Requirement 5)
+      // BOM for Business Cards (Output 1000 Pcs)
+      const bcMaterials = JSON.stringify([
+        { inventory_id: 'INV-03', material_name: '300 GSM Art Card Sheet 12x18', unit: 'Sheets', qty_per_unit: 0.035, unit_cost: 6.50, wastage_pct: 5.0, total_cost: 0.239 },
+        { inventory_id: 'INV-06', material_name: 'Matte Thermal Lamination Film', unit: 'Sq.Ft', qty_per_unit: 0.052, unit_cost: 2.20, wastage_pct: 3.0, total_cost: 0.118 },
+        { inventory_id: 'INV-05', material_name: 'Digital Press CMYK Toner / Ink', unit: 'Clicks', qty_per_unit: 0.070, unit_cost: 3.50, wastage_pct: 2.0, total_cost: 0.250 }
+      ]);
+
+      database.prepare(`
+        INSERT OR REPLACE INTO product_bom (
+          id, product_id, spec_id, bom_name, output_qty, output_unit, is_default,
+          raw_materials_json, machine_cost, machine_id, machine_name,
+          labour_cost, electricity_cost, finishing_cost, packaging_cost, outsourced_cost,
+          total_estimated_unit_cost, notes
+        ) VALUES (
+          'BOM-BC-01', 'PROD-BC-01', null, 'Standard 300GSM Matte Business Card Recipe', 1, 'Pcs', 1,
+          ?, 0.18, 'MAC-04', 'Konica Minolta AccurioPress C4070',
+          0.12, 0.05, 0.08, 0.04, 0.00,
+          0.90, 'Complete production recipe: raw card sheet, thermal lamination, Konica digital press, die cutting, packaging box'
+        )
+      `).run(bcMaterials);
+
+      // BOM for Ceramic Mug Printing
+      const mugMaterials = JSON.stringify([
+        { inventory_id: 'INV-08', material_name: 'Blank Ceramic Mug 11oz', unit: 'Pcs', qty_per_unit: 1.0, unit_cost: 38.00, wastage_pct: 2.0, total_cost: 38.76 },
+        { inventory_id: 'INV-05', material_name: 'Sublimation Paper & Inks', unit: 'Sheets', qty_per_unit: 1.0, unit_cost: 8.50, wastage_pct: 3.0, total_cost: 8.76 }
+      ]);
+      database.prepare(`
+        INSERT OR REPLACE INTO product_bom (
+          id, product_id, spec_id, bom_name, output_qty, output_unit, is_default,
+          raw_materials_json, machine_cost, machine_id, machine_name,
+          labour_cost, electricity_cost, finishing_cost, packaging_cost, outsourced_cost,
+          total_estimated_unit_cost, notes
+        ) VALUES (
+          'BOM-MUG-01', 'PROD-MUG-01', null, 'Sublimation Ceramic Mug Recipe', 1, 'Pcs', 1,
+          ?, 4.50, 'MAC-06', 'Dual Station Mug Heat Press',
+          8.00, 2.50, 0.00, 6.00, 0.00,
+          68.52, 'Mug blank, transfer release paper, sublimation dyes, heat press, individual gift box'
+        )
+      `).run(mugMaterials);
+
+      // 10. Seed Customer-Specific Pricing Rules (Requirement 6)
+      const insertCustRule = database.prepare(`
+        INSERT OR REPLACE INTO customer_pricing_rules (
+          id, customer_id, customer_name, product_id, product_category, spec_id,
+          pricing_type, custom_rate, discount_pct, min_qty, start_date, end_date, active, notes, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 'Admin')
+      `);
+
+      // Customer CUST-101 (Apex Advertising / Regular): Contracted ₹12/sq.ft for Star Flex (Catalogue rate ₹15)
+      insertCustRule.run(
+        'CPR-APEX-01', 'CUST-101', 'Apex Advertising Co', 'PROD-01', null, null,
+        'FIXED_RATE', 12.00, 0, 10, '2026-01-01', '2026-12-31', 'Contracted B2B agency rate for Star Flex banner'
+      );
+
+      // Customer CUST-102 (Metropolis Signages / Wholesale): 15% discount across all Flex & Banner
+      insertCustRule.run(
+        'CPR-METRO-01', 'CUST-102', 'Metropolis Signages', null, 'Flex & Banner', null,
+        'PERCENT_DISCOUNT', null, 15.00, 1, '2026-01-01', '2026-12-31', 'Wholesale agency partner 15% trade discount'
+      );
+
+      console.log(' -> Seeded promotional items, business card yield calculator, BOM recipes & customer pricing rules.');
+    } catch (seedErr) {
+      console.warn('Migration 020 seeding warning:', seedErr.message);
+    }
+
+    console.log('✅ Migration 020 applied successfully: Advanced Printing Shop Catalogue, Dynamic Pricing & Costing Engine Active!');
+  });
+
   // Also ensure spec_id column exists for already applied migration 017
   try { db.prepare("ALTER TABLE product_pricing_slabs ADD COLUMN spec_id TEXT").run(); } catch(e) {}
   try { db.prepare("ALTER TABLE products ADD COLUMN default_vendor_id TEXT").run(); } catch(e) {}

@@ -9,7 +9,7 @@
     "dev": "concurrently \"node server/index.js\" \"npx vite\"",
     "build": "npx vite build",
     "preview": "npx vite preview",
-    "test": "node tests/billingEngine.test.js && node tests/authRbac.test.js && node tests/inventoryLedger.test.js && node tests/concurrencyAndBackups.test.js && node tests/billingAttribution.test.js && node tests/userCredentialEdit.test.js && node tests/masterProductionErp.test.js && node tests/systemOptimizationAudit.test.js"
+    "test": "node tests/billingEngine.test.js && node tests/authRbac.test.js && node tests/inventoryLedger.test.js && node tests/concurrencyAndBackups.test.js && node tests/billingAttribution.test.js && node tests/userCredentialEdit.test.js && node tests/masterProductionErp.test.js && node tests/systemOptimizationAudit.test.js && node tests/advancedPricingAndJobCosting.test.js"
   },
   "dependencies": {
     "@supabase/server": "^1.4.1",
@@ -19,6 +19,7 @@
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "lucide-react": "^0.344.0",
+    "node-zklib": "^1.3.0",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
