@@ -675,10 +675,10 @@ body {
 }
 
 .badge-blue { background: #dbeafe; color: #1e40af; }
-.badge-emerald { background: #d1fae5; color: #065f46; }
+.badge-emerald, .badge-green { background: #d1fae5; color: #065f46; }
 .badge-amber { background: #fef3c7; color: #92400e; }
-.badge-rose { background: #ffe4e6; color: #9f1239; }
-.badge-violet { background: #ede9fe; color: #5b21b6; }
+.badge-rose, .badge-red { background: #ffe4e6; color: #9f1239; }
+.badge-violet, .badge-purple { background: #ede9fe; color: #5b21b6; }
 .badge-slate { background: #e2e8f0; color: #334155; }
 .badge-cyan { background: #cffaff; color: #155e75; }
 

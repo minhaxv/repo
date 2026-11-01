@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useERP } from '../../context/ERPContext';
-import { Calculator, X, Save, Sparkles, AlertCircle, Check, Layers, Cpu, Scissors, Printer, FileText } from 'lucide-react';
+import { Calculator, X, Save, Sparkles, Check, AlertCircle, FileText, Layers, Scissors, Printer } from 'lucide-react';
 import { calculateProductionYield } from '../../utils/pricingEngine';
 
 export const YieldCalculatorModal = ({ isOpen, onClose, product }) => {
@@ -55,7 +55,6 @@ export const YieldCalculatorModal = ({ isOpen, onClose, product }) => {
         setOverheadPerSheet(existingConfig.overheadPerSheet ?? 0.50);
         setNotes(existingConfig.notes || '');
       } else {
-        // Defaults for business card
         setSheetName('12x18 Digital Sheet');
         setSheetWidthIn(12);
         setSheetHeightIn(18);
@@ -145,417 +144,304 @@ export const YieldCalculatorModal = ({ isOpen, onClose, product }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden">
-        
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-content"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: '980px', width: '95vw', maxHeight: '92vh' }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-              <Calculator className="w-5 h-5" />
+        <div className="modal-header" style={{ background: 'linear-gradient(135deg, #3730a3, #4f46e5)', color: '#ffffff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <div style={{ padding: '0.45rem', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.15)' }}>
+              <Calculator size={22} color="#c7d2fe" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                Production Yield & Sheet Calculator
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-medium">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0, color: '#ffffff' }}>
+                  Production Yield & Imposition Calculator
+                </h3>
+                <span style={{ fontSize: '0.72rem', background: '#312e81', color: '#e0e7ff', padding: '0.15rem 0.5rem', borderRadius: '12px', fontWeight: 700 }}>
                   {product.name}
                 </span>
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Configure printing sheet dimensions, cards-per-sheet yield, ink, lamination & scrap buffers.
-              </p>
+              </div>
+              <span style={{ fontSize: '0.78rem', color: '#c7d2fe' }}>
+                Formula: CEILING(Order Qty / Cards Per Sheet) + Scrap Allowance Buffer.
+              </span>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            style={{ background: 'none', border: 'none', color: '#ffffff', cursor: 'pointer', fontSize: '1.25rem' }}
           >
-            <X className="w-5 h-5" />
+            ✕
           </button>
         </div>
 
-        {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Modal Body */}
+        <div className="modal-body" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           
-          {/* Left Form: Parameters */}
-          <div className="lg:col-span-7 space-y-5">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
             
-            {/* Sheet & Yield Specs */}
-            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-3">
-              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                <FileText className="w-4 h-4 text-indigo-500" />
-                Sheet & Imposition Layout
-              </h3>
+            {/* Left Column: Sheet & Imposition Parameters */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                    Sheet Descriptor
-                  </label>
-                  <input
-                    type="text"
-                    value={sheetName}
-                    onChange={(e) => setSheetName(e.target.value)}
-                    placeholder="e.g. 12x18 Digital Sheet"
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
+              <div className="card" style={{ background: '#f8fafc', padding: '1rem', border: '1px solid #cbd5e1' }}>
+                <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.88rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <FileText size={16} color="#4f46e5" /> Sheet & Imposition Setup
+                </h4>
 
-                <div>
-                  <label className="block text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1">
-                    Cards per Sheet (Yield) *
-                  </label>
-                  <div className="flex items-center gap-2">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>Sheet Descriptor</label>
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      value={sheetName}
+                      onChange={(e) => setSheetName(e.target.value)}
+                      placeholder="e.g. 12x18 Digital Sheet"
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700, color: '#4338ca' }}>
+                      Cards per Sheet (Yield) *
+                    </label>
                     <input
                       type="number"
                       min="1"
+                      className="form-control form-control-sm"
+                      style={{ fontWeight: 800, color: '#4338ca', background: '#eef2ff' }}
                       value={cardsPerSheet}
                       onChange={(e) => setCardsPerSheet(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-full px-3 py-1.5 text-xs font-bold rounded-lg border border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 focus:ring-2 focus:ring-indigo-500"
-                    />
-                    <span className="text-xs text-slate-500 whitespace-nowrap">cards/sheet</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                    Sheet Dimensions (Inches)
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      step="0.5"
-                      value={sheetWidthIn}
-                      onChange={(e) => setSheetWidthIn(parseFloat(e.target.value) || 0)}
-                      placeholder="W"
-                      className="w-1/2 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                    />
-                    <span className="text-xs text-slate-400">×</span>
-                    <input
-                      type="number"
-                      step="0.5"
-                      value={sheetHeightIn}
-                      onChange={(e) => setSheetHeightIn(parseFloat(e.target.value) || 0)}
-                      placeholder="H"
-                      className="w-1/2 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
                     />
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                    Paper GSM
-                  </label>
-                  <div className="flex items-center gap-2">
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>Width × Height (Inches)</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <input
+                        type="number"
+                        step="0.5"
+                        className="form-control form-control-sm"
+                        value={sheetWidthIn}
+                        onChange={(e) => setSheetWidthIn(parseFloat(e.target.value) || 0)}
+                        placeholder="W"
+                      />
+                      <span>×</span>
+                      <input
+                        type="number"
+                        step="0.5"
+                        className="form-control form-control-sm"
+                        value={sheetHeightIn}
+                        onChange={(e) => setSheetHeightIn(parseFloat(e.target.value) || 0)}
+                        placeholder="H"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>Paper GSM</label>
                     <input
                       type="number"
+                      className="form-control form-control-sm"
                       value={paperGsm}
                       onChange={(e) => setPaperGsm(parseInt(e.target.value) || 0)}
-                      className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                      placeholder="300 GSM"
                     />
-                    <span className="text-xs text-slate-500">GSM</span>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Production Costs per Sheet */}
-            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-3">
-              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                <Printer className="w-4 h-4 text-emerald-500" />
-                Raw Paper & Printing Rates (Per Sheet)
-              </h3>
+              {/* Sheet Costing Parameters */}
+              <div className="card" style={{ background: '#f8fafc', padding: '1rem', border: '1px solid #cbd5e1' }}>
+                <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.88rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Layers size={16} color="#059669" /> Sheet Processing & Overhead Rates
+                </h4>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                    Raw Paper Cost / Sheet (₹)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.10"
-                    value={paperSheetCost}
-                    onChange={(e) => setPaperSheetCost(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                    Print Impression / Sheet (₹)
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={printingSide}
-                      onChange={(e) => setPrintingSide(e.target.value)}
-                      className="w-1/2 px-2 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                    >
-                      <option value="SINGLE">Single Side</option>
-                      <option value="DOUBLE">Double Side</option>
-                    </select>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.65rem' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>Paper Cost/Sheet</label>
                     <input
                       type="number"
-                      step="0.50"
+                      step="0.10"
+                      className="form-control form-control-sm"
+                      value={paperSheetCost}
+                      onChange={(e) => setPaperSheetCost(parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>Print Cost/Sheet</label>
+                    <input
+                      type="number"
+                      step="0.10"
+                      className="form-control form-control-sm"
                       value={printingCostPerSheet}
                       onChange={(e) => setPrintingCostPerSheet(parseFloat(e.target.value) || 0)}
-                      className="w-1/2 px-2 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
                     />
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                    Ink / Toner Consumption / Sheet (₹)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.10"
-                    value={inkCostPerSheet}
-                    onChange={(e) => setInkCostPerSheet(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                    Wastage & Scrap Allowance (%)
-                  </label>
-                  <div className="flex items-center gap-2">
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>Ink Cost/Sheet</label>
                     <input
                       type="number"
-                      step="0.5"
-                      value={wastagePct}
-                      onChange={(e) => setWastagePct(parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-1.5 text-xs rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50/40 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300 font-semibold"
+                      step="0.10"
+                      className="form-control form-control-sm"
+                      value={inkCostPerSheet}
+                      onChange={(e) => setInkCostPerSheet(parseFloat(e.target.value) || 0)}
                     />
-                    <span className="text-xs text-amber-600 dark:text-amber-400 font-bold">%</span>
                   </div>
-                </div>
-              </div>
-            </div>
 
-            {/* Finishing & Post-Press */}
-            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-3">
-              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                <Scissors className="w-4 h-4 text-violet-500" />
-                Post-Press, Lamination & Cutting
-              </h3>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                    Lamination Type & Rate / Sheet (₹)
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={laminationType}
-                      onChange={(e) => setLaminationType(e.target.value)}
-                      placeholder="e.g. Thermal Matte"
-                      className="w-1/2 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                    />
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>Lamination Rate</label>
                     <input
                       type="number"
-                      step="0.5"
+                      step="0.10"
+                      className="form-control form-control-sm"
                       value={laminationCostPerSheet}
                       onChange={(e) => setLaminationCostPerSheet(parseFloat(e.target.value) || 0)}
-                      placeholder="₹"
-                      className="w-1/2 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>Cutting Rate</label>
+                    <input
+                      type="number"
+                      step="0.10"
+                      className="form-control form-control-sm"
+                      value={cuttingCostPerSheet}
+                      onChange={(e) => setCuttingCostPerSheet(parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700, color: '#e11d48' }}>Wastage Buffer %</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      className="form-control form-control-sm"
+                      style={{ fontWeight: 800, color: '#e11d48' }}
+                      value={wastagePct}
+                      onChange={(e) => setWastagePct(parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Right Column: Live Yield Simulation */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              
+              <div className="card" style={{ background: '#f8fafc', padding: '1.25rem', border: '1px solid #c7d2fe' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#1e1b4b', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Sparkles size={16} color="#4f46e5" /> Live Production Simulation
+                  </h4>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>Order Qty:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      className="form-control form-control-sm"
+                      style={{ width: '90px', fontWeight: 800, textAlign: 'center' }}
+                      value={simQty}
+                      onChange={(e) => setSimQty(Math.max(1, parseInt(e.target.value) || 1))}
                     />
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                    Cutting & Slitting / Sheet (₹)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.25"
-                    value={cuttingCostPerSheet}
-                    onChange={(e) => setCuttingCostPerSheet(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                  />
-                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+                  <div style={{ background: '#ffffff', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>BASE SHEETS REQUIRED</span>
+                    <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', margin: '0.2rem 0' }}>
+                      {yieldResult.baseSheets} <small style={{ fontSize: '0.75rem', color: '#64748b' }}>sheets</small>
+                    </h3>
+                    <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>CEILING({simQty} / {cardsPerSheet})</span>
+                  </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                    Overhead & Packing / Sheet (₹)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.25"
-                    value={overheadPerSheet}
-                    onChange={(e) => setOverheadPerSheet(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                    Internal Notes
-                  </label>
-                  <input
-                    type="text"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="e.g. Standard 30-up on Konica C6085"
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                  />
-                </div>
-              </div>
-            </div>
-
-          </div>
-
-          {/* Right Column: Live Yield Simulator & Breakdown */}
-          <div className="lg:col-span-5 flex flex-col space-y-4">
-            
-            {/* Simulation Header */}
-            <div className="p-4 rounded-xl border-2 border-indigo-500/20 bg-gradient-to-br from-indigo-50/50 via-white to-indigo-50/20 dark:from-indigo-950/20 dark:via-slate-900 dark:to-slate-900 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Live Yield & Cost Simulation
-                </span>
-                <span className="text-xs font-mono px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
-                  {cardsPerSheet} Cards / Sheet
-                </span>
-              </div>
-
-              {/* Order Quantity Input */}
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                  Test Order Quantity (Cards)
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="1"
-                    step="50"
-                    value={simQty}
-                    onChange={(e) => setSimQty(parseInt(e.target.value) || 0)}
-                    className="w-full px-3 py-2 text-base font-bold rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                  />
-                  <div className="flex gap-1">
-                    {[300, 500, 1000].map(q => (
-                      <button
-                        key={q}
-                        type="button"
-                        onClick={() => setSimQty(q)}
-                        className={`px-2 py-1.5 text-xs font-medium rounded border ${simQty === q ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700'}`}
-                      >
-                        {q}
-                      </button>
-                    ))}
+                  <div style={{ background: '#eef2ff', padding: '0.75rem', borderRadius: '8px', border: '1px solid #c7d2fe' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#4338ca', fontWeight: 700 }}>TOTAL PRODUCTION SHEETS</span>
+                    <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#3730a3', margin: '0.2rem 0' }}>
+                      {yieldResult.totalSheets} <small style={{ fontSize: '0.75rem', color: '#4338ca' }}>sheets</small>
+                    </h3>
+                    <span style={{ fontSize: '0.68rem', color: '#6366f1' }}>Includes +{yieldResult.wastageSheets} scrap buffer</span>
                   </div>
                 </div>
-              </div>
 
-              {/* Sheet Math Display */}
-              <div className="p-3 rounded-lg bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs space-y-2">
-                <div className="flex justify-between items-center text-slate-600 dark:text-slate-300">
-                  <span>Theoretical Net Sheets:</span>
-                  <span className="font-mono font-bold">
-                    CEILING({simQty} / {cardsPerSheet}) = <span className="text-indigo-600 dark:text-indigo-400">{yieldResult.requiredSheets}</span> sheets
-                  </span>
+                <div style={{ background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '0.75rem', marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0', fontSize: '0.78rem' }}>
+                    <span style={{ color: '#64748b' }}>Paper Substrate:</span>
+                    <strong>₹{yieldResult.breakdown?.paperCost?.toFixed(2) || '0.00'}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0', fontSize: '0.78rem' }}>
+                    <span style={{ color: '#64748b' }}>Printing & Ink:</span>
+                    <strong>₹{((yieldResult.breakdown?.printCost || 0) + (yieldResult.breakdown?.inkCost || 0)).toFixed(2)}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0', fontSize: '0.78rem' }}>
+                    <span style={{ color: '#64748b' }}>Lamination ({laminationType}):</span>
+                    <strong>₹{yieldResult.breakdown?.laminationCost?.toFixed(2) || '0.00'}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0', fontSize: '0.78rem' }}>
+                    <span style={{ color: '#64748b' }}>Precision Die Cutting:</span>
+                    <strong>₹{yieldResult.breakdown?.cuttingCost?.toFixed(2) || '0.00'}</strong>
+                  </div>
+                  <div style={{ borderTop: '1px solid #e2e8f0', marginTop: '0.4rem', paddingTop: '0.4rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', fontWeight: 800 }}>
+                    <span>Total Batch Cost:</span>
+                    <span style={{ color: '#1e40af' }}>₹{yieldResult.totalProductionCost?.toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 800, marginTop: '0.2rem', color: '#059669' }}>
+                    <span>Estimated Cost per Card:</span>
+                    <span>₹{yieldResult.unitCostPerCard?.toFixed(3)}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center text-slate-600 dark:text-slate-300">
-                  <span>Wastage Allowance ({wastagePct}%):</span>
-                  <span className="font-mono text-amber-600 dark:text-amber-400">
-                    +{yieldResult.wasteSheets} sheets
-                  </span>
-                </div>
-                <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center font-bold text-slate-900 dark:text-white">
-                  <span>Actual Production Sheets:</span>
-                  <span className="font-mono text-sm text-emerald-600 dark:text-emerald-400">
-                    {yieldResult.actualSheets} sheets
-                  </span>
-                </div>
-              </div>
 
-              {/* Cost Breakdown Table */}
-              <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
-                <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                  <span>Paper Cost ({yieldResult.actualSheets} sh × ₹{paperSheetCost})</span>
-                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">₹{yieldResult.paperCost.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                  <span>Print Impression Cost ({yieldResult.actualSheets} sh × ₹{printingCostPerSheet})</span>
-                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">₹{yieldResult.printCost.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                  <span>Ink / Toner Cost ({yieldResult.actualSheets} sh × ₹{inkCostPerSheet})</span>
-                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">₹{yieldResult.inkCost.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                  <span>Lamination ({laminationType})</span>
-                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">₹{yieldResult.laminationCost.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                  <span>Cutting & Trimming</span>
-                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">₹{yieldResult.cuttingCost.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                  <span>Overhead & Packaging</span>
-                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">₹{yieldResult.overheadCost.toFixed(2)}</span>
-                </div>
-              </div>
-
-              {/* Summary Rollup Card */}
-              <div className="p-3.5 rounded-xl bg-slate-900 text-white dark:bg-black/50 border border-slate-800 space-y-2">
-                <div className="flex justify-between items-center text-xs text-slate-400">
-                  <span>Total Production Job Cost:</span>
-                  <span className="text-base font-bold text-white font-mono">
-                    ₹{yieldResult.totalJobCost.toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-xs text-slate-400 pt-1.5 border-t border-slate-800">
-                  <span className="font-semibold text-emerald-400">Calculated Cost Per Card:</span>
-                  <span className="text-base font-bold text-emerald-400 font-mono">
-                    ₹{yieldResult.unitCostPerCard.toFixed(2)} / card
-                  </span>
-                </div>
+                {statusMsg.text && (
+                  <div style={{
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '6px',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    background: statusMsg.type === 'success' ? '#ecfdf5' : '#fef2f2',
+                    color: statusMsg.type === 'success' ? '#065f46' : '#991b1b',
+                    border: `1px solid ${statusMsg.type === 'success' ? '#a7f3d0' : '#fca5a5'}`
+                  }}>
+                    {statusMsg.type === 'success' ? <Check size={14} color="#10b981" /> : <AlertCircle size={14} color="#ef4444" />}
+                    <span>{statusMsg.text}</span>
+                  </div>
+                )}
               </div>
 
             </div>
-
-            {/* Status alerts */}
-            {statusMsg.text && (
-              <div className={`p-3 rounded-lg text-xs flex items-center gap-2 ${statusMsg.type === 'success' ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-300' : 'bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-300'}`}>
-                {statusMsg.type === 'success' ? <Check className="w-4 h-4 text-emerald-500 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />}
-                <span>{statusMsg.text}</span>
-              </div>
-            )}
 
           </div>
 
         </div>
 
         {/* Modal Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-          <div className="text-xs text-slate-500 dark:text-slate-400">
-            Yield configs automatically calculate required sheets & baseline job costing on Sales Orders.
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSaving}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={isSaving}
-              className="px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 rounded-xl shadow-md flex items-center gap-2 transition-all disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" />
-              {isSaving ? 'Saving...' : 'Save Yield Configuration'}
-            </button>
-          </div>
+        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn btn-secondary btn-sm"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={isSaving}
+            onClick={handleSave}
+            className="btn btn-primary btn-sm"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+          >
+            <Save size={14} />
+            {isSaving ? 'Saving...' : 'Save Yield Configuration'}
+          </button>
         </div>
 
       </div>

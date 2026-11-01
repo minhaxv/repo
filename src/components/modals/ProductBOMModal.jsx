@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useERP } from '../../context/ERPContext';
-import { Layers, X, Plus, Trash2, Save, Cpu, Zap, Scissors, Package, AlertCircle, Check, DollarSign, Sparkles } from 'lucide-react';
+import { Layers, X, Plus, Trash2, Save, Cpu, Zap, Package, AlertCircle, Check, DollarSign, Sparkles } from 'lucide-react';
 import { calculateBOMCost } from '../../utils/pricingEngine';
 
 export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null }) => {
@@ -94,18 +94,15 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
     }
   }, [isOpen, product, existingBOM]);
 
-  // Inventory items for selection
   const rawInventory = useMemo(() => {
     return inventory || [];
   }, [inventory]);
 
-  // Machine lookup
   const selectedMachine = useMemo(() => {
     if (!machineId) return null;
     return (machines || []).find(m => m.id === machineId) || null;
   }, [machineId, machines]);
 
-  // Handle Inventory Selection for a raw material row
   const handleSelectInventory = (idx, invId) => {
     const inv = rawInventory.find(i => i.id === invId);
     setRawMaterials(prev => {
@@ -159,7 +156,6 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
     setRawMaterials(prev => prev.filter((_, i) => i !== idx));
   };
 
-  // Real-time calculation of BOM rollup cost
   const bomCalc = useMemo(() => {
     return calculateBOMCost({
       bom: {
@@ -220,122 +216,130 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden">
-        
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-content"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: '1020px', width: '96vw', maxHeight: '92vh' }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
-              <Layers className="w-5 h-5" />
+        <div className="modal-header" style={{ background: 'linear-gradient(135deg, #6b21a8, #9333ea)', color: '#ffffff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <div style={{ padding: '0.45rem', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.15)' }}>
+              <Layers size={22} color="#f3e8ff" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                Bill of Materials (BOM) & Production Recipe
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-medium">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0, color: '#ffffff' }}>
+                  Bill of Materials (BOM) & Production Recipe
+                </h3>
+                <span style={{ fontSize: '0.72rem', background: '#581c87', color: '#f3e8ff', padding: '0.15rem 0.5rem', borderRadius: '12px', fontWeight: 700 }}>
                   {product.name}
                 </span>
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Define raw material inputs, stock deductions, machinery, power, labour & outsourced processing.
-              </p>
+              </div>
+              <span style={{ fontSize: '0.78rem', color: '#f3e8ff' }}>
+                Multi-component recipe: raw inventory inputs, machine rates, direct labour & finishing operations.
+              </span>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            style={{ background: 'none', border: 'none', color: '#ffffff', cursor: 'pointer', fontSize: '1.25rem' }}
           >
-            <X className="w-5 h-5" />
+            ✕
           </button>
         </div>
 
-        {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Modal Body */}
+        <div className="modal-body" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           
           {/* Header Row: Recipe Name & Output Yield */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
-            <div className="md:col-span-6">
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Recipe / BOM Name *
-              </label>
-              <input
-                type="text"
-                value={bomName}
-                onChange={(e) => setBomName(e.target.value)}
-                placeholder="e.g. Mug Sublimation Standard Recipe"
-                className="w-full px-3 py-2 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500"
-              />
-            </div>
-
-            <div className="md:col-span-3">
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Batch Output Yield *
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="1"
-                  value={outputQty}
-                  onChange={(e) => setOutputQty(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-full px-3 py-2 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                />
+          <div className="card" style={{ background: '#f8fafc', padding: '1rem', border: '1px solid #cbd5e1' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem', alignItems: 'center' }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
+                  Recipe / BOM Name *
+                </label>
                 <input
                   type="text"
-                  value={outputUnit}
-                  onChange={(e) => setOutputUnit(e.target.value)}
-                  placeholder="Unit"
-                  className="w-20 px-2 py-2 text-xs text-center font-medium rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                  className="form-control form-control-sm"
+                  value={bomName}
+                  onChange={(e) => setBomName(e.target.value)}
+                  placeholder="e.g. Mug Sublimation Standard Recipe"
                 />
               </div>
-            </div>
 
-            <div className="md:col-span-3 flex items-center justify-end pt-5">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
+                  Batch Output Yield *
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <input
+                    type="number"
+                    min="1"
+                    className="form-control form-control-sm"
+                    style={{ fontWeight: 800, textAlign: 'center' }}
+                    value={outputQty}
+                    onChange={(e) => setOutputQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  />
+                  <input
+                    type="text"
+                    className="form-control form-control-sm"
+                    style={{ width: '80px', textAlign: 'center' }}
+                    value={outputUnit}
+                    onChange={(e) => setOutputUnit(e.target.value)}
+                    placeholder="Unit"
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingTop: '1.2rem' }}>
                 <input
                   type="checkbox"
+                  id="bomIsDefaultCheck"
                   checked={isDefault}
                   onChange={(e) => setIsDefault(e.target.checked)}
-                  className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500"
+                  style={{ width: '16px', height: '16px', accentColor: '#9333ea', cursor: 'pointer' }}
                 />
-                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                <label htmlFor="bomIsDefaultCheck" style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0f172a', cursor: 'pointer' }}>
                   Default Recipe (Sets Product Cost)
-                </span>
-              </label>
+                </label>
+              </div>
             </div>
           </div>
 
           {/* Section 1: Raw Materials Ingredients Table */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Package className="w-4 h-4 text-purple-500" />
-                Raw Materials & Substrates
-              </h3>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
+              <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Package size={16} color="#9333ea" /> Raw Materials & Inventory Substrates
+              </h4>
               <button
                 type="button"
                 onClick={handleAddMaterialRow}
-                className="px-3 py-1.5 text-xs font-semibold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 rounded-lg flex items-center gap-1.5 border border-purple-200 dark:border-purple-800 transition-colors"
+                className="btn btn-secondary btn-sm"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
               >
-                <Plus className="w-3.5 h-3.5" />
-                Add Material
+                <Plus size={14} /> Add Raw Material
               </button>
             </div>
 
-            <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700">
+            <div className="table-responsive" style={{ border: '1px solid #cbd5e1', borderRadius: '8px' }}>
+              <table className="erp-table">
+                <thead>
                   <tr>
-                    <th className="px-3 py-2.5">Raw Material / Stock Item</th>
-                    <th className="px-3 py-2.5 w-24">Qty Per Batch</th>
-                    <th className="px-3 py-2.5 w-20">Unit</th>
-                    <th className="px-3 py-2.5 w-28">Purchase Rate (₹)</th>
-                    <th className="px-3 py-2.5 w-20">Wastage %</th>
-                    <th className="px-3 py-2.5 w-28 text-right">Row Cost (₹)</th>
-                    <th className="px-3 py-2.5 w-24 text-center">Deduct Stock</th>
-                    <th className="px-2 py-2.5 w-10 text-center"></th>
+                    <th>Raw Material / Stock Item</th>
+                    <th style={{ width: '110px' }}>Qty / Batch</th>
+                    <th style={{ width: '80px' }}>Unit</th>
+                    <th style={{ width: '130px' }}>Purchase Rate (₹)</th>
+                    <th style={{ width: '100px' }}>Wastage %</th>
+                    <th style={{ width: '120px', textAlign: 'right' }}>Row Cost (₹)</th>
+                    <th style={{ width: '90px', textAlign: 'center' }}>Deduct Stock</th>
+                    <th style={{ width: '40px', textAlign: 'center' }}></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                <tbody>
                   {rawMaterials.map((rm, idx) => {
                     const rowQty = Number(rm.quantity || 0);
                     const rowCost = Number(rm.unit_cost || 0);
@@ -343,12 +347,12 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
                     const rowTotal = rowQty * rowCost * (1 + rowWaste / 100);
 
                     return (
-                      <tr key={rm.id || idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                        <td className="px-3 py-2">
+                      <tr key={rm.id || idx}>
+                        <td>
                           <select
+                            className="form-select form-select-sm"
                             value={rm.inventory_id || ''}
                             onChange={(e) => handleSelectInventory(idx, e.target.value)}
-                            className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium"
                           >
                             <option value="">-- Select Material / Substrate --</option>
                             {rawInventory.map(inv => (
@@ -359,80 +363,83 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
                           </select>
                         </td>
 
-                        <td className="px-3 py-2">
+                        <td>
                           <input
                             type="number"
                             step="0.01"
                             min="0.001"
+                            className="form-control form-control-sm"
+                            style={{ fontWeight: 700 }}
                             value={rm.quantity}
                             onChange={(e) => handleUpdateMaterialRow(idx, 'quantity', parseFloat(e.target.value) || 0)}
-                            className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
                           />
                         </td>
 
-                        <td className="px-3 py-2">
+                        <td>
                           <input
                             type="text"
+                            className="form-control form-control-sm"
+                            style={{ textAlign: 'center' }}
                             value={rm.unit || 'Pcs'}
                             onChange={(e) => handleUpdateMaterialRow(idx, 'unit', e.target.value)}
-                            className="w-full px-2 py-1.5 text-xs text-center rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
                           />
                         </td>
 
-                        <td className="px-3 py-2">
+                        <td>
                           <input
                             type="number"
                             step="0.10"
+                            className="form-control form-control-sm"
+                            style={{ fontWeight: 700 }}
                             value={rm.unit_cost}
                             onChange={(e) => handleUpdateMaterialRow(idx, 'unit_cost', parseFloat(e.target.value) || 0)}
-                            className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
                           />
                         </td>
 
-                        <td className="px-3 py-2">
+                        <td>
                           <input
                             type="number"
                             step="0.5"
+                            className="form-control form-control-sm"
+                            style={{ textAlign: 'center', color: '#d97706', fontWeight: 700 }}
                             value={rm.wastage_pct || 0}
                             onChange={(e) => handleUpdateMaterialRow(idx, 'wastage_pct', parseFloat(e.target.value) || 0)}
-                            className="w-full px-2 py-1.5 text-xs text-center rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50/40 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300 font-semibold"
                           />
                         </td>
 
-                        <td className="px-3 py-2 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
+                        <td style={{ textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
                           ₹{rowTotal.toFixed(2)}
                         </td>
 
-                        <td className="px-3 py-2 text-center">
+                        <td style={{ textAlign: 'center' }}>
                           <input
                             type="checkbox"
                             checked={rm.auto_deduct_stock !== false}
                             onChange={(e) => handleUpdateMaterialRow(idx, 'auto_deduct_stock', e.target.checked)}
-                            className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                            title="Automatically issue & deduct from stock on production job release"
+                            title="Auto-deduct from stock upon job release"
                           />
                         </td>
 
-                        <td className="px-2 py-2 text-center">
+                        <td style={{ textAlign: 'center' }}>
                           <button
                             type="button"
                             onClick={() => handleRemoveMaterialRow(idx)}
                             disabled={rawMaterials.length <= 1}
-                            className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors disabled:opacity-20"
+                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }}
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 size={14} />
                           </button>
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
-                <tfoot className="bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 font-semibold text-slate-700 dark:text-slate-200">
-                  <tr>
-                    <td colSpan="5" className="px-3 py-2 text-right">
-                      Total Raw Material Cost (Batch):
+                <tfoot>
+                  <tr style={{ background: '#f8fafc', fontWeight: 800 }}>
+                    <td colSpan="5" style={{ textAlign: 'right' }}>
+                      Total Raw Material Batch Cost:
                     </td>
-                    <td className="px-3 py-2 text-right font-mono font-bold text-purple-600 dark:text-purple-400 text-sm">
+                    <td style={{ textAlign: 'right', color: '#7e22ce', fontSize: '0.9rem' }}>
                       ₹{bomCalc.materialsCost.toFixed(2)}
                     </td>
                     <td colSpan="2"></td>
@@ -442,24 +449,21 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
             </div>
           </div>
 
-          {/* Section 2: Machine, Labour, Electricity & Operations Overheads */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-indigo-500" />
-              Machine, Labour & Operation Overheads (Per Batch)
-            </h3>
+          {/* Section 2: Machine, Labour & Operations Overheads */}
+          <div className="card" style={{ background: '#f8fafc', padding: '1rem', border: '1px solid #cbd5e1' }}>
+            <h4 style={{ margin: '0 0 0.85rem 0', fontSize: '0.88rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Cpu size={16} color="#4338ca" /> Machine, Labour & Overhead Rates (Per Batch)
+            </h4>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
               
-              {/* Machine Selection & Cost */}
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                  Machine Used
-                </label>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>Machine Used</label>
                 <select
+                  className="form-select form-select-sm"
                   value={machineId}
                   onChange={(e) => setMachineId(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 mb-1.5"
+                  style={{ marginBottom: '0.35rem' }}
                 >
                   <option value="">-- None / Manual --</option>
                   {(machines || []).map(m => (
@@ -468,105 +472,80 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
                     </option>
                   ))}
                 </select>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-slate-500">Machine Cost: ₹</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Cost: ₹</span>
                   <input
                     type="number"
                     step="0.5"
+                    className="form-control form-control-sm"
                     value={machineCost}
                     onChange={(e) => setMachineCost(parseFloat(e.target.value) || 0)}
-                    className="w-full px-2 py-1 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
                   />
                 </div>
               </div>
 
-              {/* Labour Cost */}
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                  Labour / Operator (₹)
-                </label>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>Labour / Operator (₹)</label>
                 <input
                   type="number"
                   step="0.5"
+                  className="form-control form-control-sm"
                   value={labourCost}
                   onChange={(e) => setLabourCost(parseFloat(e.target.value) || 0)}
-                  className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
                 />
               </div>
 
-              {/* Electricity & Energy */}
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                  Electricity & Utilities (₹)
-                </label>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>Electricity & Energy (₹)</label>
                 <input
                   type="number"
                   step="0.5"
+                  className="form-control form-control-sm"
                   value={electricityCost}
                   onChange={(e) => setElectricityCost(parseFloat(e.target.value) || 0)}
-                  className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
                 />
               </div>
 
-              {/* Finishing & Post-Press */}
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                  Finishing & Trimming (₹)
-                </label>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>Finishing & Trimming (₹)</label>
                 <input
                   type="number"
                   step="0.5"
+                  className="form-control form-control-sm"
                   value={finishingCost}
                   onChange={(e) => setFinishingCost(parseFloat(e.target.value) || 0)}
-                  className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
                 />
               </div>
 
-              {/* Packaging */}
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                  Packaging & Boxes (₹)
-                </label>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>Packaging & Boxes (₹)</label>
                 <input
                   type="number"
                   step="0.5"
+                  className="form-control form-control-sm"
                   value={packagingCost}
                   onChange={(e) => setPackagingCost(parseFloat(e.target.value) || 0)}
-                  className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
                 />
               </div>
 
-              {/* Outsourced Process & Vendor */}
-              <div className="md:col-span-3">
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                  Outsourced Process & External Vendor
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>Outsourced Vendor / Process</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                   <input
                     type="text"
+                    className="form-control form-control-sm"
                     value={outsourcedProcess}
                     onChange={(e) => setOutsourcedProcess(e.target.value)}
-                    placeholder="e.g. UV Varnish / Die-Cutting"
-                    className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                    placeholder="Process (e.g. UV Coating)"
                   />
-                  <select
-                    value={outsourcedVendorId}
-                    onChange={(e) => setOutsourcedVendorId(e.target.value)}
-                    className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                  >
-                    <option value="">-- Outsourced Vendor --</option>
-                    {(suppliers || []).map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-slate-500">Rate: ₹</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Cost: ₹</span>
                     <input
                       type="number"
                       step="0.5"
+                      className="form-control form-control-sm"
                       value={outsourcedCost}
                       onChange={(e) => setOutsourcedCost(parseFloat(e.target.value) || 0)}
-                      className="w-full px-2 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
                     />
                   </div>
                 </div>
@@ -576,48 +555,57 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
           </div>
 
           {/* Section 3: Summary Rollup Card */}
-          <div className="p-4 rounded-xl border border-purple-200 dark:border-purple-900/60 bg-gradient-to-br from-purple-50/60 via-white to-purple-50/30 dark:from-purple-950/20 dark:via-slate-900 dark:to-slate-900 shadow-sm">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 divide-y md:divide-y-0 md:divide-x divide-slate-200 dark:divide-slate-800">
-              
-              <div className="text-center px-3">
-                <span className="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold">Total Batch Cost</span>
-                <div className="text-lg font-bold font-mono text-slate-900 dark:text-white mt-1">
+          <div className="card" style={{ background: '#faf5ff', border: '1px solid #d8b4fe', padding: '1.25rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', textAlign: 'center' }}>
+              <div>
+                <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Total Batch Cost</span>
+                <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', margin: '0.2rem 0' }}>
                   ₹{bomCalc.totalBatchCost.toFixed(2)}
-                </div>
-                <span className="text-xs text-slate-400">For {outputQty} {outputUnit}</span>
+                </h3>
+                <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>For {outputQty} {outputUnit}</span>
               </div>
 
-              <div className="text-center px-3">
-                <span className="text-xs font-semibold text-purple-600 dark:text-purple-400 uppercase">Rollup Unit Cost</span>
-                <div className="text-xl font-black font-mono text-purple-700 dark:text-purple-300 mt-1">
+              <div>
+                <span style={{ fontSize: '0.72rem', color: '#7e22ce', fontWeight: 700, textTransform: 'uppercase' }}>Rollup Unit Cost</span>
+                <h3 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#6b21a8', margin: '0.2rem 0' }}>
                   ₹{bomCalc.unitCost.toFixed(2)}
-                </div>
-                <span className="text-xs text-slate-400">Per {outputUnit}</span>
+                </h3>
+                <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Per {outputUnit}</span>
               </div>
 
-              <div className="text-center px-3 pt-2 md:pt-0">
-                <span className="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold">Catalogue Selling Rate</span>
-                <div className="text-lg font-bold font-mono text-slate-900 dark:text-white mt-1">
+              <div>
+                <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Catalogue Selling Rate</span>
+                <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', margin: '0.2rem 0' }}>
                   ₹{defaultSellingRate.toFixed(2)}
-                </div>
-                <span className="text-xs text-slate-400">Per {outputUnit}</span>
+                </h3>
+                <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Per {outputUnit}</span>
               </div>
 
-              <div className="text-center px-3 pt-2 md:pt-0">
-                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase">Expected Gross Margin</span>
-                <div className="text-xl font-black font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+              <div>
+                <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, textTransform: 'uppercase' }}>Expected Gross Margin</span>
+                <h3 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#047857', margin: '0.2rem 0' }}>
                   {marginPct.toFixed(1)}%
-                </div>
-                <span className="text-xs text-slate-400 font-mono">Profit: ₹{grossProfitPerUnit.toFixed(2)}</span>
+                </h3>
+                <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>Profit: ₹{grossProfitPerUnit.toFixed(2)}</span>
               </div>
-
             </div>
           </div>
 
           {/* Status alerts */}
           {statusMsg.text && (
-            <div className={`p-3 rounded-lg text-xs flex items-center gap-2 ${statusMsg.type === 'success' ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-300' : 'bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-300'}`}>
-              {statusMsg.type === 'success' ? <Check className="w-4 h-4 text-emerald-500 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />}
+            <div style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: '6px',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              background: statusMsg.type === 'success' ? '#ecfdf5' : '#fef2f2',
+              color: statusMsg.type === 'success' ? '#065f46' : '#991b1b',
+              border: `1px solid ${statusMsg.type === 'success' ? '#a7f3d0' : '#fca5a5'}`
+            }}>
+              {statusMsg.type === 'success' ? <Check size={14} color="#10b981" /> : <AlertCircle size={14} color="#ef4444" />}
               <span>{statusMsg.text}</span>
             </div>
           )}
@@ -625,29 +613,24 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
         </div>
 
         {/* Modal Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-          <div className="text-xs text-slate-500 dark:text-slate-400">
-            Saving default BOM automatically updates the product estimated base cost.
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSaving}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={isSaving}
-              className="px-5 py-2 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 active:scale-95 rounded-xl shadow-md flex items-center gap-2 transition-all disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" />
-              {isSaving ? 'Saving BOM...' : 'Save Production Recipe'}
-            </button>
-          </div>
+        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn btn-secondary btn-sm"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={isSaving}
+            onClick={handleSave}
+            className="btn btn-primary btn-sm"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+          >
+            <Save size={14} />
+            {isSaving ? 'Saving BOM...' : 'Save Production Recipe'}
+          </button>
         </div>
 
       </div>

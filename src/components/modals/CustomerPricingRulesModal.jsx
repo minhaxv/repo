@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useERP } from '../../context/ERPContext';
-import { UserCheck, X, Plus, Trash2, Save, Calendar, Check, AlertCircle, Percent, ShieldCheck, Tag } from 'lucide-react';
+import { UserCheck, X, Plus, Trash2, Check, AlertCircle, ShieldCheck, Tag } from 'lucide-react';
 
 export const CustomerPricingRulesModal = ({ isOpen, onClose, initialCustomerId = '', initialProductId = '' }) => {
   const { customerPricingRules, saveCustomerPricingRule, deleteCustomerPricingRule, customers, products } = useERP();
@@ -69,7 +69,6 @@ export const CustomerPricingRulesModal = ({ isOpen, onClose, initialCustomerId =
       });
 
       setStatusMsg({ type: 'success', text: 'Customer pricing rule created successfully!' });
-      // Reset form fields
       setCustomRate('');
       setDiscountPct('');
       setNotes('');
@@ -90,57 +89,63 @@ export const CustomerPricingRulesModal = ({ isOpen, onClose, initialCustomerId =
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden">
-        
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-content"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: '960px', width: '94vw', maxHeight: '90vh' }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-              <UserCheck className="w-5 h-5" />
+        <div className="modal-header" style={{ background: 'linear-gradient(135deg, #1e40af, #2563eb)', color: '#ffffff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <div style={{ padding: '0.45rem', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.15)' }}>
+              <UserCheck size={22} color="#93c5fd" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                Customer-Specific Pricing & Negotiated Rates
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Configure contracted price lists, wholesale customer tiers, and time-bound discounts.
-              </p>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0, color: '#ffffff' }}>
+                Customer-Specific Pricing & Contracted Rates
+              </h3>
+              <span style={{ fontSize: '0.78rem', color: '#bfdbfe' }}>
+                Configure contracted rates, wholesale tiers, and negotiated discounts for select accounts.
+              </span>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            style={{ background: 'none', border: 'none', color: '#ffffff', cursor: 'pointer', fontSize: '1.25rem', padding: '0.25rem' }}
           >
-            <X className="w-5 h-5" />
+            ✕
           </button>
         </div>
 
-        {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Modal Body */}
+        <div className="modal-body" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           
           {/* New Rule Creation Form */}
-          <form onSubmit={handleCreateRule} className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Tag className="w-4 h-4 text-blue-500" />
-                Add New Customer Rate / Discount
-              </h3>
-              <span className="text-xs text-slate-400">Takes priority over standard catalogue prices</span>
+          <form onSubmit={handleCreateRule} className="card" style={{ background: '#f8fafc', padding: '1rem', border: '1px solid #cbd5e1' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+              <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Tag size={16} color="#2563eb" />
+                Add New Customer Contract Rate / Discount Tier
+              </h4>
+              <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                Takes precedence over catalogue standard pricing
+              </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
               
               {/* Customer Selector */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
                   Customer *
                 </label>
                 <select
                   value={selectedCustomerId}
                   onChange={(e) => setSelectedCustomerId(e.target.value)}
                   required
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium"
+                  className="form-select form-select-sm"
                 >
                   <option value="">-- Select Customer --</option>
                   {(customers || []).map(c => (
@@ -150,14 +155,14 @@ export const CustomerPricingRulesModal = ({ isOpen, onClose, initialCustomerId =
               </div>
 
               {/* Product Selector */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
                   Applicable Product
                 </label>
                 <select
                   value={selectedProductId}
                   onChange={(e) => setSelectedProductId(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium"
+                  className="form-select form-select-sm"
                 >
                   <option value="">All Products (Entire Catalogue)</option>
                   {(products || []).map(p => (
@@ -167,14 +172,15 @@ export const CustomerPricingRulesModal = ({ isOpen, onClose, initialCustomerId =
               </div>
 
               {/* Pricing Type */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
                   Pricing Rule Type *
                 </label>
                 <select
                   value={pricingType}
                   onChange={(e) => setPricingType(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-semibold text-blue-600 dark:text-blue-400"
+                  className="form-select form-select-sm"
+                  style={{ fontWeight: 700, color: '#1d4ed8' }}
                 >
                   <option value="CONTRACT_RATE">Fixed Contract Rate (₹/unit)</option>
                   <option value="PERCENT_DISCOUNT">Percentage Discount (%)</option>
@@ -183,16 +189,14 @@ export const CustomerPricingRulesModal = ({ isOpen, onClose, initialCustomerId =
               </div>
 
               {/* Value Input */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
                   {pricingType === 'CONTRACT_RATE' ? 'Contract Rate (₹) *' : 'Discount / Markup % *'}
                 </label>
-                <div className="flex items-center gap-1.5">
-                  {pricingType === 'CONTRACT_RATE' ? (
-                    <span className="text-xs font-bold text-slate-500">₹</span>
-                  ) : (
-                    <span className="text-xs font-bold text-slate-500">%</span>
-                  )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#64748b' }}>
+                    {pricingType === 'CONTRACT_RATE' ? '₹' : '%'}
+                  </span>
                   <input
                     type="number"
                     step="0.10"
@@ -201,14 +205,15 @@ export const CustomerPricingRulesModal = ({ isOpen, onClose, initialCustomerId =
                     onChange={(e) => pricingType === 'CONTRACT_RATE' ? setCustomRate(e.target.value) : setDiscountPct(e.target.value)}
                     placeholder={pricingType === 'CONTRACT_RATE' ? 'e.g. 12.00' : 'e.g. 15'}
                     required
-                    className="w-full px-2.5 py-1.5 text-xs font-bold rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400"
+                    className="form-control form-control-sm"
+                    style={{ fontWeight: 800, color: '#1d4ed8' }}
                   />
                 </div>
               </div>
 
               {/* Min Qty */}
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
                   Min Quantity Threshold
                 </label>
                 <input
@@ -216,43 +221,44 @@ export const CustomerPricingRulesModal = ({ isOpen, onClose, initialCustomerId =
                   min="1"
                   value={minQty}
                   onChange={(e) => setMinQty(parseInt(e.target.value) || 1)}
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                  className="form-control form-control-sm"
                 />
               </div>
 
               {/* Validity Dates */}
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
                   Start Date
                 </label>
                 <input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                  className="form-control form-control-sm"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
                   End Date
                 </label>
                 <input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                  className="form-control form-control-sm"
                 />
               </div>
 
               {/* Submit Button */}
-              <div className="flex items-end">
+              <div style={{ display: 'flex', alignItems: 'flex-end' }}>
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="w-full px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
+                  className="btn btn-primary btn-sm"
+                  style={{ width: '100%', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus size={14} />
                   {isSaving ? 'Saving...' : 'Add Pricing Rule'}
                 </button>
               </div>
@@ -260,63 +266,73 @@ export const CustomerPricingRulesModal = ({ isOpen, onClose, initialCustomerId =
             </div>
 
             {/* Notes */}
-            <div>
+            <div className="form-group" style={{ margin: 0 }}>
               <input
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Contract or agreement reference (e.g. Annual advertising contract 2026)"
-                className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                className="form-control form-control-sm"
               />
             </div>
 
             {/* Status alerts */}
             {statusMsg.text && (
-              <div className={`p-2.5 rounded-lg text-xs flex items-center gap-2 ${statusMsg.type === 'success' ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-300' : 'bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-300'}`}>
-                {statusMsg.type === 'success' ? <Check className="w-4 h-4 text-emerald-500 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />}
+              <div style={{
+                marginTop: '0.65rem',
+                padding: '0.5rem 0.75rem',
+                borderRadius: '6px',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                background: statusMsg.type === 'success' ? '#ecfdf5' : '#fef2f2',
+                color: statusMsg.type === 'success' ? '#065f46' : '#991b1b',
+                border: `1px solid ${statusMsg.type === 'success' ? '#a7f3d0' : '#fca5a5'}`
+              }}>
+                {statusMsg.type === 'success' ? <Check size={14} color="#10b981" /> : <AlertCircle size={14} color="#ef4444" />}
                 <span>{statusMsg.text}</span>
               </div>
             )}
           </form>
 
           {/* Active Rules List */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-500" />
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+              <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <ShieldCheck size={16} color="#10b981" />
                 Active Customer Pricing Rules ({filteredRules.length})
-              </h3>
-              <div className="flex gap-2">
-                {selectedCustomerId && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCustomerId('')}
-                    className="text-xs text-blue-600 hover:underline"
-                  >
-                    Clear Customer Filter
-                  </button>
-                )}
-              </div>
+              </h4>
+              {selectedCustomerId && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCustomerId('')}
+                  style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}
+                >
+                  Clear Customer Filter
+                </button>
+              )}
             </div>
 
-            <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700">
+            <div className="table-responsive" style={{ border: '1px solid #cbd5e1', borderRadius: '8px' }}>
+              <table className="erp-table">
+                <thead>
                   <tr>
-                    <th className="px-3 py-2.5">Customer</th>
-                    <th className="px-3 py-2.5">Target Product</th>
-                    <th className="px-3 py-2.5">Rule Type</th>
-                    <th className="px-3 py-2.5 text-right">Negotiated Rate / Discount</th>
-                    <th className="px-3 py-2.5 text-center">Min Qty</th>
-                    <th className="px-3 py-2.5">Validity Period</th>
-                    <th className="px-3 py-2.5">Notes</th>
-                    <th className="px-2 py-2.5 w-10 text-center"></th>
+                    <th>Customer</th>
+                    <th>Target Product</th>
+                    <th>Rule Type</th>
+                    <th style={{ textAlign: 'right' }}>Negotiated Rate / Discount</th>
+                    <th style={{ textAlign: 'center' }}>Min Qty</th>
+                    <th>Validity Period</th>
+                    <th>Notes</th>
+                    <th style={{ textAlign: 'center', width: '40px' }}></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                <tbody>
                   {filteredRules.length === 0 ? (
                     <tr>
-                      <td colSpan="8" className="px-4 py-8 text-center text-slate-400">
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '1.5rem', color: '#64748b' }}>
                         No customer pricing rules defined yet. Use the form above to configure negotiated rates.
                       </td>
                     </tr>
@@ -324,44 +340,44 @@ export const CustomerPricingRulesModal = ({ isOpen, onClose, initialCustomerId =
                     filteredRules.map((rule) => {
                       const prod = (products || []).find(p => p.id === rule.productId);
                       return (
-                        <tr key={rule.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                          <td className="px-3 py-2 font-semibold text-slate-900 dark:text-white">
+                        <tr key={rule.id}>
+                          <td style={{ fontWeight: 700, color: '#0f172a' }}>
                             {rule.customerName || rule.customerId}
                           </td>
-                          <td className="px-3 py-2">
+                          <td>
                             {prod ? (
-                              <span className="font-medium text-slate-800 dark:text-slate-200">{prod.name}</span>
+                              <span style={{ fontWeight: 600, color: '#1e293b' }}>{prod.name}</span>
                             ) : (
-                              <span className="text-slate-400 italic">All Catalogue Products</span>
+                              <span style={{ color: '#64748b', fontStyle: 'italic' }}>All Catalogue Products</span>
                             )}
                           </td>
-                          <td className="px-3 py-2">
-                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
+                          <td>
+                            <span className="badge badge-blue">
                               {rule.pricingType === 'CONTRACT_RATE' ? 'Contract Rate' : rule.pricingType === 'PERCENT_DISCOUNT' ? 'Discount %' : 'Cost Markup'}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-right font-mono font-bold text-slate-900 dark:text-white">
+                          <td style={{ textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
                             {rule.pricingType === 'CONTRACT_RATE' && `₹${Number(rule.customRate || 0).toFixed(2)}`}
                             {rule.pricingType === 'PERCENT_DISCOUNT' && `${rule.discountPct}% OFF`}
                             {rule.pricingType === 'COST_MARKUP' && `+${rule.discountPct}% Markup`}
                           </td>
-                          <td className="px-3 py-2 text-center font-mono">
+                          <td style={{ textAlign: 'center', fontWeight: 600 }}>
                             {rule.minQty || 1}+
                           </td>
-                          <td className="px-3 py-2 text-slate-500 font-mono text-xs">
+                          <td style={{ color: '#64748b', fontSize: '0.75rem' }}>
                             {rule.startDate || rule.endDate ? `${rule.startDate || 'Any'} → ${rule.endDate || 'No expiry'}` : 'Ongoing'}
                           </td>
-                          <td className="px-3 py-2 text-slate-500 max-w-xs truncate">
+                          <td style={{ color: '#64748b', fontSize: '0.78rem', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {rule.notes || '-'}
                           </td>
-                          <td className="px-2 py-2 text-center">
+                          <td style={{ textAlign: 'center' }}>
                             <button
                               type="button"
                               onClick={() => handleDeleteRule(rule.id)}
-                              className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }}
                               title="Delete rule"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 size={14} />
                             </button>
                           </td>
                         </tr>
@@ -376,14 +392,14 @@ export const CustomerPricingRulesModal = ({ isOpen, onClose, initialCustomerId =
         </div>
 
         {/* Modal Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-          <div className="text-xs text-slate-500 dark:text-slate-400">
+        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
             Rules apply automatically on Sales Orders when the corresponding customer and product are selected.
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-xl transition-colors"
+            className="btn btn-secondary btn-sm"
           >
             Close
           </button>
