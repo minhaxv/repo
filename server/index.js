@@ -609,13 +609,97 @@ app.get('/api/all', authenticateToken, (req, res) => {
     }
     let productBoms = [];
     try {
-      productBoms = db.prepare('SELECT * FROM product_bom ORDER BY is_default DESC, created_at DESC').all();
+      const rawBoms = db.prepare('SELECT * FROM product_bom ORDER BY is_default DESC, created_at DESC').all();
+      productBoms = rawBoms.map(b => {
+        let mats = [];
+        try {
+          mats = typeof b.raw_materials_json === 'string' ? JSON.parse(b.raw_materials_json || '[]') : (b.raw_materials_json || []);
+        } catch(e) {
+          mats = [];
+        }
+        return {
+          id: b.id,
+          productId: b.product_id,
+          product_id: b.product_id,
+          specId: b.spec_id || null,
+          spec_id: b.spec_id || null,
+          bomName: b.bom_name,
+          bom_name: b.bom_name,
+          outputQty: Number(b.output_qty || 1),
+          output_qty: Number(b.output_qty || 1),
+          outputUnit: b.output_unit || 'Pcs',
+          output_unit: b.output_unit || 'Pcs',
+          isDefault: Boolean(b.is_default),
+          is_default: Boolean(b.is_default),
+          rawMaterials: mats,
+          raw_materials_json: b.raw_materials_json,
+          machineCost: Number(b.machine_cost || 0),
+          machine_cost: Number(b.machine_cost || 0),
+          machineId: b.machine_id,
+          machine_id: b.machine_id,
+          machineName: b.machine_name,
+          machine_name: b.machine_name,
+          labourCost: Number(b.labour_cost || 0),
+          labour_cost: Number(b.labour_cost || 0),
+          electricityCost: Number(b.electricity_cost || 0),
+          electricity_cost: Number(b.electricity_cost || 0),
+          finishingCost: Number(b.finishing_cost || 0),
+          finishing_cost: Number(b.finishing_cost || 0),
+          packagingCost: Number(b.packaging_cost || 0),
+          packaging_cost: Number(b.packaging_cost || 0),
+          outsourcedCost: Number(b.outsourced_cost || 0),
+          outsourced_cost: Number(b.outsourced_cost || 0),
+          outsourcedVendorId: b.outsourced_vendor_id,
+          outsourced_vendor_id: b.outsourced_vendor_id,
+          outsourcedProcess: b.outsourced_process,
+          outsourced_process: b.outsourced_process,
+          totalEstimatedUnitCost: Number(b.total_estimated_unit_cost || 0),
+          total_estimated_unit_cost: Number(b.total_estimated_unit_cost || 0),
+          notes: b.notes || ''
+        };
+      });
     } catch(e) {
       productBoms = [];
     }
     let productYieldConfigs = [];
     try {
-      productYieldConfigs = db.prepare('SELECT * FROM product_yield_configs ORDER BY created_at DESC').all();
+      const rawYields = db.prepare('SELECT * FROM product_yield_configs ORDER BY created_at DESC').all();
+      productYieldConfigs = rawYields.map(y => ({
+        id: y.id,
+        productId: y.product_id,
+        product_id: y.product_id,
+        sheetName: y.sheet_name,
+        sheet_name: y.sheet_name,
+        sheetWidthIn: Number(y.sheet_width_in || 12),
+        sheet_width_in: Number(y.sheet_width_in || 12),
+        sheetHeightIn: Number(y.sheet_height_in || 18),
+        sheet_height_in: Number(y.sheet_height_in || 18),
+        cardsPerSheet: Number(y.cards_per_sheet || 30),
+        cards_per_sheet: Number(y.cards_per_sheet || 30),
+        paperMaterialId: y.paper_material_id,
+        paper_material_id: y.paper_material_id,
+        paperGsm: Number(y.paper_gsm || 300),
+        paper_gsm: Number(y.paper_gsm || 300),
+        paperSheetCost: Number(y.paper_sheet_cost || 6.50),
+        paper_sheet_cost: Number(y.paper_sheet_cost || 6.50),
+        printingSide: y.printing_side || 'DOUBLE',
+        printing_side: y.printing_side || 'DOUBLE',
+        printingCostPerSheet: Number(y.printing_cost_per_sheet || 8.00),
+        printing_cost_per_sheet: Number(y.printing_cost_per_sheet || 8.00),
+        inkCostPerSheet: Number(y.ink_cost_per_sheet || 1.50),
+        ink_cost_per_sheet: Number(y.ink_cost_per_sheet || 1.50),
+        laminationType: y.lamination_type || 'Thermal Matte',
+        lamination_type: y.lamination_type || 'Thermal Matte',
+        laminationCostPerSheet: Number(y.lamination_cost_per_sheet || 4.00),
+        lamination_cost_per_sheet: Number(y.lamination_cost_per_sheet || 4.00),
+        cuttingCostPerSheet: Number(y.cutting_cost_per_sheet || 1.50),
+        cutting_cost_per_sheet: Number(y.cutting_cost_per_sheet || 1.50),
+        wastagePct: Number(y.wastage_pct ?? 5.0),
+        wastage_pct: Number(y.wastage_pct ?? 5.0),
+        overheadPerSheet: Number(y.overhead_per_sheet ?? 0.50),
+        overhead_per_sheet: Number(y.overhead_per_sheet ?? 0.50),
+        notes: y.notes || ''
+      }));
     } catch(e) {
       productYieldConfigs = [];
     }

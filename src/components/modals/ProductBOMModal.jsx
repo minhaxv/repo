@@ -44,34 +44,60 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
   // Find existing BOM for this product / spec
   const existingBOM = useMemo(() => {
     if (!product) return null;
-    const boms = (productBoms || []).filter(b => b.productId === product.id);
+    const boms = (productBoms || []).filter(b => (b.productId || b.product_id) === product.id);
     if (selectedSpecId) {
-      const match = boms.find(b => b.specId === selectedSpecId);
+      const match = boms.find(b => (b.specId || b.spec_id) === selectedSpecId);
       if (match) return match;
     }
-    return boms.find(b => b.isDefault) || boms[0] || null;
+    return boms.find(b => (b.isDefault || b.is_default)) || boms[0] || null;
   }, [product, productBoms, selectedSpecId]);
 
   useEffect(() => {
     if (isOpen && product) {
       if (existingBOM) {
-        setBomName(existingBOM.bomName || `${product.name} Production Recipe`);
-        setOutputQty(Number(existingBOM.outputQty || 1));
-        setOutputUnit(existingBOM.outputUnit || product.unit || 'Pcs');
-        setIsDefault(Boolean(existingBOM.isDefault));
-        setRawMaterials(Array.isArray(existingBOM.rawMaterials) && existingBOM.rawMaterials.length > 0
-          ? existingBOM.rawMaterials
-          : [{ id: `RM-${Date.now()}-1`, inventory_id: '', item_name: '', quantity: 1, unit: 'Pcs', unit_cost: 0, wastage_pct: 0, auto_deduct_stock: true }]
-        );
-        setMachineCost(Number(existingBOM.machineCost || 0));
-        setMachineId(existingBOM.machineId || '');
-        setLabourCost(Number(existingBOM.labourCost || 0));
-        setElectricityCost(Number(existingBOM.electricityCost || 0));
-        setFinishingCost(Number(existingBOM.finishingCost || 0));
-        setPackagingCost(Number(existingBOM.packagingCost || 0));
-        setOutsourcedCost(Number(existingBOM.outsourcedCost || 0));
-        setOutsourcedVendorId(existingBOM.outsourcedVendorId || '');
-        setOutsourcedProcess(existingBOM.outsourcedProcess || '');
+        setBomName(existingBOM.bomName || existingBOM.bom_name || `${product.name} Production Recipe`);
+        setOutputQty(Number(existingBOM.outputQty || existingBOM.output_qty || 1));
+        setOutputUnit(existingBOM.outputUnit || existingBOM.output_unit || product.unit || 'Pcs');
+        setIsDefault(Boolean(existingBOM.isDefault ?? existingBOM.is_default ?? true));
+
+        let mats = existingBOM.rawMaterials;
+        if (!mats && existingBOM.raw_materials_json) {
+          try {
+            mats = typeof existingBOM.raw_materials_json === 'string'
+              ? JSON.parse(existingBOM.raw_materials_json)
+              : existingBOM.raw_materials_json;
+          } catch(e) {
+            mats = [];
+          }
+        }
+        if (typeof mats === 'string') {
+          try { mats = JSON.parse(mats); } catch(e) { mats = []; }
+        }
+
+        if (Array.isArray(mats) && mats.length > 0) {
+          setRawMaterials(mats.map((m, idx) => ({
+            id: m.id || `RM-${Date.now()}-${idx + 1}`,
+            inventory_id: m.inventory_id || m.inventoryId || '',
+            item_name: m.item_name || m.itemName || m.material_name || m.materialName || '',
+            quantity: Number(m.quantity ?? m.qty ?? (m.qty_per_unit != null ? Number(m.qty_per_unit) * Number(existingBOM.outputQty || existingBOM.output_qty || 1) : 1)),
+            unit: m.unit || 'Pcs',
+            unit_cost: Number(m.unit_cost ?? m.unitCost ?? m.cost_price ?? m.purchase_rate ?? 0),
+            wastage_pct: Number(m.wastage_pct ?? m.wastagePct ?? 0),
+            auto_deduct_stock: m.auto_deduct_stock !== false
+          })));
+        } else {
+          setRawMaterials([{ id: `RM-${Date.now()}-1`, inventory_id: '', item_name: '', quantity: 1, unit: 'Pcs', unit_cost: 0, wastage_pct: 0, auto_deduct_stock: true }]);
+        }
+
+        setMachineCost(Number(existingBOM.machineCost ?? existingBOM.machine_cost ?? 0));
+        setMachineId(existingBOM.machineId || existingBOM.machine_id || '');
+        setLabourCost(Number(existingBOM.labourCost ?? existingBOM.labour_cost ?? 0));
+        setElectricityCost(Number(existingBOM.electricityCost ?? existingBOM.electricity_cost ?? 0));
+        setFinishingCost(Number(existingBOM.finishingCost ?? existingBOM.finishing_cost ?? 0));
+        setPackagingCost(Number(existingBOM.packagingCost ?? existingBOM.packaging_cost ?? 0));
+        setOutsourcedCost(Number(existingBOM.outsourcedCost ?? existingBOM.outsourced_cost ?? 0));
+        setOutsourcedVendorId(existingBOM.outsourcedVendorId || existingBOM.outsourced_vendor_id || '');
+        setOutsourcedProcess(existingBOM.outsourcedProcess || existingBOM.outsourced_process || '');
         setNotes(existingBOM.notes || '');
       } else {
         setBomName(`${product.name} Production Recipe`);
@@ -108,12 +134,13 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
     setRawMaterials(prev => {
       const next = [...prev];
       if (inv) {
+        const itemCost = Number(inv.unit_cost ?? inv.unitCost ?? inv.last_purchase_rate ?? inv.lastPurchaseRate ?? inv.cost_price ?? inv.purchase_rate ?? 0);
         next[idx] = {
           ...next[idx],
           inventory_id: inv.id,
           item_name: inv.name,
           unit: inv.unit || 'Pcs',
-          unit_cost: Number(inv.cost_price || inv.purchase_rate || 0)
+          unit_cost: itemCost
         };
       } else {
         next[idx] = {
@@ -157,9 +184,10 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
   };
 
   const bomCalc = useMemo(() => {
+    const batchQty = Math.max(1, Number(outputQty) || 1);
     return calculateBOMCost({
       bom: {
-        output_qty: Math.max(1, Number(outputQty) || 1),
+        output_qty: batchQty,
         raw_materials_json: JSON.stringify(rawMaterials),
         machine_cost: Number(machineCost || 0),
         labour_cost: Number(labourCost || 0),
@@ -168,29 +196,41 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
         packaging_cost: Number(packagingCost || 0),
         outsourced_cost: Number(outsourcedCost || 0)
       },
-      orderQty: Math.max(1, Number(outputQty) || 1)
+      orderQty: batchQty
     });
   }, [outputQty, rawMaterials, machineCost, labourCost, electricityCost, finishingCost, packagingCost, outsourcedCost]);
 
   if (!isOpen || !product) return null;
 
-  const defaultSellingRate = Number(product.defaultRate || product.default_rate || 0);
-  const grossProfitPerUnit = defaultSellingRate > 0 ? defaultSellingRate - bomCalc.unitCost : 0;
+  const defaultSellingRate = Number(product.defaultRate ?? product.default_rate ?? 0);
+  const rollupUnitCost = Number(bomCalc?.unitCost || 0);
+  const grossProfitPerUnit = defaultSellingRate > 0 ? defaultSellingRate - rollupUnitCost : 0;
   const marginPct = defaultSellingRate > 0 ? (grossProfitPerUnit / defaultSellingRate) * 100 : 0;
 
   const handleSave = async () => {
     setIsSaving(true);
     setStatusMsg({ type: '', text: '' });
     try {
+      const batchQty = Math.max(1, Number(outputQty) || 1);
+      const formattedRawMaterials = rawMaterials.map(rm => ({
+        ...rm,
+        itemName: rm.item_name || rm.material_name || '',
+        material_name: rm.item_name || rm.material_name || '',
+        qty: Number(rm.quantity || 1),
+        qty_per_unit: Number((Number(rm.quantity || 1) / batchQty).toFixed(4)),
+        unitCost: Number(rm.unit_cost || 0),
+        wastagePct: Number(rm.wastage_pct || 0)
+      }));
+
       await saveProductBOM(product.id, {
         id: existingBOM?.id || `BOM-${product.id}`,
         productId: product.id,
         specId: selectedSpecId || null,
         bomName: bomName.trim() || `${product.name} Production Recipe`,
-        outputQty: Number(outputQty) || 1,
+        outputQty: batchQty,
         outputUnit: outputUnit || product.unit || 'Pcs',
         isDefault,
-        rawMaterials,
+        rawMaterials: formattedRawMaterials,
         machineCost: Number(machineCost || 0),
         machineId: machineId || null,
         machineName: selectedMachine?.name || null,
@@ -201,10 +241,10 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
         outsourcedCost: Number(outsourcedCost || 0),
         outsourcedVendorId: outsourcedVendorId || null,
         outsourcedProcess: outsourcedProcess || null,
-        totalEstimatedUnitCost: bomCalc.unitCost,
+        totalEstimatedUnitCost: rollupUnitCost,
         notes
       });
-      setStatusMsg({ type: 'success', text: `BOM recipe saved! Rollup unit cost: ₹${bomCalc.unitCost.toFixed(2)}/${outputUnit}` });
+      setStatusMsg({ type: 'success', text: `BOM recipe saved! Rollup unit cost: ₹${rollupUnitCost.toFixed(2)}/${outputUnit}` });
       setTimeout(() => {
         onClose();
       }, 1000);
@@ -355,11 +395,14 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
                             onChange={(e) => handleSelectInventory(idx, e.target.value)}
                           >
                             <option value="">-- Select Material / Substrate --</option>
-                            {rawInventory.map(inv => (
-                              <option key={inv.id} value={inv.id}>
-                                {inv.name} ({inv.unit || 'Units'}) - Cost: ₹{inv.cost_price || inv.purchase_rate || 0}
-                              </option>
-                            ))}
+                            {rawInventory.map(inv => {
+                              const invCost = Number(inv.unit_cost ?? inv.unitCost ?? inv.last_purchase_rate ?? inv.lastPurchaseRate ?? inv.cost_price ?? inv.purchase_rate ?? 0);
+                              return (
+                                <option key={inv.id} value={inv.id}>
+                                  {inv.name} ({inv.unit || 'Units'}) - Cost: ₹{invCost.toFixed(2)}
+                                </option>
+                              );
+                            })}
                           </select>
                         </td>
 
@@ -440,7 +483,7 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
                       Total Raw Material Batch Cost:
                     </td>
                     <td style={{ textAlign: 'right', color: '#7e22ce', fontSize: '0.9rem' }}>
-                      ₹{bomCalc.materialsCost.toFixed(2)}
+                      ₹{(bomCalc?.materialsCost ?? bomCalc?.totalMaterialCost ?? 0).toFixed(2)}
                     </td>
                     <td colSpan="2"></td>
                   </tr>
@@ -468,7 +511,7 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
                   <option value="">-- None / Manual --</option>
                   {(machines || []).map(m => (
                     <option key={m.id} value={m.id}>
-                      {m.name} (₹{m.hourlyRate || m.hourlyCost || 0}/hr)
+                      {m.name} (₹{m.hourlyRate ?? m.hourlyCost ?? m.hourly_rate ?? 0}/hr)
                     </option>
                   ))}
                 </select>
@@ -560,7 +603,7 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
               <div>
                 <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Total Batch Cost</span>
                 <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', margin: '0.2rem 0' }}>
-                  ₹{bomCalc.totalBatchCost.toFixed(2)}
+                  ₹{(bomCalc?.totalBatchCost ?? bomCalc?.totalCost ?? 0).toFixed(2)}
                 </h3>
                 <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>For {outputQty} {outputUnit}</span>
               </div>
@@ -568,7 +611,7 @@ export const ProductBOMModal = ({ isOpen, onClose, product, initialSpecId = null
               <div>
                 <span style={{ fontSize: '0.72rem', color: '#7e22ce', fontWeight: 700, textTransform: 'uppercase' }}>Rollup Unit Cost</span>
                 <h3 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#6b21a8', margin: '0.2rem 0' }}>
-                  ₹{bomCalc.unitCost.toFixed(2)}
+                  ₹{(bomCalc?.unitCost ?? 0).toFixed(2)}
                 </h3>
                 <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Per {outputUnit}</span>
               </div>

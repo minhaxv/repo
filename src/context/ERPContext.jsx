@@ -1467,7 +1467,7 @@ export const ERPProvider = ({ children }) => {
       const bomId = res.id || bomData.id;
       const totalCost = Number(res.totalEstimatedUnitCost || bomData.totalEstimatedUnitCost || 0);
       setProductBoms(prev => {
-        const updated = [ { ...bomData, id: bomId, productId, totalEstimatedUnitCost: totalCost }, ...prev.filter(b => b.id !== bomId) ];
+        const updated = [ { ...bomData, id: bomId, productId, product_id: productId, totalEstimatedUnitCost: totalCost }, ...prev.filter(b => b.id !== bomId) ];
         try { localStorage.setItem('stitch_erp_product_boms', JSON.stringify(updated)); } catch (e) {}
         return updated;
       });
@@ -1479,7 +1479,7 @@ export const ERPProvider = ({ children }) => {
       console.warn("api.saveProductBOM error, updating local state:", err);
       const bomId = bomData.id || `BOM-${Date.now()}`;
       setProductBoms(prev => {
-        const updated = [ { ...bomData, id: bomId, productId }, ...prev.filter(b => b.id !== bomId) ];
+        const updated = [ { ...bomData, id: bomId, productId, product_id: productId }, ...prev.filter(b => b.id !== bomId) ];
         try { localStorage.setItem('stitch_erp_product_boms', JSON.stringify(updated)); } catch (e) {}
         return updated;
       });

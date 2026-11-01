@@ -50,13 +50,20 @@ export function calculateProductionYield(yieldConfig, orderQuantity) {
   };
 }
 
-export function calculateBOMCost(bom, quantity = 1) {
-  const qty = Math.max(1, Number(quantity || 1));
+export function calculateBOMCost(bomOrConfig, quantity = 1) {
+  let bom = bomOrConfig;
+  let qty = Math.max(1, Number(quantity || 1));
+  if (bomOrConfig && typeof bomOrConfig === 'object' && ('bom' in bomOrConfig)) {
+    bom = bomOrConfig.bom;
+    qty = Math.max(1, Number(bomOrConfig.orderQty || bomOrConfig.quantity || quantity || 1));
+  }
+
   if (!bom) {
     return {
       quantity: qty,
       materials: [],
       totalMaterialCost: 0,
+      materialsCost: 0,
       machineCost: 0,
       labourCost: 0,
       electricityCost: 0,
@@ -65,7 +72,9 @@ export function calculateBOMCost(bom, quantity = 1) {
       outsourcedCost: 0,
       totalOverheadCost: 0,
       totalCost: 0,
-      unitCost: 0
+      totalBatchCost: 0,
+      unitCost: 0,
+      totalEstimatedUnitCost: 0
     };
   }
 
@@ -77,12 +86,19 @@ export function calculateBOMCost(bom, quantity = 1) {
   } catch (e) {
     materials = [];
   }
+  if (!Array.isArray(materials)) materials = [];
+
+  const bomOutputQty = Math.max(1, Number(bom.output_qty ?? bom.outputQty ?? 1));
 
   let totalMaterialCost = 0;
   const materialAllocations = materials.map(mat => {
-    const qtyPerUnit = Number(mat.qty_per_unit || mat.qtyPerUnit || 1);
-    const unitCost = Number(mat.unit_cost || mat.unitCost || 0);
-    const wastagePct = Number(mat.wastage_pct || mat.wastagePct || 0);
+    const rawQty = Number(mat.quantity ?? mat.qty ?? mat.qty_per_unit ?? mat.qtyPerUnit ?? 1);
+    // If qty_per_unit / qtyPerUnit is explicitly given, use it. Otherwise, divide batch quantity by bomOutputQty
+    const qtyPerUnit = (mat.qty_per_unit != null || mat.qtyPerUnit != null)
+      ? Number(mat.qty_per_unit ?? mat.qtyPerUnit)
+      : (rawQty / bomOutputQty);
+    const unitCost = Number(mat.unit_cost ?? mat.unitCost ?? mat.cost_price ?? mat.purchase_rate ?? 0);
+    const wastagePct = Number(mat.wastage_pct ?? mat.wastagePct ?? 0);
     const grossQtyPerUnit = qtyPerUnit * (1 + wastagePct / 100);
     const totalRequiredQty = Number((grossQtyPerUnit * qty).toFixed(4));
     const lineCost = Number((totalRequiredQty * unitCost).toFixed(2));
@@ -90,23 +106,32 @@ export function calculateBOMCost(bom, quantity = 1) {
 
     return {
       inventoryId: mat.inventory_id || mat.inventoryId || '',
-      materialName: mat.material_name || mat.materialName || '',
+      materialName: mat.material_name || mat.materialName || mat.item_name || mat.itemName || '',
       unit: mat.unit || 'Pcs',
+      quantity: rawQty,
       qtyPerUnit,
       grossQtyPerUnit: Number(grossQtyPerUnit.toFixed(4)),
       totalRequiredQty,
       unitCost,
       wastagePct,
-      lineCost
+      lineCost,
+      totalCost: lineCost
     };
   });
 
-  const machineCost = Number(((Number(bom.machine_cost ?? bom.machineCost ?? 0)) * qty).toFixed(2));
-  const labourCost = Number(((Number(bom.labour_cost ?? bom.labourCost ?? 0)) * qty).toFixed(2));
-  const electricityCost = Number(((Number(bom.electricity_cost ?? bom.electricityCost ?? 0)) * qty).toFixed(2));
-  const finishingCost = Number(((Number(bom.finishing_cost ?? bom.finishingCost ?? 0)) * qty).toFixed(2));
-  const packagingCost = Number(((Number(bom.packaging_cost ?? bom.packagingCost ?? 0)) * qty).toFixed(2));
-  const outsourcedCost = Number(((Number(bom.outsourced_cost ?? bom.outsourcedCost ?? 0)) * qty).toFixed(2));
+  const machineRatePerUnit = Number(bom.machine_cost ?? bom.machineCost ?? 0) / bomOutputQty;
+  const labourRatePerUnit = Number(bom.labour_cost ?? bom.labourCost ?? 0) / bomOutputQty;
+  const electricityRatePerUnit = Number(bom.electricity_cost ?? bom.electricityCost ?? 0) / bomOutputQty;
+  const finishingRatePerUnit = Number(bom.finishing_cost ?? bom.finishingCost ?? 0) / bomOutputQty;
+  const packagingRatePerUnit = Number(bom.packaging_cost ?? bom.packagingCost ?? 0) / bomOutputQty;
+  const outsourcedRatePerUnit = Number(bom.outsourced_cost ?? bom.outsourcedCost ?? 0) / bomOutputQty;
+
+  const machineCost = Number((machineRatePerUnit * qty).toFixed(2));
+  const labourCost = Number((labourRatePerUnit * qty).toFixed(2));
+  const electricityCost = Number((electricityRatePerUnit * qty).toFixed(2));
+  const finishingCost = Number((finishingRatePerUnit * qty).toFixed(2));
+  const packagingCost = Number((packagingRatePerUnit * qty).toFixed(2));
+  const outsourcedCost = Number((outsourcedRatePerUnit * qty).toFixed(2));
 
   const totalOverheadCost = Number((machineCost + labourCost + electricityCost + finishingCost + packagingCost + outsourcedCost).toFixed(2));
   const totalCost = Number((totalMaterialCost + totalOverheadCost).toFixed(2));
@@ -116,6 +141,7 @@ export function calculateBOMCost(bom, quantity = 1) {
     quantity: qty,
     materials: materialAllocations,
     totalMaterialCost: Number(totalMaterialCost.toFixed(2)),
+    materialsCost: Number(totalMaterialCost.toFixed(2)),
     machineCost,
     labourCost,
     electricityCost,
@@ -124,7 +150,9 @@ export function calculateBOMCost(bom, quantity = 1) {
     outsourcedCost,
     totalOverheadCost,
     totalCost,
-    unitCost
+    totalBatchCost: totalCost,
+    unitCost,
+    totalEstimatedUnitCost: unitCost
   };
 }
 

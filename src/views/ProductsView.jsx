@@ -317,8 +317,8 @@ export const ProductsView = () => {
                   const pMethod = p.pricingMethod || p.pricing_method || 'FIXED';
                   const specs = (productMaterialSpecs || []).filter((s) => s.productId === p.id);
                   const slabs = (productPricingSlabs || []).filter((s) => s.productId === p.id).sort((a, b) => Number(a.minQty) - Number(b.minQty));
-                  const bom = (productBoms || []).find((b) => b.productId === p.id);
-                  const yieldConfig = (productYieldConfigs || []).find((y) => y.productId === p.id);
+                  const bom = (productBoms || []).find((b) => (b.productId || b.product_id) === p.id);
+                  const yieldConfig = (productYieldConfigs || []).find((y) => (y.productId || y.product_id) === p.id);
 
                   // Margin calculation
                   const grossProfit = defaultRate - estimatedCost;
