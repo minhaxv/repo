@@ -791,7 +791,22 @@ app.get('/api/all', authenticateToken, (req, res) => {
         overriddenByUserId: i.overridden_by_user_id || null,
         overriddenByName: i.overridden_by_name || null,
         grossProfit: canViewFinancials ? Number(i.gross_profit || 0) : null,
-        grossProfitMargin: canViewFinancials ? Number(i.gross_profit_margin || 0) : null
+        grossProfitMargin: canViewFinancials ? Number(i.gross_profit_margin || 0) : null,
+        pricingResponsibility: i.pricing_responsibility || 'SALES',
+        pricingStatus: i.pricing_status || 'COMPLETE',
+        itemAddedById: i.item_added_by_id || null,
+        itemAddedByName: i.item_added_by_name || null,
+        itemAddedByRole: i.item_added_by_role || null,
+        priceAddedById: i.price_added_by_id || null,
+        priceAddedByName: i.price_added_by_name || null,
+        priceAddedByRole: i.price_added_by_role || null,
+        managerApprovalStatus: i.manager_approval_status || 'NOT_REQUIRED',
+        managerApprovedById: i.manager_approved_by_id || null,
+        managerApprovedByName: i.manager_approved_by_name || null,
+        isAmendment: Boolean(i.is_amendment),
+        parentItemId: i.parent_item_id || null,
+        designNotes: i.design_notes || '',
+        artworkNotes: i.artwork_notes || ''
       }));
 
       return {
@@ -807,6 +822,11 @@ app.get('/api/all', authenticateToken, (req, res) => {
         referenceNo: o.reference_no,
         productionStatus: o.production_status,
         paymentStatus: o.payment_status,
+        pricingStatus: o.pricing_status || 'COMPLETE',
+        hasPendingPricing: Boolean(o.has_pending_pricing),
+        designerSessionId: o.designer_session_id || null,
+        isAmendment: Boolean(o.is_amendment),
+        parentOrderId: o.parent_order_id || null,
         subtotal: Number(o.subtotal),
         discount: Number(o.discount),
         taxTotal: Number(o.tax_total),
@@ -1047,7 +1067,9 @@ app.get('/api/all', authenticateToken, (req, res) => {
         isOutsource: Boolean(p.is_outsource || p.default_vendor),
         estimatedCost: canViewFinancials ? Number(p.estimated_cost) : null,
         gstRate: Number(p.gst_rate),
-        isCustom: Boolean(p.is_custom)
+        isCustom: Boolean(p.is_custom),
+        allowDesignerPricing: Boolean(p.allow_designer_pricing),
+        defaultPricingResponsibility: p.default_pricing_responsibility || 'SALES'
       })),
       productMaterialSpecs: productMaterialSpecs.map(s => ({
         ...s,
@@ -1239,6 +1261,39 @@ app.get('/api/all', authenticateToken, (req, res) => {
       deliveryNotes: db.prepare('SELECT * FROM delivery_notes ORDER BY created_at DESC').all(),
       deliveryItems: db.prepare('SELECT * FROM delivery_items ORDER BY created_at DESC').all(),
       artworkVersions: db.prepare('SELECT * FROM artwork_versions ORDER BY version_number DESC').all(),
+      designerSessions: (() => {
+        try {
+          const sessions = db.prepare('SELECT * FROM designer_sessions ORDER BY updated_at DESC LIMIT 200').all();
+          return sessions.map(s => {
+            let draftItems = [];
+            try { draftItems = JSON.parse(s.draft_items_json || '[]'); } catch(e) { draftItems = []; }
+            return {
+              id: s.id,
+              sessionNumber: s.session_number,
+              sessionStatus: s.session_status,
+              customerId: s.customer_id,
+              customerName: s.customer_name,
+              customerMobile: s.customer_mobile,
+              customerEmail: s.customer_email,
+              designerId: s.designer_id,
+              designerName: s.designer_name,
+              salesOrderId: s.sales_order_id,
+              orderNumber: s.order_number,
+              designRequirements: s.design_requirements || '',
+              sessionNotes: s.session_notes || '',
+              draftItems,
+              startedAt: s.started_at,
+              endedAt: s.ended_at,
+              lastActiveAt: s.last_active_at,
+              version: s.version || 1,
+              createdAt: s.created_at,
+              updatedAt: s.updated_at
+            };
+          });
+        } catch(e) {
+          return [];
+        }
+      })(),
       users: db.prepare('SELECT id, employee_id, username, email, role, department, status, last_login FROM users').all()
     });
   } catch (err) {
@@ -3429,6 +3484,33 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
     const verifiedCreatedByUserId = authAccount?.user_id || authUserId;
     const verifiedCreatedByName = authAccount?.emp_name || user.name || authAccount?.username;
 
+    // Calculate order-level pending pricing flag across all items
+    let orderHasPendingPricing = false;
+    for (const it of items) {
+      const prodRecord = it.productId ? db.prepare('SELECT allow_designer_pricing, default_pricing_responsibility FROM products WHERE id = ?').get(it.productId) : null;
+      const allowDesignerPricing = prodRecord ? Boolean(prodRecord.allow_designer_pricing) : false;
+      const defaultResp = prodRecord ? (prodRecord.default_pricing_responsibility || 'SALES') : 'SALES';
+      const itemResp = it.pricingResponsibility || defaultResp;
+      const isDesignerUser = (user.role === 'Designer' || user.department === 'Design');
+      const isSalesOrAdminUser = ['Admin', 'Manager', 'Sales', 'Billing'].includes(user.role);
+
+      if (isDesignerUser && !isSalesOrAdminUser) {
+        if (itemResp === 'DESIGNER' && !allowDesignerPricing) {
+          orderHasPendingPricing = true;
+          break;
+        } else if (itemResp === 'SALES' || !it.sellingRate || Number(it.sellingRate) <= 0) {
+          orderHasPendingPricing = true;
+          break;
+        }
+      } else {
+        if (it.pricingStatus === 'PENDING' || (itemResp === 'SALES' && (!it.sellingRate || Number(it.sellingRate) <= 0))) {
+          orderHasPendingPricing = true;
+          break;
+        }
+      }
+    }
+    const orderPricingStatus = orderHasPendingPricing ? 'PRICING_PENDING' : 'PRICING_COMPLETE';
+
     const createOrderTx = db.transaction(() => {
       // 1. Insert Sales Order
       db.prepare(`
@@ -3438,8 +3520,9 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
           payment_status, subtotal, discount, tax_total, cgst, sgst, igst, round_off,
           tax_mode, grand_total, advance_amount, balance_amount, notes, billed_by_staff,
           billed_by_id, billed_by_role, billed_at, created_by_user_id, created_by_name,
-          order_type, quotation_status, version
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+          order_type, quotation_status, version, designer_session_id, pricing_status,
+          has_pending_pricing, is_amendment, parent_order_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
       `).run(
         orderId,
         orderNumber,
@@ -3473,7 +3556,12 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
         verifiedCreatedByUserId,
         verifiedCreatedByName,
         isQuote ? 'Quotation' : 'Direct',
-        isQuote ? (orderHeader.quotationStatus || 'Draft') : null
+        isQuote ? (orderHeader.quotationStatus || 'Draft') : null,
+        orderHeader.designerSessionId || null,
+        orderPricingStatus,
+        orderHasPendingPricing ? 1 : 0,
+        orderHeader.isAmendment ? 1 : 0,
+        orderHeader.parentOrderId || null
       );
 
       // 2. Insert Items, Job Work, and Outsource Jobs
@@ -3488,11 +3576,15 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
           original_selling_price, applied_pricing_rule, pricing_rule_details,
           estimated_material_cost, estimated_labour_cost, estimated_machine_cost, estimated_overhead_cost,
           is_rate_overridden, override_reason, overridden_by_user_id, overridden_by_name,
-          gross_profit, gross_profit_margin
+          gross_profit, gross_profit_margin,
+          pricing_responsibility, pricing_status, item_added_by_id, item_added_by_name, item_added_by_role,
+          price_added_by_id, price_added_by_name, price_added_by_role, manager_approval_status,
+          is_amendment, parent_item_id, design_notes, artwork_notes
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
       `);
 
@@ -3543,6 +3635,47 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
         const grossProfit = lineTaxableAmount - (totalUnitEstCost * itemQty);
         const grossProfitMargin = lineTaxableAmount > 0 ? Number(((grossProfit / lineTaxableAmount) * 100).toFixed(2)) : 0;
 
+        // Pricing responsibility and status validation
+        const prodRecord = it.productId ? db.prepare('SELECT allow_designer_pricing, default_pricing_responsibility FROM products WHERE id = ?').get(it.productId) : null;
+        const allowDesignerPricing = prodRecord ? Boolean(prodRecord.allow_designer_pricing) : false;
+        const defaultResp = prodRecord ? (prodRecord.default_pricing_responsibility || 'SALES') : 'SALES';
+        const isDesignerActor = (user.role === 'Designer' || user.department === 'Design');
+        const isSalesOrAdmin = ['Admin', 'Manager', 'Sales', 'Billing'].includes(user.role);
+
+        let itemPricingResp = inputIt.pricingResponsibility || it.pricingResponsibility || defaultResp;
+        let itemPricingStat = inputIt.pricingStatus || it.pricingStatus || 'COMPLETE';
+
+        if (isDesignerActor && !isSalesOrAdmin) {
+          if (itemPricingResp === 'DESIGNER' && !allowDesignerPricing) {
+            itemPricingResp = 'SALES';
+            itemPricingStat = 'PENDING';
+          } else if (itemPricingResp === 'SALES' || !lineSellingRate || lineSellingRate <= 0) {
+            itemPricingStat = 'PENDING';
+          } else {
+            itemPricingStat = 'COMPLETE';
+          }
+        } else {
+          if (!lineSellingRate || lineSellingRate <= 0) {
+            itemPricingStat = inputIt.pricingStatus || (itemPricingResp === 'SALES' ? 'PENDING' : 'COMPLETE');
+          } else {
+            itemPricingStat = 'COMPLETE';
+          }
+        }
+
+        const itemAddedById = inputIt.itemAddedById || it.itemAddedById || verifiedCreatedByUserId;
+        const itemAddedByName = inputIt.itemAddedByName || it.itemAddedByName || verifiedCreatedByName;
+        const itemAddedByRole = inputIt.itemAddedByRole || it.itemAddedByRole || verifiedBilledByRole;
+
+        const priceAddedById = itemPricingStat === 'COMPLETE' ? (inputIt.priceAddedById || it.priceAddedById || verifiedCreatedByUserId) : null;
+        const priceAddedByName = itemPricingStat === 'COMPLETE' ? (inputIt.priceAddedByName || it.priceAddedByName || verifiedCreatedByName) : null;
+        const priceAddedByRole = itemPricingStat === 'COMPLETE' ? (inputIt.priceAddedByRole || it.priceAddedByRole || verifiedBilledByRole) : null;
+
+        const managerApprovalStatus = inputIt.managerApprovalStatus || it.managerApprovalStatus || 'NOT_REQUIRED';
+        const isAmendment = Boolean(inputIt.isAmendment || it.isAmendment || orderHeader.isAmendment) ? 1 : 0;
+        const parentItemId = inputIt.parentItemId || it.parentItemId || null;
+        const designNotes = inputIt.designNotes || it.designNotes || '';
+        const artworkNotes = inputIt.artworkNotes || it.artworkNotes || '';
+
         insertItem.run(
           itemId, orderId, it.productId || '', it.productName || 'Printing Item', jobCardId,
           it.customTitle || '', it.specId || '', it.specName || '', it.material || '',
@@ -3561,7 +3694,10 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
           lineOriginalSellingPrice, appliedPricingRule, pricingRuleDetails,
           estMatCost, estLabCost, estMacCost, estOvhCost,
           isRateOverridden ? 1 : 0, overrideReason, overriddenByUserId, overriddenByName,
-          Math.round(grossProfit * 100) / 100, Math.round(grossProfitMargin * 100) / 100
+          Math.round(grossProfit * 100) / 100, Math.round(grossProfitMargin * 100) / 100,
+          itemPricingResp, itemPricingStat, itemAddedById, itemAddedByName, itemAddedByRole,
+          priceAddedById, priceAddedByName, priceAddedByRole, managerApprovalStatus,
+          isAmendment, parentItemId, designNotes, artworkNotes
         );
 
         if (isRateOverridden) {
@@ -3710,6 +3846,28 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
 
     createOrderTx();
 
+    // Link designer session if this order originated from Designer Desk
+    if (orderHeader.designerSessionId) {
+      try {
+        db.prepare(`
+          UPDATE designer_sessions
+          SET session_status = ?,
+              sales_order_id = ?,
+              order_number = ?,
+              last_active_at = CURRENT_TIMESTAMP,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(
+          orderHasPendingPricing ? 'Submitted to Sales' : 'Converted to Order',
+          orderId,
+          orderNumber,
+          orderHeader.designerSessionId
+        );
+      } catch (e) {
+        console.error('Error linking designer session to order:', e);
+      }
+    }
+
     // Log audit event
     logAuditEvent(db, {
       user,
@@ -3742,6 +3900,8 @@ app.post('/api/sales-orders', authenticateToken, (req, res) => {
       orderNumber,
       order: { id: orderId, orderNumber, ...totals },
       totals,
+      pricingStatus: orderPricingStatus,
+      hasPendingPricing: orderHasPendingPricing,
       billedByStaff: verifiedBilledByStaff,
       billedById: verifiedBilledById,
       billedByRole: verifiedBilledByRole,
@@ -4354,7 +4514,876 @@ app.post('/api/artwork/:versionId/approve', authenticateToken, requireRole(['Adm
   }
 });
 
-// 5C. PARTIAL DELIVERY MANAGEMENT
+// 5B2. DESIGNER DESK - CUSTOMER SESSIONS & WORKSPACE
+app.get('/api/designer-sessions', authenticateToken, (req, res) => {
+  try {
+    const { status, designerId, customerId } = req.query;
+    let query = 'SELECT * FROM designer_sessions WHERE 1=1';
+    const params = [];
+    if (status && status !== 'ALL') {
+      query += ' AND session_status = ?';
+      params.push(status);
+    }
+    if (designerId && designerId !== 'ALL') {
+      query += ' AND designer_id = ?';
+      params.push(designerId);
+    }
+    if (customerId) {
+      query += ' AND customer_id = ?';
+      params.push(customerId);
+    }
+    query += ' ORDER BY updated_at DESC LIMIT 100';
+    const rows = db.prepare(query).all(...params);
+    const sessions = rows.map(s => {
+      let draftItems = [];
+      try { draftItems = JSON.parse(s.draft_items_json || '[]'); } catch (e) { draftItems = []; }
+      return {
+        id: s.id,
+        sessionNumber: s.session_number,
+        sessionStatus: s.session_status,
+        customerId: s.customer_id,
+        customerName: s.customer_name,
+        customerMobile: s.customer_mobile,
+        customerEmail: s.customer_email,
+        designerId: s.designer_id,
+        designerName: s.designer_name,
+        salesOrderId: s.sales_order_id,
+        orderNumber: s.order_number,
+        designRequirements: s.design_requirements || '',
+        sessionNotes: s.session_notes || '',
+        draftItems,
+        startedAt: s.started_at,
+        endedAt: s.ended_at,
+        lastActiveAt: s.last_active_at,
+        version: s.version || 1,
+        createdAt: s.created_at,
+        updatedAt: s.updated_at
+      };
+    });
+    res.json({ success: true, sessions });
+  } catch (err) {
+    console.error("GET /api/designer-sessions error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/designer-sessions/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    const session = db.prepare('SELECT * FROM designer_sessions WHERE id = ? OR session_number = ?').get(id, id);
+    if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
+
+    let draftItems = [];
+    try { draftItems = JSON.parse(session.draft_items_json || '[]'); } catch (e) { draftItems = []; }
+
+    let customer = null;
+    let pastOrders = [];
+    if (session.customer_id) {
+      customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(session.customer_id);
+      pastOrders = db.prepare('SELECT id, order_number, order_date, production_status, grand_total, balance_amount FROM sales_orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT 10').all(session.customer_id);
+    }
+
+    let linkedOrder = null;
+    let linkedOrderItems = [];
+    if (session.sales_order_id) {
+      linkedOrder = db.prepare('SELECT * FROM sales_orders WHERE id = ?').get(session.sales_order_id);
+      if (linkedOrder) {
+        linkedOrderItems = db.prepare('SELECT * FROM sales_order_items WHERE sales_order_id = ?').all(session.sales_order_id);
+      }
+    }
+
+    const sessionArtwork = db.prepare('SELECT * FROM artwork_versions WHERE session_id = ? OR order_id = ? ORDER BY version_number DESC').all(session.id, session.sales_order_id || session.id);
+
+    res.json({
+      success: true,
+      session: {
+        id: session.id,
+        sessionNumber: session.session_number,
+        sessionStatus: session.session_status,
+        customerId: session.customer_id,
+        customerName: session.customer_name,
+        customerMobile: session.customer_mobile,
+        customerEmail: session.customer_email,
+        designerId: session.designer_id,
+        designerName: session.designer_name,
+        salesOrderId: session.sales_order_id,
+        orderNumber: session.order_number,
+        designRequirements: session.design_requirements || '',
+        sessionNotes: session.session_notes || '',
+        draftItems,
+        startedAt: session.started_at,
+        endedAt: session.ended_at,
+        lastActiveAt: session.last_active_at,
+        version: session.version || 1,
+        createdAt: session.created_at,
+        updatedAt: session.updated_at
+      },
+      customer,
+      pastOrders,
+      linkedOrder,
+      linkedOrderItems,
+      artwork: sessionArtwork
+    });
+  } catch (err) {
+    console.error("GET /api/designer-sessions/:id error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/designer-sessions', authenticateToken, (req, res) => {
+  try {
+    const user = req.user;
+    const body = req.body || {};
+    const sessionId = body.id || `SES-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+    const sessionNumber = generateNextSequence(db, 'SES');
+    const designerName = body.designerName || user.name || 'Designer';
+    const designerId = body.designerId || user.employeeId || user.id || 'DES-01';
+
+    let customerId = body.customerId || null;
+    let customerName = body.customerName || 'Walk-in Customer';
+    let customerMobile = body.customerMobile || '';
+    let customerEmail = body.customerEmail || '';
+
+    if (customerId) {
+      const cust = db.prepare('SELECT * FROM customers WHERE id = ?').get(customerId);
+      if (cust) {
+        customerName = cust.name;
+        customerMobile = cust.mobile || customerMobile;
+        customerEmail = cust.email || customerEmail;
+      }
+    } else if (body.createNewCustomer && customerName && customerMobile) {
+      const newCustId = `CUST-${Date.now()}`;
+      const newCustCode = `CUST-${customerMobile.slice(-4) || Math.floor(1000 + Math.random() * 9000)}`;
+      try {
+        db.prepare(`
+          INSERT INTO customers (id, customer_code, name, mobile, email, customer_type)
+          VALUES (?, ?, ?, ?, ?, 'Regular')
+        `).run(newCustId, newCustCode, customerName, customerMobile, customerEmail);
+        customerId = newCustId;
+      } catch (e) {
+        console.warn("Auto customer creation note:", e.message);
+      }
+    }
+
+    db.prepare(`
+      INSERT INTO designer_sessions (
+        id, session_number, session_status, customer_id, customer_name, customer_mobile, customer_email,
+        designer_id, designer_name, sales_order_id, order_number, design_requirements, session_notes,
+        draft_items_json, started_at, last_active_at, version
+      ) VALUES (?, ?, 'Active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1)
+    `).run(
+      sessionId,
+      sessionNumber,
+      customerId,
+      customerName,
+      customerMobile,
+      customerEmail,
+      designerId,
+      designerName,
+      body.salesOrderId || null,
+      body.orderNumber || null,
+      body.designRequirements || '',
+      body.sessionNotes || '',
+      body.draftItems ? JSON.stringify(body.draftItems) : '[]'
+    );
+
+    publishEvent('DESIGNER_SESSION_CREATED', { sessionId, sessionNumber, customerName, designerName });
+    res.json({
+      success: true,
+      session: {
+        id: sessionId,
+        sessionNumber,
+        sessionStatus: 'Active',
+        customerId,
+        customerName,
+        customerMobile,
+        customerEmail,
+        designerId,
+        designerName,
+        salesOrderId: body.salesOrderId || null,
+        orderNumber: body.orderNumber || null,
+        designRequirements: body.designRequirements || '',
+        sessionNotes: body.sessionNotes || '',
+        draftItems: body.draftItems || [],
+        version: 1
+      }
+    });
+  } catch (err) {
+    console.error("POST /api/designer-sessions error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/designer-sessions/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    const body = req.body || {};
+    const existing = db.prepare('SELECT * FROM designer_sessions WHERE id = ?').get(id);
+    if (!existing) return res.status(404).json({ success: false, error: 'Session not found' });
+
+    // Optimistic Concurrency Check
+    if (body.version !== undefined && existing.version !== undefined && Number(body.version) !== Number(existing.version)) {
+      return res.status(409).json({
+        success: false,
+        error: { code: 'CONCURRENCY_CONFLICT', message: 'Session updated by another workstation. Please refresh.' }
+      });
+    }
+
+    const nextVersion = (existing.version || 1) + 1;
+    const draftJson = body.draftItems ? JSON.stringify(body.draftItems) : existing.draft_items_json;
+
+    db.prepare(`
+      UPDATE designer_sessions SET
+        customer_id = COALESCE(?, customer_id),
+        customer_name = COALESCE(?, customer_name),
+        customer_mobile = COALESCE(?, customer_mobile),
+        customer_email = COALESCE(?, customer_email),
+        sales_order_id = COALESCE(?, sales_order_id),
+        order_number = COALESCE(?, order_number),
+        design_requirements = COALESCE(?, design_requirements),
+        session_notes = COALESCE(?, session_notes),
+        session_status = COALESCE(?, session_status),
+        draft_items_json = ?,
+        last_active_at = CURRENT_TIMESTAMP,
+        version = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(
+      body.customerId,
+      body.customerName,
+      body.customerMobile,
+      body.customerEmail,
+      body.salesOrderId,
+      body.orderNumber,
+      body.designRequirements,
+      body.sessionNotes,
+      body.sessionStatus,
+      draftJson,
+      nextVersion,
+      id
+    );
+
+    publishEvent('DESIGNER_SESSION_UPDATED', { sessionId: id, version: nextVersion });
+    res.json({ success: true, sessionId: id, version: nextVersion });
+  } catch (err) {
+    console.error("PUT /api/designer-sessions/:id error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// SUBMIT SESSION TO SALES ORDER (MODE A OR MODE B)
+app.post('/api/designer-sessions/:id/submit-to-sales', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user;
+    const body = req.body || {};
+
+    const session = db.prepare('SELECT * FROM designer_sessions WHERE id = ?').get(id);
+    if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
+
+    let items = body.items || [];
+    if (!items || items.length === 0) {
+      try {
+        items = JSON.parse(session.draft_items_json || '[]');
+      } catch (e) { items = []; }
+    }
+    if (items.length === 0) {
+      return res.status(400).json({ success: false, error: 'At least 1 product item is required to submit session' });
+    }
+
+    const customerId = body.customerId || session.customer_id;
+    const customerName = body.customerName || session.customer_name || 'Walk-in Customer';
+    let customerRecord = null;
+    if (customerId) {
+      customerRecord = db.prepare('SELECT * FROM customers WHERE id = ?').get(customerId);
+    }
+
+    // Determine or reuse order ID (Prevent duplicate orders!)
+    let orderId = session.sales_order_id || body.salesOrderId || null;
+    let isExistingOrder = false;
+    let existingOrder = null;
+
+    if (orderId) {
+      existingOrder = db.prepare('SELECT * FROM sales_orders WHERE id = ?').get(orderId);
+      if (existingOrder) isExistingOrder = true;
+    }
+
+    if (!isExistingOrder) {
+      orderId = body.orderType === 'Quotation' ? generateNextSequence(db, 'QT') : generateNextSequence(db, 'SO');
+    }
+    const orderNumber = existingOrder?.order_number || orderId;
+
+    // Process item-wise pricing responsibility & permissions
+    const isDesignerActor = (user.role === 'Designer' || user.department === 'Design');
+    const isSalesOrAdmin = ['Admin', 'Manager', 'Sales', 'Billing'].includes(user.role);
+
+    let hasPendingPricing = false;
+    const processedItems = items.map((inputIt, idx) => {
+      const prodRecord = inputIt.productId ? db.prepare('SELECT allow_designer_pricing, default_pricing_responsibility FROM products WHERE id = ?').get(inputIt.productId) : null;
+      const allowDesignerPricing = prodRecord ? Boolean(prodRecord.allow_designer_pricing) : false;
+      const defaultResp = prodRecord ? (prodRecord.default_pricing_responsibility || 'SALES') : 'SALES';
+
+      let pricingResp = inputIt.pricingResponsibility || defaultResp;
+      let pricingStat = inputIt.pricingStatus || 'COMPLETE';
+      const sellingRate = Number(inputIt.sellingRate || inputIt.rate || 0);
+
+      if (isDesignerActor && !isSalesOrAdmin) {
+        if (pricingResp === 'DESIGNER' && !allowDesignerPricing) {
+          // Designer not authorized to price this product: Handover to Sales
+          pricingResp = 'SALES';
+          pricingStat = 'PENDING';
+        } else if (pricingResp === 'SALES' || sellingRate <= 0) {
+          pricingStat = 'PENDING';
+        } else {
+          pricingStat = 'COMPLETE';
+        }
+      } else {
+        if (sellingRate <= 0) {
+          pricingStat = 'PENDING';
+        } else {
+          pricingStat = 'COMPLETE';
+        }
+      }
+
+      if (pricingStat === 'PENDING') {
+        hasPendingPricing = true;
+      }
+
+      return {
+        ...inputIt,
+        sellingRate,
+        pricingResponsibility: pricingResp,
+        pricingStatus: pricingStat,
+        itemAddedById: inputIt.itemAddedById || user.employeeId || user.id,
+        itemAddedByName: inputIt.itemAddedByName || user.name || 'Designer',
+        itemAddedByRole: inputIt.itemAddedByRole || user.role || 'Designer',
+        priceAddedById: pricingStat === 'COMPLETE' ? (user.employeeId || user.id) : null,
+        priceAddedByName: pricingStat === 'COMPLETE' ? user.name : null,
+        priceAddedByRole: pricingStat === 'COMPLETE' ? user.role : null
+      };
+    });
+
+    const orderPricingStatus = hasPendingPricing ? 'PRICING_PENDING' : 'PRICING_COMPLETE';
+
+    // Calculate totals via central billing engine
+    const orderHeader = {
+      orderType: body.orderType || 'Direct',
+      orderDate: body.orderDate || new Date().toISOString().split('T')[0],
+      deliveryDate: body.deliveryDate || '',
+      customerId,
+      customerName,
+      salesPersonId: body.salesPersonId || '',
+      salesPersonName: body.salesPersonName || '',
+      careOfId: body.careOfId || '',
+      careOfName: body.careOfName || '',
+      referenceNo: body.referenceNo || session.session_number,
+      taxMode: body.taxMode || 'EXCLUSIVE',
+      notes: body.notes || session.session_notes || '',
+      advanceAmount: Number(body.advanceAmount || 0),
+      paymentMethod: body.paymentMethod || 'Cash'
+    };
+
+    const totals = calculateOrderTotals(orderHeader, processedItems, customerRecord);
+
+    const submitTx = db.transaction(() => {
+      if (isExistingOrder) {
+        // Update existing order header
+        db.prepare(`
+          UPDATE sales_orders SET
+            customer_id = COALESCE(?, customer_id),
+            customer_name = ?,
+            subtotal = ?,
+            discount = ?,
+            tax_total = ?,
+            cgst = ?,
+            sgst = ?,
+            igst = ?,
+            round_off = ?,
+            grand_total = ?,
+            balance_amount = ?,
+            pricing_status = ?,
+            has_pending_pricing = ?,
+            version = version + 1,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(
+          customerId, customerName, totals.subtotal, totals.discount, totals.taxTotal,
+          totals.cgst, totals.sgst, totals.igst, totals.roundOff, totals.grandTotal,
+          totals.balanceAmount, orderPricingStatus, hasPendingPricing ? 1 : 0, orderId
+        );
+
+        // Delete previous draft items from this order to cleanly replace with session items
+        db.prepare('DELETE FROM sales_order_items WHERE sales_order_id = ?').run(orderId);
+      } else {
+        // Create new sales order
+        db.prepare(`
+          INSERT INTO sales_orders (
+            id, order_number, customer_id, customer_name, sales_person_id, sales_person_name,
+            care_of_id, care_of_name, reference_no, order_date, due_date, production_status,
+            payment_status, subtotal, discount, tax_total, cgst, sgst, igst, round_off,
+            tax_mode, grand_total, advance_amount, balance_amount, notes, billed_by_staff,
+            billed_by_id, billed_by_role, billed_at, created_by_user_id, created_by_name,
+            order_type, quotation_status, version, designer_session_id, pricing_status, has_pending_pricing
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+        `).run(
+          orderId, orderNumber, customerId, customerName, orderHeader.salesPersonId, orderHeader.salesPersonName,
+          orderHeader.careOfId, orderHeader.careOfName, orderHeader.referenceNo, orderHeader.orderDate,
+          orderHeader.deliveryDate, hasPendingPricing ? 'Quotation' : 'New', totals.paymentStatus,
+          totals.subtotal, totals.discount, totals.taxTotal, totals.cgst, totals.sgst, totals.igst,
+          totals.roundOff, orderHeader.taxMode, totals.grandTotal, totals.advanceAmount, totals.balanceAmount,
+          orderHeader.notes, user.name, user.employeeId || user.id, user.role,
+          new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+          user.userId || user.id, user.name, orderHeader.orderType,
+          hasPendingPricing ? 'Draft' : null, session.id, orderPricingStatus, hasPendingPricing ? 1 : 0
+        );
+      }
+
+      // Insert line items
+      const insertItem = db.prepare(`
+        INSERT INTO sales_order_items (
+          id, sales_order_id, product_id, product_name_snapshot, job_card_id, custom_title,
+          spec_id, spec_name, material, description, width, height, qty, unit, selling_rate,
+          estimated_cost, actual_cost, discount, tax_type, gst_rate, hsn_code, amount,
+          designer_required, designer_id, designer_name, design_status, artwork_status,
+          artwork_url, outsource, vendor_id, vendor_name, estimated_vendor_cost, printer_id,
+          printer_name, finisher_id, finisher_name, production_status,
+          original_selling_price, applied_pricing_rule, pricing_rule_details,
+          estimated_material_cost, estimated_labour_cost, estimated_machine_cost, estimated_overhead_cost,
+          is_rate_overridden, override_reason, overridden_by_user_id, overridden_by_name,
+          gross_profit, gross_profit_margin,
+          pricing_responsibility, pricing_status, item_added_by_id, item_added_by_name, item_added_by_role,
+          price_added_by_id, price_added_by_name, price_added_by_role, manager_approval_status,
+          is_amendment, parent_item_id, design_notes, artwork_notes
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
+      `);
+
+      for (let idx = 0; idx < processedItems.length; idx++) {
+        const it = processedItems[idx];
+        const calcIt = totals.items[idx] || {};
+        const itemId = it.id || `SOI-${orderId}-${idx + 1}-${Math.random().toString(36).substr(2, 4)}`;
+        const jobCardId = it.jobCardId || `JC-${orderId}-${idx + 1}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+
+        insertItem.run(
+          itemId, orderId, it.productId || '', it.productName || 'Printing Item', jobCardId,
+          it.customTitle || '', it.specId || '', it.specName || '', it.material || '',
+          it.description || '', Number(it.width || 0), Number(it.height || 0),
+          it.qty !== null && it.qty !== undefined && it.qty !== '' ? Number(it.qty) : 1,
+          it.unit || 'Pcs',
+          it.sellingRate,
+          Number(it.estimatedCost || 0), Number(it.actualCost || 0), Number(it.discount || 0),
+          it.taxType || 'ETR', Number(it.gstRate || 18), it.hsnCode || '9989',
+          Number(calcIt.lineTotal || calcIt.amount || 0),
+          'YES', session.designer_id || user.employeeId || user.id, session.designer_name || user.name,
+          it.designStatus || 'Completed', it.artworkStatus || 'Approved', it.artworkUrl || '',
+          it.outsource ? 1 : 0, it.vendorId || '', it.vendorName || '',
+          Number(it.estimatedVendorCost || 0), '', '', '', '',
+          hasPendingPricing ? 'Pending' : 'New',
+          it.sellingRate, 'FIXED', '', 0, 0, 0, 0, 0, '', null, null, 0, 0,
+          it.pricingResponsibility, it.pricingStatus, it.itemAddedById, it.itemAddedByName, it.itemAddedByRole,
+          it.priceAddedById, it.priceAddedByName, it.priceAddedByRole, 'NOT_REQUIRED',
+          0, null, it.designNotes || '', it.artworkNotes || ''
+        );
+      }
+
+      // Update session status
+      db.prepare(`
+        UPDATE designer_sessions SET
+          session_status = ?,
+          sales_order_id = ?,
+          order_number = ?,
+          customer_id = COALESCE(?, customer_id),
+          customer_name = ?,
+          last_active_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+      `).run(
+        hasPendingPricing ? 'Submitted to Sales' : 'Converted to Order',
+        orderId,
+        orderNumber,
+        customerId,
+        customerName,
+        id
+      );
+    });
+
+    submitTx();
+
+    logAuditEvent(db, {
+      user,
+      action: hasPendingPricing ? 'DESIGN_SUBMITTED_TO_SALES' : 'DESIGN_CONVERTED_TO_ORDER',
+      module: 'DESIGN',
+      recordId: orderId,
+      recordNumber: orderNumber,
+      details: { sessionId: id, customerName, hasPendingPricing, itemsCount: processedItems.length }
+    });
+
+    publishEvent('ORDER_CREATED', { orderId, orderNumber, customerName, hasPendingPricing });
+    publishEvent('DESIGNER_SESSION_SUBMITTED', { sessionId: id, orderId, orderNumber, hasPendingPricing });
+
+    res.json({
+      success: true,
+      orderId,
+      orderNumber,
+      pricingStatus: orderPricingStatus,
+      hasPendingPricing,
+      grandTotal: totals.grandTotal,
+      message: hasPendingPricing
+        ? `Order #${orderNumber} submitted to Sales Pricing Queue for rate finalization.`
+        : `Order #${orderNumber} successfully confirmed with complete pricing.`
+    });
+  } catch (err) {
+    console.error("POST /api/designer-sessions/:id/submit-to-sales error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// UPLOAD ARTWORK DIRECTLY FOR SESSION
+app.post('/api/designer-sessions/:id/artwork', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user;
+    const { fileName, fileUrl, dimensions = '', colorMode = 'CMYK', dpi = 300, notes = '', itemId = null, orderId = null } = req.body;
+
+    if (!fileUrl) return res.status(400).json({ success: false, error: 'Artwork URL is required' });
+
+    const session = db.prepare('SELECT * FROM designer_sessions WHERE id = ?').get(id);
+    const targetOrderId = orderId || session?.sales_order_id || id;
+    const targetItemId = itemId || `ITEM-${Date.now()}`;
+
+    const currentMax = db.prepare('SELECT MAX(version_number) as maxVer FROM artwork_versions WHERE order_id = ? OR session_id = ?').get(targetOrderId, id);
+    const nextVer = (currentMax?.maxVer || 0) + 1;
+    const versionId = `ART-${id}-V${nextVer}`;
+
+    db.prepare(`
+      INSERT INTO artwork_versions (
+        id, order_id, item_id, version_number, file_name, file_url, dimensions,
+        color_mode, dpi, proof_status, uploaded_by, uploaded_by_user_id, approval_notes, session_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Waiting Customer Approval', ?, ?, ?, ?)
+    `).run(
+      versionId, targetOrderId, targetItemId, nextVer, fileName || `Artwork_v${nextVer}.pdf`, fileUrl,
+      dimensions, colorMode, Number(dpi || 300), user.name || 'Designer', user.userId || user.id, notes, id
+    );
+
+    publishEvent('ARTWORK_UPDATED', { sessionId: id, versionId, versionNumber: nextVer });
+    res.json({ success: true, versionId, versionNumber: nextVer });
+  } catch (err) {
+    console.error("POST session artwork error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// SALES PRICING QUEUE ENDPOINT
+app.get('/api/sales-pricing-queue', authenticateToken, (req, res) => {
+  try {
+    const pendingItems = db.prepare(`
+      SELECT 
+        soi.id as item_id,
+        soi.sales_order_id,
+        so.order_number,
+        so.order_date,
+        so.due_date,
+        so.customer_id,
+        so.customer_name,
+        c.mobile as customer_mobile,
+        soi.product_id,
+        soi.product_name_snapshot as product_name,
+        soi.custom_title,
+        soi.spec_id,
+        soi.spec_name,
+        soi.material,
+        soi.description,
+        soi.width,
+        soi.height,
+        soi.qty,
+        soi.unit,
+        soi.selling_rate,
+        soi.estimated_cost,
+        soi.gst_rate,
+        soi.amount,
+        soi.artwork_url,
+        soi.artwork_status,
+        soi.design_status,
+        soi.designer_name,
+        soi.pricing_responsibility,
+        soi.pricing_status,
+        soi.manager_approval_status,
+        soi.item_added_by_name,
+        soi.item_added_by_role,
+        soi.design_notes,
+        soi.artwork_notes,
+        soi.is_amendment,
+        soi.created_at
+      FROM sales_order_items soi
+      JOIN sales_orders so ON soi.sales_order_id = so.id
+      LEFT JOIN customers c ON so.customer_id = c.id
+      WHERE soi.pricing_status = 'PENDING' OR so.has_pending_pricing = 1
+      ORDER BY so.created_at DESC
+    `).all();
+
+    res.json({ success: true, queue: pendingItems });
+  } catch (err) {
+    console.error("GET /api/sales-pricing-queue error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ENTER PRICING FROM SALES QUEUE
+app.put('/api/sales-pricing-queue/:orderId/items/:itemId/price', authenticateToken, requireRole(['Admin', 'Manager', 'Sales', 'Billing']), (req, res) => {
+  try {
+    const { orderId, itemId } = req.params;
+    const user = req.user;
+    const { sellingRate, discount = 0, discountType = 'FIXED', gstRate = 18, notes = '', approve = true } = req.body;
+
+    const rate = Number(sellingRate);
+    if (isNaN(rate) || rate < 0) {
+      return res.status(400).json({ success: false, error: 'Valid selling rate is required' });
+    }
+
+    const item = db.prepare('SELECT * FROM sales_order_items WHERE id = ? AND sales_order_id = ?').get(itemId, orderId);
+    if (!item) return res.status(404).json({ success: false, error: 'Order item not found' });
+
+    const order = db.prepare('SELECT * FROM sales_orders WHERE id = ?').get(orderId);
+    if (!order) return res.status(404).json({ success: false, error: 'Order not found' });
+
+    const customer = order.customer_id ? db.prepare('SELECT * FROM customers WHERE id = ?').get(order.customer_id) : null;
+
+    const tx = db.transaction(() => {
+      // 1. Update the line item with verified selling rate
+      db.prepare(`
+        UPDATE sales_order_items SET
+          selling_rate = ?,
+          discount = ?,
+          gst_rate = ?,
+          pricing_status = 'COMPLETE',
+          price_added_by_id = ?,
+          price_added_by_name = ?,
+          price_added_by_role = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(
+        rate, Number(discount || 0), Number(gstRate || item.gst_rate || 18),
+        user.employeeId || user.id, user.name || 'Sales Staff', user.role || 'Sales',
+        itemId
+      );
+
+      // 2. Recalculate whole order totals
+      const allItems = db.prepare('SELECT * FROM sales_order_items WHERE sales_order_id = ?').all(orderId);
+      const totals = calculateOrderTotals(order, allItems, customer);
+
+      // 3. Check if all items in the order now have pricing complete
+      const pendingCount = db.prepare("SELECT COUNT(*) as count FROM sales_order_items WHERE sales_order_id = ? AND pricing_status = 'PENDING'").get(orderId).count;
+      const allPriced = pendingCount === 0;
+
+      db.prepare(`
+        UPDATE sales_orders SET
+          subtotal = ?,
+          discount = ?,
+          tax_total = ?,
+          cgst = ?,
+          sgst = ?,
+          igst = ?,
+          round_off = ?,
+          grand_total = ?,
+          balance_amount = ?,
+          pricing_status = ?,
+          has_pending_pricing = ?,
+          version = version + 1,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(
+        totals.subtotal, totals.discount, totals.taxTotal,
+        totals.cgst, totals.sgst, totals.igst, totals.roundOff,
+        totals.grandTotal, totals.balanceAmount,
+        allPriced ? 'PRICING_COMPLETE' : 'PRICING_PENDING',
+        allPriced ? 0 : 1,
+        orderId
+      );
+
+      // 4. Update the individual item's line total amount
+      const updatedItemCalc = totals.items.find(i => i.id === itemId);
+      if (updatedItemCalc) {
+        db.prepare('UPDATE sales_order_items SET amount = ? WHERE id = ?').run(updatedItemCalc.lineTotal || updatedItemCalc.amount, itemId);
+      }
+    });
+
+    tx();
+
+    logAuditEvent(db, {
+      user,
+      action: 'ITEM_PRICE_SET_BY_SALES',
+      module: 'SALES',
+      recordId: itemId,
+      recordNumber: order.order_number,
+      details: { orderId, itemId, sellingRate: rate, productName: item.product_name_snapshot }
+    });
+
+    publishEvent('ORDER_PRICING_UPDATED', { orderId, itemId, rate });
+    res.json({ success: true, orderId, itemId, rate, message: 'Price saved successfully' });
+  } catch (err) {
+    console.error("PUT sales pricing error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ADD EXTRA PRODUCT / AMENDMENT TO CONFIRMED ORDER
+app.post('/api/sales-orders/:orderId/amendments', authenticateToken, (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const user = req.user;
+    const { items = [], reason = 'Additional work requested by customer' } = req.body;
+
+    if (!items || items.length === 0) {
+      return res.status(400).json({ success: false, error: 'At least one amendment item is required' });
+    }
+
+    const order = db.prepare('SELECT * FROM sales_orders WHERE id = ?').get(orderId);
+    if (!order) return res.status(404).json({ success: false, error: 'Sales order not found' });
+
+    const customer = order.customer_id ? db.prepare('SELECT * FROM customers WHERE id = ?').get(order.customer_id) : null;
+    const isDesignerActor = (user.role === 'Designer' || user.department === 'Design');
+    const isSalesOrAdmin = ['Admin', 'Manager', 'Sales', 'Billing'].includes(user.role);
+
+    const tx = db.transaction(() => {
+      const insertItem = db.prepare(`
+        INSERT INTO sales_order_items (
+          id, sales_order_id, product_id, product_name_snapshot, job_card_id, custom_title,
+          spec_id, spec_name, material, description, width, height, qty, unit, selling_rate,
+          estimated_cost, actual_cost, discount, tax_type, gst_rate, hsn_code, amount,
+          designer_required, designer_id, designer_name, design_status, artwork_status,
+          artwork_url, outsource, vendor_id, vendor_name, estimated_vendor_cost, printer_id,
+          printer_name, finisher_id, finisher_name, production_status,
+          original_selling_price, applied_pricing_rule, pricing_rule_details,
+          estimated_material_cost, estimated_labour_cost, estimated_machine_cost, estimated_overhead_cost,
+          is_rate_overridden, override_reason, overridden_by_user_id, overridden_by_name,
+          gross_profit, gross_profit_margin,
+          pricing_responsibility, pricing_status, item_added_by_id, item_added_by_name, item_added_by_role,
+          price_added_by_id, price_added_by_name, price_added_by_role, manager_approval_status,
+          is_amendment, parent_item_id, design_notes, artwork_notes
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
+      `);
+
+      const insertTask = db.prepare(`
+        INSERT INTO production_tasks (
+          id, task_date, employee_id, employee_name, order_id, order_number, customer_name,
+          item_id, item_title, process_name, quantity, unit, status, priority, department, created_by
+        ) VALUES (?, ?, 'UNASSIGNED', 'Unassigned Worker', ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Normal', 'Production', ?)
+      `);
+
+      for (let idx = 0; idx < items.length; idx++) {
+        const it = items[idx];
+        const itemId = `SOI-${orderId}-AMD-${Date.now()}-${idx + 1}`;
+        const jobCardId = `JC-${orderId}-AMD-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+
+        const prodRecord = it.productId ? db.prepare('SELECT allow_designer_pricing, default_pricing_responsibility FROM products WHERE id = ?').get(it.productId) : null;
+        const allowDesignerPricing = prodRecord ? Boolean(prodRecord.allow_designer_pricing) : false;
+        const defaultResp = prodRecord ? (prodRecord.default_pricing_responsibility || 'SALES') : 'SALES';
+
+        let pricingResp = it.pricingResponsibility || defaultResp;
+        let pricingStat = it.pricingStatus || 'COMPLETE';
+        const rate = Number(it.sellingRate || it.rate || 0);
+
+        if (isDesignerActor && !isSalesOrAdmin) {
+          if (pricingResp === 'DESIGNER' && !allowDesignerPricing) {
+            pricingResp = 'SALES';
+            pricingStat = 'PENDING';
+          } else if (pricingResp === 'SALES' || rate <= 0) {
+            pricingStat = 'PENDING';
+          }
+        } else {
+          if (rate <= 0) pricingStat = 'PENDING';
+        }
+
+        const width = Number(it.width || 0);
+        const height = Number(it.height || 0);
+        const qty = Number(it.qty || 1);
+        const area = (it.unit?.toLowerCase() === 'sq.ft' && width > 0 && height > 0) ? (width * height * qty) : qty;
+        const lineTotal = rate * area;
+
+        insertItem.run(
+          itemId, orderId, it.productId || '', it.productName || 'Amendment Item', jobCardId,
+          it.customTitle || '', it.specId || '', it.specName || '', it.material || '',
+          it.description || reason, width, height, qty, it.unit || 'Pcs', rate,
+          Number(it.estimatedCost || 0), 0, 0, it.taxType || 'ETR', Number(it.gstRate || 18), '9989',
+          lineTotal, 'YES', user.employeeId || user.id, user.name, 'Pending', 'Pending',
+          it.artworkUrl || '', it.outsource ? 1 : 0, it.vendorId || '', it.vendorName || '',
+          0, '', '', '', '', 'New', rate, 'FIXED', '', 0, 0, 0, 0, 0, '', null, null, 0, 0,
+          pricingResp, pricingStat, user.employeeId || user.id, user.name, user.role,
+          pricingStat === 'COMPLETE' ? (user.employeeId || user.id) : null,
+          pricingStat === 'COMPLETE' ? user.name : null,
+          pricingStat === 'COMPLETE' ? user.role : null,
+          'NOT_REQUIRED', 1, it.parentItemId || null, it.designNotes || '', it.artworkNotes || ''
+        );
+
+        // If order was already confirmed/in-production, spawn linked production task for amendment
+        if (order.production_status !== 'Quotation') {
+          const primaryProcess = it.material?.toLowerCase()?.includes('flex') ? 'Flex Printing' : 'Digital Printing';
+          insertTask.run(
+            `TSK-AMD-${jobCardId}`, order.order_date || new Date().toISOString().split('T')[0],
+            orderId, order.order_number, order.customer_name || '', itemId, it.productName,
+            primaryProcess, qty, it.unit || 'Sq.Ft', user.name
+          );
+        }
+      }
+
+      // Recalculate order totals
+      const allItems = db.prepare('SELECT * FROM sales_order_items WHERE sales_order_id = ?').all(orderId);
+      const totals = calculateOrderTotals(order, allItems, customer);
+      const pendingCount = db.prepare("SELECT COUNT(*) as count FROM sales_order_items WHERE sales_order_id = ? AND pricing_status = 'PENDING'").get(orderId).count;
+
+      db.prepare(`
+        UPDATE sales_orders SET
+          subtotal = ?,
+          discount = ?,
+          tax_total = ?,
+          cgst = ?,
+          sgst = ?,
+          igst = ?,
+          round_off = ?,
+          grand_total = ?,
+          balance_amount = ?,
+          has_pending_pricing = ?,
+          pricing_status = ?,
+          version = version + 1,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(
+        totals.subtotal, totals.discount, totals.taxTotal,
+        totals.cgst, totals.sgst, totals.igst, totals.roundOff,
+        totals.grandTotal, totals.balanceAmount,
+        pendingCount > 0 ? 1 : 0,
+        pendingCount > 0 ? 'PRICING_PENDING' : 'PRICING_COMPLETE',
+        orderId
+      );
+    });
+
+    tx();
+
+    logAuditEvent(db, {
+      user,
+      action: 'ORDER_AMENDMENT_ADDED',
+      module: 'SALES',
+      recordId: orderId,
+      recordNumber: order.order_number,
+      details: { orderId, reason, amendmentItemsCount: items.length }
+    });
+
+    publishEvent('ORDER_AMENDED', { orderId, count: items.length });
+    res.json({ success: true, orderId, message: 'Amendment item(s) added successfully' });
+  } catch (err) {
+    console.error("POST amendment error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 app.get('/api/deliveries', authenticateToken, (req, res) => {
   try {
     const notes = db.prepare('SELECT * FROM delivery_notes ORDER BY created_at DESC').all();

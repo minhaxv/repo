@@ -1900,6 +1900,598 @@ export function runMigrations(db) {
   try { db.prepare("ALTER TABLE product_specifications ADD COLUMN default_vendor_id TEXT").run(); } catch(e) {}
   try { db.prepare("ALTER TABLE product_specifications ADD COLUMN default_vendor TEXT").run(); } catch(e) {}
 
+  // -----------------------------------------------------------------------
+  // MIGRATION 021: Full Printing Shop Product Catalogue Refresh
+  // -----------------------------------------------------------------------
+  applyMigration = applyMigration || function(){};
+
+  // Inline the migration since applyMigration is a closure — we call the pattern directly
+  const mig021Name = '021_full_printing_shop_catalogue';
+  if (!db.prepare('SELECT migration_name FROM schema_migrations WHERE migration_name = ?').get(mig021Name)) {
+    const tx021 = db.transaction((database) => {
+      // 1. Remove duplicate canvas test products created during automated tests
+      database.prepare(`DELETE FROM products WHERE category = 'Canvas' OR id LIKE 'PRD-CANV-%'`).run();
+      database.prepare(`DELETE FROM product_specifications WHERE product_id LIKE 'PRD-CANV-%'`).run();
+
+      // 2. Helper: upsert product + specs + slabs
+      const upsertProd = database.prepare(`
+        INSERT INTO products (
+          id, product_code, name, sku, barcode, category, description, unit,
+          default_rate, estimated_cost, gst_rate, hsn_code, min_order_qty,
+          pricing_method, variants_json, production_settings_json, active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        ON CONFLICT(id) DO UPDATE SET
+          product_code = excluded.product_code,
+          name = excluded.name,
+          sku = excluded.sku,
+          category = excluded.category,
+          description = excluded.description,
+          unit = excluded.unit,
+          default_rate = excluded.default_rate,
+          estimated_cost = excluded.estimated_cost,
+          gst_rate = excluded.gst_rate,
+          hsn_code = excluded.hsn_code,
+          min_order_qty = excluded.min_order_qty,
+          pricing_method = excluded.pricing_method,
+          variants_json = excluded.variants_json,
+          production_settings_json = excluded.production_settings_json
+      `);
+
+      const upsertSpec = database.prepare(`
+        INSERT INTO product_specifications (
+          id, product_id, spec_name, material_name, description, unit,
+          cost_price, selling_price, gst_rate, hsn_code, is_default, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')
+        ON CONFLICT(id) DO UPDATE SET
+          spec_name = excluded.spec_name,
+          material_name = excluded.material_name,
+          description = excluded.description,
+          unit = excluded.unit,
+          cost_price = excluded.cost_price,
+          selling_price = excluded.selling_price,
+          gst_rate = excluded.gst_rate,
+          hsn_code = excluded.hsn_code,
+          is_default = excluded.is_default
+      `);
+
+      const upsertSlab = database.prepare(`
+        INSERT OR REPLACE INTO product_pricing_slabs (id, product_id, spec_id, min_qty, max_qty, rate, cost_rate, pricing_rule_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      // =====================================================================
+      // CATEGORY 1: FLEX & BANNERS (Large Format)
+      // =====================================================================
+      upsertProd.run(
+        'PROD-01', 'PRD-FLX-01', 'Star Flex Banner Printing (240gsm Frontlit)', 'FLX-STR-240', null,
+        'Flex & Banner',
+        'Premium outdoor frontlit flex banner printing on 240gsm Star Frontlit media. UV-resistant eco-solvent inks for vibrant, weatherproof output. Ideal for hoardings, shop displays and outdoor advertising.',
+        'Sq.Ft', 15, 7.5, 18, '9989', 10, 'SLAB', 
+        JSON.stringify([{ type: 'Size', options: ['Any Custom Size'] }, { type: 'Finishing', options: ['Eyelet', 'Hemming + Eyelet', 'Pole Pocket', 'No Finishing'] }]),
+        JSON.stringify({ machineType: 'Roland TrueVIS VG3 64"', inkType: 'Eco-Solvent CMYK', resolution: '720dpi' })
+      );
+      upsertSpec.run('SPEC-101', 'PROD-01', '240gsm Star Frontlit Flex', 'Star Frontlit Flex 240gsm (10ft Roll)', 'Standard outdoor frontlit flex banner, UV stable eco-solvent print', 'Sq.Ft', 7.5, 15, 18, '9989', 1);
+      upsertSpec.run('SPEC-102', 'PROD-01', '340gsm Heavy Duty Blackout Flex', 'Blackout Flex 340gsm (10ft Roll)', 'Heavy weight flex with light-blocking black back barrier, double-sided display ready', 'Sq.Ft', 12, 22, 18, '9989', 0);
+
+      upsertProd.run(
+        'PROD-FLX-02', 'PRD-FLX-02', 'Backlit Flex Banner Printing (250gsm Super Glow)', 'FLX-BLT-250', null,
+        'Flex & Banner',
+        'High luminance backlit flex media for illuminated display boards, light boxes, and exhibition panels. Super glow PVC for vivid colours when lit from behind.',
+        'Sq.Ft', 25, 12, 18, '9989', 5, 'SLAB',
+        JSON.stringify([{ type: 'Finishing', options: ['Eyelet', 'Hemming + Eyelet', 'No Finishing'] }]),
+        JSON.stringify({ machineType: 'Roland TrueVIS VG3 64"', inkType: 'Eco-Solvent CMYK', mediaGsm: 250 })
+      );
+      upsertSpec.run('SPEC-FLX-021', 'PROD-FLX-02', '250gsm Super Glow Backlit Flex', 'Super Glow Backlit Flex 250gsm', 'Translucent PVC backlit media for light boxes and illuminated sign boards', 'Sq.Ft', 12, 25, 18, '9989', 1);
+      upsertSpec.run('SPEC-FLX-022', 'PROD-FLX-02', '380gsm Blockout Backlit Flex', 'Blockout Backlit Flex 380gsm', 'High opacity blockout backlit media, no show-through, superior light diffusion', 'Sq.Ft', 18, 35, 18, '9989', 0);
+
+      upsertProd.run(
+        'PROD-FLX-03', 'PRD-FLX-03', 'One-Way Vision Perforated Window Vinyl', 'VNY-OWV-30', null,
+        'Flex & Banner',
+        'Micro-perforated self-adhesive vinyl for glass and shop windows. See-through from inside, full-colour display from outside. 30% perforation ratio.',
+        'Sq.Ft', 55, 28, 18, '9989', 5, 'FIXED',
+        JSON.stringify([{ type: 'Perforation', options: ['30% OWV', '50% OWV'] }, { type: 'Lamination', options: ['Gloss Overlaminate', 'No Laminate'] }]),
+        '{}');
+      upsertSpec.run('SPEC-FLX-031', 'PROD-FLX-03', '30% OWV Perforated Vinyl (Standard)', 'OWV Perforated Vinyl 30%', 'Standard window perf vinyl for shop fronts and glass partitions', 'Sq.Ft', 28, 55, 18, '9989', 1);
+
+      upsertProd.run(
+        'PROD-FLX-04', 'PRD-FLX-04', 'Mesh Fence / Wind-Resistant Banner', 'FLX-MSH-440', null,
+        'Flex & Banner',
+        'Breathable PVC mesh banner for outdoor fence advertising, construction sites and sports events. Wind-load resistant with 50% air flow-through.',
+        'Sq.Ft', 28, 14, 18, '9989', 20, 'FIXED',
+        JSON.stringify([{ type: 'Finishing', options: ['Eyelet Every 2ft', 'Hemming + Eyelet'] }]),
+        '{}');
+      upsertSpec.run('SPEC-FLX-041', 'PROD-FLX-04', '440gsm PVC Mesh Fence Banner', 'PVC Mesh 440gsm', 'Wind-resistant mesh for hoardings, events and construction site banners', 'Sq.Ft', 14, 28, 18, '9989', 1);
+
+      // =====================================================================
+      // CATEGORY 2: VINYL & STICKERS
+      // =====================================================================
+      upsertProd.run(
+        'PROD-02', 'PRD-VNY-01', 'Self-Adhesive Vinyl Sticker Printing (Gloss)', 'VNY-SAV-GLS', null,
+        'Vinyl & Stickers',
+        'High-quality self-adhesive vinyl sticker printing on premium Avery Dennison gloss white vinyl. UV-resistant, waterproof, suitable for vehicles, shop windows and indoor display.',
+        'Sq.Ft', 35, 16, 18, '4911', 1, 'FIXED',
+        JSON.stringify([{ type: 'Lamination', options: ['Gloss Overlaminate', 'Matte Overlaminate', 'No Laminate'] }, { type: 'Cut', options: ['Rectangular Cut', 'Shape Cut (Die Cut)'] }]),
+        JSON.stringify({ machineType: 'Roland VersaUV', inkType: 'ECO-SOL MAX4' })
+      );
+      upsertSpec.run('SPEC-103', 'PROD-02', 'Avery Dennison Gloss White Vinyl', 'Avery Gloss White Self-Adhesive Vinyl', 'Premium permanent adhesive gloss vinyl sticker', 'Sq.Ft', 16, 35, 18, '4911', 1);
+      upsertSpec.run('SPEC-104', 'PROD-02', 'Matte Laminated Waterproof Vinyl', 'Matte Vinyl + Thermal Lamination Film', 'Durable indoor/outdoor sticker with matte thermal lamination', 'Sq.Ft', 22, 45, 18, '4911', 0);
+      upsertSpec.run('SPEC-VNY-023', 'PROD-02', 'Textured / Brushed Effect Vinyl', 'Brushed Silver or Gold Textured Vinyl', 'Decorative brushed texture vinyl for premium labelling and branding', 'Sq.Ft', 28, 60, 18, '4911', 0);
+
+      upsertProd.run(
+        'PROD-VNY-02', 'PRD-VNY-02', 'Chrome & Metallic Vinyl Stickers', 'VNY-CHR-MET', null,
+        'Vinyl & Stickers',
+        'Ultra-premium chrome, gold and silver metallic vinyl sticker printing. Mirror-finish reflective surfaces for branding, number plates and luxury product labels.',
+        'Sq.Ft', 75, 35, 18, '4911', 1, 'FIXED',
+        JSON.stringify([{ type: 'Finish', options: ['Chrome Mirror', 'Gold Metallic', 'Silver Metallic', 'Rose Gold'] }]),
+        '{}');
+      upsertSpec.run('SPEC-VNY-021', 'PROD-VNY-02', 'Chrome Mirror Vinyl (Holographic)', 'Chrome Mirror Self-Adhesive Vinyl', 'Mirror-like chrome finish sticker for premium branding', 'Sq.Ft', 35, 75, 18, '4911', 1);
+      upsertSpec.run('SPEC-VNY-022', 'PROD-VNY-02', 'Brushed Gold/Silver Metallic Vinyl', 'Brushed Metallic Self-Adhesive Vinyl', 'Premium brushed metallic finish vinyl for signage and vehicle graphics', 'Sq.Ft', 30, 65, 18, '4911', 0);
+
+      upsertProd.run(
+        'PROD-VNY-03', 'PRD-VNY-03', 'Floor Sticker (Anti-Slip Laminated Vinyl)', 'VNY-FLR-ALS', null,
+        'Vinyl & Stickers',
+        'Heavy-duty anti-slip laminated floor sticker for retail stores, malls, events and wayfinding. Certified slip-resistant overlaminate with high-tack floor adhesive.',
+        'Sq.Ft', 95, 45, 18, '4911', 4, 'FIXED',
+        JSON.stringify([{ type: 'Shape', options: ['Square/Rectangle', 'Round', 'Custom Shape'] }]),
+        '{}');
+      upsertSpec.run('SPEC-VNY-031', 'PROD-VNY-03', 'Anti-Slip Floor Vinyl (Standard)', 'Anti-Slip PVC Floor Sticker Media', 'High-tack anti-slip textured PVC floor sticker with safety laminate', 'Sq.Ft', 45, 95, 18, '4911', 1);
+
+      upsertProd.run(
+        'PROD-VNY-04', 'PRD-VNY-04', 'Vehicle Wrap & Car Graphics', 'VNY-VHC-WRP', null,
+        'Vinyl & Stickers',
+        'Full body or partial vehicle wrap using premium cast vinyl. Includes design, print and installation. Suitable for cars, vans, bikes and fleet branding.',
+        'Sq.Ft', 120, 55, 18, '9989', 5, 'FIXED',
+        JSON.stringify([{ type: 'Vinyl Grade', options: ['Calendered', 'Cast (3M / Avery)'] }, { type: 'Service', options: ['Supply Only', 'Supply + Installation'] }]),
+        '{}');
+      upsertSpec.run('SPEC-VNY-041', 'PROD-VNY-04', 'Calendered Vehicle Vinyl (Standard)', 'Calendered Self-Adhesive Vehicle Vinyl', 'Standard vehicle graphics vinyl for flat surfaces', 'Sq.Ft', 55, 120, 18, '9989', 1);
+      upsertSpec.run('SPEC-VNY-042', 'PROD-VNY-04', 'Cast Vinyl Wrap (3M / Avery Premium)', '3M 1080 / Avery Cast Vehicle Wrap Vinyl', 'Premium cast vinyl for complex curves and full vehicle wraps', 'Sq.Ft', 85, 180, 18, '9989', 0);
+
+      // =====================================================================
+      // CATEGORY 3: COMMERCIAL PRINT (Offset & Digital)
+      // =====================================================================
+      upsertProd.run(
+        'PROD-05', 'PRD-CRD-01', 'Business Cards / Visiting Cards', 'BC-300-MATTE', null,
+        'Commercial Print',
+        'Premium executive business visiting cards on 300 to 400 GSM art card. Available in matte, gloss, velvet lamination with optional Spot UV, foil stamping and round corners.',
+        'Box', 850, 380, 18, '4911', 1, 'FIXED',
+        JSON.stringify([{ type: 'GSM', options: ['300 GSM Art Card', '350 GSM Art Card', '400 GSM Premium Board'] }, { type: 'Finishing', options: ['Matte Lamination', 'Gloss Lamination', 'Velvet Lamination + Spot UV', 'Gold Foil Stamp'] }, { type: 'Corners', options: ['Square Corners', 'Round Corners (6mm)'] }]),
+        JSON.stringify({ boxQty: 1000, sheetsPerBox: 34, yield: 30 })
+      );
+      upsertSpec.run('SPEC-108', 'PROD-05', '300gsm Matte Laminated Business Card (Box/1000)', '300gsm Art Card + Thermal Matte Film', 'Standard matte executive visiting card, 1000 pcs per box', 'Box', 280, 550, 18, '4911', 1);
+      upsertSpec.run('SPEC-BC-02', 'PROD-05', '350gsm Velvet Lamination + Raised Spot UV (Box/1000)', '350gsm Art Card + Velvet Lam + Spot UV', 'Luxury tactile visiting card with velvet coating and raised UV effect', 'Box', 380, 850, 18, '4911', 0);
+      upsertSpec.run('SPEC-BC-03', 'PROD-05', 'UV-Coated Glossy (2 Side, Box/1000)', '300gsm Art Card + UV Gloss Coat', 'Vibrant full-gloss UV coated business cards, crisp and professional', 'Box', 300, 600, 18, '4911', 0);
+
+      upsertProd.run(
+        'PROD-CMR-01', 'PRD-LTR-01', 'Company Letterhead (A4 Offset Printing)', 'LTR-A4-70GSM', null,
+        'Commercial Print',
+        'Official company letterhead on 70gsm or 90gsm premium bond paper. Single or double colour design with full-bleed options. Supplied in reams or pads.',
+        'Pcs', 2.5, 0.95, 18, '4911', 100, 'SLAB',
+        JSON.stringify([{ type: 'Paper GSM', options: ['70 GSM Bond', '90 GSM Executive Bond', '120 GSM Ivory'] }, { type: 'Printing', options: ['1 Colour', '2 Colour', 'Full Colour CMYK'] }]),
+        '{}');
+      upsertSpec.run('SPEC-CMR-011', 'PROD-CMR-01', 'A4 Letterhead 70gsm Full Colour (100 pcs)', '70gsm Bond Paper', 'Standard A4 letterhead, full colour CMYK, 100 sheet pad', 'Pcs', 0.95, 2.5, 18, '4911', 1);
+      upsertSpec.run('SPEC-CMR-012', 'PROD-CMR-01', 'A4 Letterhead 90gsm Premium (100 pcs)', '90gsm Premium Bond', 'Executive quality letterhead on thick bond paper', 'Pcs', 1.4, 3.5, 18, '4911', 0);
+      upsertSlab.run('SLAB-LTR-1', 'PROD-CMR-01', null, 100, 499, 2.5, 0.95, '100-500 Pcs');
+      upsertSlab.run('SLAB-LTR-2', 'PROD-CMR-01', null, 500, 999, 1.8, 0.75, '500-1000 Pcs');
+      upsertSlab.run('SLAB-LTR-3', 'PROD-CMR-01', null, 1000, null, 1.2, 0.60, '1000+ Pcs Offset');
+
+      upsertProd.run(
+        'PROD-CMR-02', 'PRD-FLY-01', 'Flyers & Pamphlets (A4 / A5 / A6)', 'FLY-A4-130', null,
+        'Commercial Print',
+        'High-impact promotional flyers and leaflets for marketing campaigns, events and product launches. Printed on 130gsm coated art paper, full CMYK both sides.',
+        'Pcs', 2.0, 0.75, 18, '4911', 100, 'SLAB',
+        JSON.stringify([{ type: 'Size', options: ['A4 (21x29.7cm)', 'A5 (14.8x21cm)', 'A6 DL Size (10x21cm)'] }, { type: 'GSM', options: ['130 GSM Gloss Art', '150 GSM Matt Art', '170 GSM Silk Coated'] }, { type: 'Sides', options: ['Single Side Print', 'Double Side Print'] }]),
+        '{}');
+      upsertSpec.run('SPEC-CMR-021', 'PROD-CMR-02', 'A4 Flyer 130gsm Gloss (Double Sided)', '130gsm Gloss Art Paper', 'Full-colour double-sided A4 flyer on 130gsm gloss art paper', 'Pcs', 0.75, 2.0, 18, '4911', 1);
+      upsertSpec.run('SPEC-CMR-022', 'PROD-CMR-02', 'A5 Flyer 150gsm Matt (Double Sided)', '150gsm Matte Art Paper', 'Premium A5 matt finish double-sided flyer', 'Pcs', 0.55, 1.5, 18, '4911', 0);
+      upsertSlab.run('SLAB-FLY-1', 'PROD-CMR-02', null, 100, 499, 2.0, 0.75, '100-499 Short Run');
+      upsertSlab.run('SLAB-FLY-2', 'PROD-CMR-02', null, 500, 999, 1.4, 0.55, '500-999 Mid Run');
+      upsertSlab.run('SLAB-FLY-3', 'PROD-CMR-02', null, 1000, 4999, 0.95, 0.40, '1000-5000 Bulk');
+      upsertSlab.run('SLAB-FLY-4', 'PROD-CMR-02', null, 5000, null, 0.65, 0.30, '5000+ Offset');
+
+      upsertProd.run(
+        'PROD-CMR-03', 'PRD-BRO-01', 'Brochures & Catalogues (Folded)', 'BRO-A4-170', null,
+        'Commercial Print',
+        'Professionally designed and printed company brochures, product catalogues and info-leaflets. Available in bi-fold, tri-fold, Z-fold and 8-page A5 booklet formats.',
+        'Pcs', 12, 4.5, 18, '4911', 50, 'SLAB',
+        JSON.stringify([{ type: 'Format', options: ['A4 Bi-Fold (4 pages)', 'A4 Tri-Fold (6 pages)', 'A4 Z-Fold (6 pages)', 'A5 8-Page Booklet (Stapled)'] }, { type: 'Paper', options: ['130 GSM Gloss Art', '170 GSM Matt Art', '250 GSM Cover + 130gsm Inner'] }]),
+        '{}');
+      upsertSpec.run('SPEC-CMR-031', 'PROD-CMR-03', 'A4 Tri-Fold 130gsm Gloss', '130gsm Gloss Art Paper Trifold', 'A4 tri-fold brochure, full CMYK both sides, gloss finish', 'Pcs', 4.5, 12, 18, '4911', 1);
+      upsertSpec.run('SPEC-CMR-032', 'PROD-CMR-03', 'A5 Booklet 8-Page Saddle Stitch', '130gsm Gloss Inner + 250gsm Cover', 'A5 saddle-stitched booklet, 8 pages full colour', 'Pcs', 9, 22, 18, '4911', 0);
+      upsertSlab.run('SLAB-BRO-1', 'PROD-CMR-03', null, 50, 249, 12, 4.5, '50-250 Short Run');
+      upsertSlab.run('SLAB-BRO-2', 'PROD-CMR-03', null, 250, 999, 8, 3.2, '250-1000');
+      upsertSlab.run('SLAB-BRO-3', 'PROD-CMR-03', null, 1000, null, 5.5, 2.2, '1000+ Offset Run');
+
+      upsertProd.run(
+        'PROD-CMR-04', 'PRD-BBK-01', 'Bill Books / Invoice Pads (NCR)', 'BBK-NCR-A5', null,
+        'Commercial Print',
+        'Custom carbon copy invoice books, bill pads and order forms on NCR (No Carbon Required) paper. 2-part or 3-part sets, spiral or glue-bound.',
+        'Pad', 450, 180, 18, '4911', 5, 'FIXED',
+        JSON.stringify([{ type: 'Copies', options: ['2-Part NCR (Duplicate)', '3-Part NCR (Triplicate)'] }, { type: 'Size', options: ['A5 (100 Sets)', 'A4 (50 Sets)', 'Custom Size'] }, { type: 'Binding', options: ['Glue-Bound Top', 'Spiral Bound', 'Pads (50 Sheets)'] }]),
+        '{}');
+      upsertSpec.run('SPEC-CMR-041', 'PROD-CMR-04', 'A5 Duplicate NCR Bill Book (100 Sets)', 'NCR A5 Duplicate Paper', '2-part NCR A5 bill book, 100 sets, company header printed', 'Pad', 180, 450, 18, '4911', 1);
+      upsertSpec.run('SPEC-CMR-042', 'PROD-CMR-04', 'A4 Triplicate NCR Invoice Book (50 Sets)', 'NCR A4 Triplicate Paper', '3-part NCR A4 invoice book, 50 sets, serial numbered', 'Pad', 280, 650, 18, '4911', 0);
+
+      upsertProd.run(
+        'PROD-CMR-05', 'PRD-ENV-01', 'Envelope Printing (DL / A5 / Courier)', 'ENV-DL-80G', null,
+        'Commercial Print',
+        'Custom branded envelope printing for company correspondence, invitations and courier dispatch. Available in DL, C5, C4 and custom sizes with glue or self-seal flap.',
+        'Pcs', 4.5, 1.8, 18, '4911', 100, 'SLAB',
+        JSON.stringify([{ type: 'Size', options: ['DL (110x220mm)', 'C5 (162x229mm)', 'C4 A4 Size (229x324mm)'] }, { type: 'Print', options: ['1 Colour Letterpress', 'Full CMYK Digital'] }]),
+        '{}');
+      upsertSpec.run('SPEC-CMR-051', 'PROD-CMR-05', 'DL Envelope Full Colour Print (100 pcs)', '80gsm White Wove Envelope', 'DL windowed or plain envelope, CMYK branded print', 'Pcs', 1.8, 4.5, 18, '4911', 1);
+      upsertSlab.run('SLAB-ENV-1', 'PROD-CMR-05', null, 100, 499, 4.5, 1.8, '100-500 Pcs');
+      upsertSlab.run('SLAB-ENV-2', 'PROD-CMR-05', null, 500, null, 2.8, 1.2, '500+ Pcs');
+
+      // =====================================================================
+      // CATEGORY 4: PROMOTIONAL ITEMS (Sublimation & Screen Print)
+      // =====================================================================
+      // Mug already exists - just update
+      upsertProd.run(
+        'PROD-MUG-01', 'PRD-MUG-01', 'Custom Sublimation Ceramic Mug Printing', 'MUG-WHT-11OZ', '8901234500012',
+        'Promotional Items',
+        'High-quality 11oz AAA-grade ceramic mugs with permanent, scratch-resistant full-colour sublimation print. Dishwasher safe. Perfect for corporate gifting, events and retail.',
+        'Pcs', 500, 65, 18, '4911', 1, 'SLAB',
+        JSON.stringify([{ type: 'Mug Type', options: ['White 11oz Standard', 'Magic Color-Changing 11oz', 'Inner Color Mug', 'Latte 12oz Tall', 'Conical Metallic'] }, { type: 'Wrap', options: ['Full Wrap 360°', 'One Side Print'] }]),
+        JSON.stringify({ machineType: 'Sublimation Mug Heat Press', pressTime: 180, tempCelsius: 200, wasteAllowance: 3.0 })
+      );
+
+      upsertProd.run(
+        'PROD-PRO-02', 'PRD-TSH-01', 'Custom T-Shirt Printing (Sublimation / DTF)', 'TSH-WHT-SUB', null,
+        'Promotional Items',
+        'Full-colour custom T-shirt printing using sublimation (polyester) or DTF (Direct-to-Film) for cotton and blended fabrics. Available in all sizes and colours.',
+        'Pcs', 350, 120, 12, '6109', 10, 'SLAB',
+        JSON.stringify([{ type: 'Fabric', options: ['100% Polyester (Sublimation)', 'Cotton (DTF)', 'CVC 60/40 Blend (DTF)'] }, { type: 'Print Area', options: ['Full Front A3', 'Full Front + Back', 'Left Chest Logo'] }, { type: 'Size', options: ['S', 'M', 'L', 'XL', 'XXL', '3XL'] }]),
+        JSON.stringify({ machineType: 'Flat Bed Heat Press / DTF Printer', temp: 165, pressTime: 15 })
+      );
+      upsertSpec.run('SPEC-PRO-021', 'PROD-PRO-02', 'Polyester T-Shirt Sublimation (All-Over Print)', 'Plain White Polyester T-Shirt + Sublimation Paper', 'Full colour all-over sublimation on polyester tee', 'Pcs', 120, 350, 12, '6109', 1);
+      upsertSpec.run('SPEC-PRO-022', 'PROD-PRO-02', 'Cotton T-Shirt DTF Print (Front Only)', 'Plain White Cotton T-Shirt + DTF Transfer', 'DTF heat transfer print on cotton fabric, front only', 'Pcs', 140, 380, 12, '6109', 0);
+      upsertSpec.run('SPEC-PRO-023', 'PROD-PRO-02', 'Polo Shirt Corporate DTF Branding', 'Plain Polo Shirt + DTF Left Chest Logo', 'Corporate polo with left chest logo DTF print', 'Pcs', 200, 550, 12, '6109', 0);
+      upsertSlab.run('SLAB-TSH-1', 'PROD-PRO-02', null, 10, 49, 350, 120, '10-50 Pcs');
+      upsertSlab.run('SLAB-TSH-2', 'PROD-PRO-02', null, 50, 199, 280, 100, '50-200 Corporate');
+      upsertSlab.run('SLAB-TSH-3', 'PROD-PRO-02', null, 200, null, 220, 85, '200+ Bulk');
+
+      upsertProd.run(
+        'PROD-PRO-03', 'PRD-CAP-01', 'Cap / Hat Printing (Sublimation & Embroidery)', 'CAP-SUB-EMB', null,
+        'Promotional Items',
+        'Custom printed and embroidered caps and hats for corporate events, sports teams and promotions. Sublimation for full-colour, embroidery for logo/text.',
+        'Pcs', 350, 130, 12, '6505', 10, 'SLAB',
+        JSON.stringify([{ type: 'Method', options: ['Sublimation All-Over', 'Embroidery (Front + Side)', 'DTF Heat Transfer'] }, { type: 'Cap Style', options: ['Foam Trucker Cap', 'Flex-Fit Sports Cap', 'Snapback Cap'] }]),
+        '{}');
+      upsertSpec.run('SPEC-PRO-031', 'PROD-PRO-03', 'Sublimation All-Over Printed Cap', 'Plain Polyester Sublimation Cap + Sublimation Print', 'Full-colour all-over sublimation print on foam cap', 'Pcs', 130, 350, 12, '6505', 1);
+      upsertSpec.run('SPEC-PRO-032', 'PROD-PRO-03', 'Embroidered Logo Cap (Corporate)', 'Plain Cap + Embroidery Thread + Digitizing', 'Premium embroidered logo on front panel, up to 10,000 stitches', 'Pcs', 180, 480, 12, '6505', 0);
+
+      upsertProd.run(
+        'PROD-PRO-04', 'PRD-PEN-01', 'Branded Pen / Stationery Printing', 'PEN-BRND-MET', null,
+        'Promotional Items',
+        'Corporate branded pens, markers and stationery with company logo via screen printing, laser engraving or pad printing. Minimum 50 pcs.',
+        'Pcs', 55, 22, 18, '9608', 50, 'SLAB',
+        JSON.stringify([{ type: 'Pen Type', options: ['Metal Ball Pen', 'Plastic Ball Pen', 'Metal Roller Pen', 'Stylus Touch Pen'] }, { type: 'Branding', options: ['Screen Print (1 Colour)', 'Laser Engraving', 'Pad Print (Full Colour)'] }]),
+        '{}');
+      upsertSpec.run('SPEC-PRO-041', 'PROD-PRO-04', 'Metal Ball Pen Screen Print (1 Colour)', 'Metal Ball Pen + Screen Print Branding', 'Classic metal pen with 1-colour screen print logo', 'Pcs', 22, 55, 18, '9608', 1);
+      upsertSpec.run('SPEC-PRO-042', 'PROD-PRO-04', 'Metal Roller Pen Laser Engraving', 'Metal Roller Pen + Laser Engraving', 'Premium roller pen with laser-engraved logo, luxury look', 'Pcs', 45, 120, 18, '9608', 0);
+      upsertSlab.run('SLAB-PEN-1', 'PROD-PRO-04', null, 50, 199, 55, 22, '50-200 Pcs');
+      upsertSlab.run('SLAB-PEN-2', 'PROD-PRO-04', null, 200, null, 42, 18, '200+ Bulk');
+
+      upsertProd.run(
+        'PROD-PRO-05', 'PRD-PHF-01', 'Photo Frame / Photo Print (Sublimation)', 'PHF-MDF-5X7', null,
+        'Promotional Items',
+        'Personalised sublimation photo frames, MDF gifts and keepsakes. Custom photo printed on MDF board or ceramic tile with UV-stable sublimation inks.',
+        'Pcs', 180, 65, 18, '4911', 1, 'FIXED',
+        JSON.stringify([{ type: 'Product', options: ['5x7" MDF Photo Frame', '4x6" Ceramic Tile', '8x10" MDF Canvas Board', 'A4 MDF Wall Art'] }]),
+        '{}');
+      upsertSpec.run('SPEC-PRO-051', 'PROD-PRO-05', '5x7 MDF Sublimation Photo Frame', 'Blank 5x7 MDF Photo Frame + Sublimation Print', 'Custom photo printed on 5x7 inch MDF frame', 'Pcs', 65, 180, 18, '4911', 1);
+      upsertSpec.run('SPEC-PRO-052', 'PROD-PRO-05', 'A4 MDF Wall Art Board (Sublimation)', 'Blank A4 MDF White Coated Board + Sublimation', 'A4 full-colour MDF wall art, high resolution print', 'Pcs', 90, 250, 18, '4911', 0);
+
+      // =====================================================================
+      // CATEGORY 5: ARCHITECTURAL SIGNAGE
+      // =====================================================================
+      upsertProd.run(
+        'PROD-03', 'PRD-ACR-01', 'Acrylic 3D LED Illuminated Letters & Logos', 'ACR-3D-LED', null,
+        'Architectural Signage',
+        'Precision-cut 3mm / 5mm acrylic face-lit 3D channel letters with Samsung LED modules. Custom corporate logos, shop name boards and hospital/hotel signage. IP67 rated waterproof LEDs.',
+        'Sq.Ft', 1200, 650, 18, '9405', 1, 'FIXED',
+        JSON.stringify([{ type: 'Acrylic Color', options: ['White Acrylic (LED Face)', 'Coloured Acrylic', 'Black Acrylic (Halo Lit)'] }, { type: 'Thickness', options: ['3mm Acrylic', '5mm Acrylic'] }, { type: 'LED', options: ['Samsung Cool White', 'Samsung Warm White', 'RGB Colour Changing'] }]),
+        JSON.stringify({ machineType: 'CNC Router + Laser Cutter', materialCNC: 'Cast Acrylic Sheet 3mm', ledBrand: 'Samsung IP67' })
+      );
+      upsertSpec.run('SPEC-105', 'PROD-03', 'Acrylic Face-Lit 3D Letters (Samsung LED)', '3mm Cast Acrylic + Samsung IP67 LED Strip', 'Premium front-lit acrylic channel letters with IP67 waterproof LED modules', 'Sq.Ft', 650, 1200, 18, '9405', 1);
+      upsertSpec.run('SPEC-106', 'PROD-03', 'Titanium Gold SS 304 3D Letters (Halo Lit)', 'SS 304 Titanium Gold Sheet + LED Halo', 'Luxury stainless steel gold halo-backlit channel letters for premium brands', 'Sq.Ft', 950, 1800, 18, '9405', 0);
+      upsertSpec.run('SPEC-ACR-033', 'PROD-03', 'Aluminium Dibond Tray + Acrylic Face 3D Letters', 'Aluminium Tray + 3mm Acrylic + LED', 'Aluminium tray letter with acrylic front and LED illumination', 'Sq.Ft', 800, 1500, 18, '9405', 0);
+
+      upsertProd.run(
+        'PROD-SGN-02', 'PRD-LED-01', 'Glow Sign Board (Non-Lit ACP + LED Border)', 'GSB-ACP-LED', null,
+        'Architectural Signage',
+        'Aluminium Composite Panel (ACP) with vinyl print and optional LED border or light box. Durable, lightweight and weatherproof for shop fronts and commercial signage.',
+        'Sq.Ft', 280, 140, 18, '9405', 4, 'FIXED',
+        JSON.stringify([{ type: 'Finish', options: ['ACP + Vinyl Print Only', 'ACP + LED Border Frame', 'ACP Light Box (Backlit)'] }, { type: 'ACP Brand', options: ['Alucobond Premium', 'Standard ACP'] }]),
+        '{}');
+      upsertSpec.run('SPEC-SGN-021', 'PROD-SGN-02', 'ACP Board + Vinyl Print (Standard)', 'ACP Sheet + Vinyl Print + Aluminium Frame', 'Aluminium composite panel with printed vinyl face and frame', 'Sq.Ft', 140, 280, 18, '9405', 1);
+      upsertSpec.run('SPEC-SGN-022', 'PROD-SGN-02', 'ACP Light Box (Backlit Signage)', 'ACP Box + Backlit Vinyl + LED Inside', 'Backlit ACP light box sign with LED illumination and flex vinyl face', 'Sq.Ft', 220, 450, 18, '9405', 0);
+
+      upsertProd.run(
+        'PROD-SGN-03', 'PRD-NLT-01', 'Neon Flex LED Sign Board', 'NGN-FLEX-RGB', null,
+        'Architectural Signage',
+        'Custom RGB neon flex LED signs for restaurants, shops and events. Flexible silicone neon tube with acrylic or clear backing, vivid glow effect.',
+        'Nos', 3500, 1400, 18, '9405', 1, 'FIXED',
+        JSON.stringify([{ type: 'Color', options: ['Single Color', 'Dual Color', 'RGB (Multi-Color)'] }, { type: 'Backing', options: ['Clear Acrylic Board', 'MDF Painted Board', 'Free-Standing Frame'] }]),
+        '{}');
+      upsertSpec.run('SPEC-SGN-031', 'PROD-SGN-03', 'Neon Flex LED (Up to 1 sq.ft)', 'RGB Neon Flex Strip + Acrylic Backing', 'Custom neon flex LED sign up to 1 sq.ft, vivid and energy-efficient', 'Nos', 1400, 3500, 18, '9405', 1);
+
+      // =====================================================================
+      // CATEGORY 6: DISPLAY & EXHIBITION
+      // =====================================================================
+      upsertProd.run(
+        'PROD-04', 'PRD-STD-01', 'Rollup / Pull-Up Banner Standee', 'STD-RUP-3X6', null,
+        'Display & Exhibition',
+        'Portable retractable rollup standee banner with aluminium spring cassette. Easy to set up in seconds. Available in 2x5 ft to 3x7 ft. Ideal for exhibitions, events and retail.',
+        'Nos', 1650, 850, 18, '9989', 1, 'FIXED',
+        JSON.stringify([{ type: 'Size', options: ['2x5 ft (60x150cm)', '3x6 ft (90x180cm)', '3x7 ft (90x210cm)'] }, { type: 'Base', options: ['Standard Aluminium Base', 'Wide Base Deluxe', 'Premium Cassette with Carry Bag'] }]),
+        '{}');
+      upsertSpec.run('SPEC-107', 'PROD-04', '3x6 ft Wide Base Rollup Standee (Economy)', 'Aluminium Wide Base Cassette + Star Flex Print', 'Standard portable pull-up standee 3x6 ft, economy model', 'Nos', 850, 1650, 18, '9989', 1);
+      upsertSpec.run('SPEC-DSP-042', 'PROD-04', '3x6 ft Premium Deluxe Rollup (with Carry Bag)', 'Deluxe Cassette + Premium Flex Print + Carry Bag', 'Premium rollup standee with deluxe cassette and padded carry bag', 'Nos', 1200, 2400, 18, '9989', 0);
+
+      upsertProd.run(
+        'PROD-DSP-02', 'PRD-XBN-01', 'X-Banner Stand (Flexible Banner)', 'DSP-XBN-80', null,
+        'Display & Exhibition',
+        'Lightweight X-frame banner stand, easy assembly. Suitable for product launches, trade shows, events and in-store promotion. Snap-in banner changing system.',
+        'Nos', 850, 350, 18, '9989', 1, 'FIXED',
+        JSON.stringify([{ type: 'Size', options: ['80x180cm', '60x160cm'] }, { type: 'Material', options: ['Star Flex Print', 'PP Synthetic Paper'] }]),
+        '{}');
+      upsertSpec.run('SPEC-DSP-021', 'PROD-DSP-02', 'X-Banner 80x180cm (Standard)', 'X-Frame Stand + Star Flex Print 80x180cm', 'Standard X-banner with flex print panel and carry bag', 'Nos', 350, 850, 18, '9989', 1);
+
+      upsertProd.run(
+        'PROD-DSP-03', 'PRD-TTD-01', 'Table Top Display / L-Stand (A4)', 'DSP-TTL-A4', null,
+        'Display & Exhibition',
+        'Compact desktop display stand and countertop L-stands for retail, restaurants and reception areas. Snap-frame, acrylic and L-stand styles available.',
+        'Nos', 280, 110, 18, '9989', 1, 'FIXED',
+        JSON.stringify([{ type: 'Type', options: ['A4 L-Stand with Print', 'A4 Acrylic Snap Frame', 'A4 Clip Frame Desktop'] }]),
+        '{}');
+      upsertSpec.run('SPEC-DSP-031', 'PROD-DSP-03', 'A4 L-Stand Table Display (with Print)', 'Aluminium L-Stand + A4 Print (Silk)', 'Desktop A4 L-stand with full-colour gloss print', 'Nos', 110, 280, 18, '9989', 1);
+
+      // =====================================================================
+      // CATEGORY 7: RIGID SIGNAGE
+      // =====================================================================
+      upsertProd.run(
+        'PROD-08', 'PRD-SNB-01', 'Sunboard Mounting with Laminated Vinyl Print', 'SNB-5MM-VNY', null,
+        'Rigid Signage',
+        'Lightweight 5mm high-density PVC sunboard with UV-printed or laminated vinyl face. Ideal for indoor shop displays, office name boards, property signage and notice boards.',
+        'Sq.Ft', 75, 36, 18, '3920', 2, 'FIXED',
+        JSON.stringify([{ type: 'Thickness', options: ['3mm Sunboard', '5mm Sunboard', '10mm Sunboard'] }, { type: 'Surface', options: ['Gloss Vinyl', 'Matte Vinyl', 'Direct UV Print'] }]),
+        '{}');
+      upsertSpec.run('SPEC-110', 'PROD-08', '5mm Sunboard + Gloss Vinyl (Standard)', '5mm White Sunboard + Self-Adhesive Vinyl', 'Standard rigid display board with gloss vinyl print', 'Sq.Ft', 36, 75, 18, '3920', 1);
+      upsertSpec.run('SPEC-RGD-082', 'PROD-08', '10mm Sunboard + Direct UV Flatbed Print', '10mm White Sunboard + UV Flatbed Ink', 'Thick sunboard with direct UV flatbed printing, premium quality', 'Sq.Ft', 55, 115, 18, '3920', 0);
+
+      upsertProd.run(
+        'PROD-RGD-02', 'PRD-FMB-01', 'Foam Board / Foam Core Display (A4–A0)', 'FMB-5MM-A3', null,
+        'Rigid Signage',
+        'Lightweight foam core / foam board display prints for exhibitions, retail POP and interior design. Ultra-light, easy to mount and eco-friendly.',
+        'Sq.Ft', 90, 40, 18, '3920', 2, 'FIXED',
+        JSON.stringify([{ type: 'Size', options: ['A4', 'A3', 'A2', 'A1', 'A0', 'Custom'] }, { type: 'Thickness', options: ['3mm Foam Board', '5mm Foam Board'] }]),
+        '{}');
+      upsertSpec.run('SPEC-RGD-021', 'PROD-RGD-02', '5mm Foam Board A1 (59x84cm) Print Mounted', '5mm White Foam Core + Inkjet Print', 'A1 foam core board with high-resolution inkjet print face', 'Sq.Ft', 40, 90, 18, '3920', 1);
+
+      // =====================================================================
+      // CATEGORY 8: STAMP & SEAL
+      // =====================================================================
+      upsertProd.run(
+        'PROD-07', 'PRD-SLM-01', 'Self-Inking Rubber Stamp (Trodat / Colop)', 'SLM-TRO-4912', null,
+        'Stamp & Seal',
+        'Custom self-inking rubber stamps in popular Trodat and Colop brands. Pre-inked laser-engraved photopolymer stamp dies. Available in all impression sizes.',
+        'Nos', 450, 160, 18, '9611', 1, 'FIXED',
+        JSON.stringify([{ type: 'Brand', options: ['Trodat 4912 (50x20mm)', 'Trodat 4913 (58x22mm)', 'Trodat 4926 (75x38mm)', 'Colop Printer 30'] }, { type: 'Ink Color', options: ['Blue', 'Red', 'Black', 'Green', 'Violet'] }]),
+        JSON.stringify({ machineType: 'FlashStamp Pro III UV Exposure', plateType: 'Flash Photopolymer', dieSize: '50x20mm default' })
+      );
+      upsertSpec.run('SPEC-109', 'PROD-07', 'Trodat 4912 Self-Inking Address Stamp (50x20mm)', 'Trodat 4912 Casing + Flash Polymer Die', '50x20mm self-inking stamp, 3-4 lines of text, refillable pad', 'Nos', 160, 450, 18, '9611', 1);
+      upsertSpec.run('SPEC-SLM-072', 'PROD-07', 'Trodat 4926 Large Rectangular Stamp (75x38mm)', 'Trodat 4926 Casing + Flash Polymer Die', 'Large 75x38mm stamp, logo + text, 6-8 lines', 'Nos', 240, 650, 18, '9611', 0);
+      upsertSpec.run('SPEC-SLM-073', 'PROD-07', 'Round Seal Stamp 40mm (Company / Notary)', 'Trodat Round Casing + Round Die', '40mm round company seal stamp, logo and name around border', 'Nos', 180, 500, 18, '9611', 0);
+
+      upsertProd.run(
+        'PROD-SLM-02', 'PRD-SLW-01', 'Wax / Embossed Notary Seal', 'SLM-WAX-38MM', null,
+        'Stamp & Seal',
+        'Traditional notary embosser and wax seal stamps for legal documents. Embossed seal leaves a raised impression. Available in desktop and handheld models.',
+        'Nos', 1200, 500, 18, '9611', 1, 'FIXED',
+        JSON.stringify([{ type: 'Type', options: ['Desktop Embosser (38mm)', 'Handheld Embosser (38mm)', 'Wax Seal Stamp (Custom)'] }]),
+        '{}');
+      upsertSpec.run('SPEC-SLM-021', 'PROD-SLM-02', 'Desktop Notary Embosser Seal (38mm Die)', 'Desktop Embosser + Custom Engraved Die', '38mm desktop embosser with engraved seal die, raised impression', 'Nos', 500, 1200, 18, '9611', 1);
+
+      // =====================================================================
+      // CATEGORY 9: CALENDARS & STATIONERY
+      // =====================================================================
+      upsertProd.run(
+        'PROD-BC-01', 'PRD-BC-01', 'Premium Visiting Cards (Yield-Based Pricing)', 'BC-MATTE-300', '8901234500036',
+        'Commercial Print',
+        'Standard 3.5 x 2 inch executive visiting cards printed on 300 GSM art card with matte thermal lamination. Priced per card based on print yield calculator.',
+        'Pcs', 3.50, 1.25, 18, '4911', 100, 'YIELD_CALCULATOR',
+        JSON.stringify([{ type: 'GSM', options: ['300 GSM Art Card', '350 GSM Art Card', '400 GSM Velvet Board'] }, { type: 'Finishing', options: ['Matte Lamination', 'Gloss Lamination', 'Raised Spot UV + Velvet', 'Gold Foil Stamping'] }, { type: 'Corners', options: ['Square Cut', 'Round Corners (6mm radius)'] }]),
+        '{}'
+      );
+
+      upsertProd.run(
+        'PROD-CAL-01', 'PRD-TCL-01', 'Table Calendar (13 Sheets + Cover)', 'CAL-TBL-13SH', null,
+        'Calendars & Stationery',
+        'Full-colour 12+1 sheet customised table calendars on 250gsm art card. Wire-O spiral bound with kickstand. Ideal for corporate gifting and brand promotion.',
+        'Pcs', 95, 38, 18, '4911', 10, 'SLAB',
+        JSON.stringify([{ type: 'Size', options: ['A5 (14.8x21cm)', 'A4 (21x29.7cm)', '5x7 inch'] }, { type: 'Binding', options: ['Wire-O Spiral', 'Staple Bound', 'Open (Loose Sheets)'] }]),
+        JSON.stringify({ sheets: 13, kickstand: true })
+      );
+      upsertSpec.run('SPEC-CAL-011', 'PROD-CAL-01', 'A4 Table Calendar (13 Sheets + Cover, Wire-O)', '250gsm Art Card + Wire-O Binding', 'Full-colour A4 table calendar, 13 pages, wire-o spiral bound', 'Pcs', 38, 95, 18, '4911', 1);
+      upsertSpec.run('SPEC-CAL-012', 'PROD-CAL-01', 'A5 Pocket Table Calendar (13 Sheets, Wire-O)', '250gsm Art Card + Wire-O Binding A5', 'Compact A5 wire-o table calendar, ideal for desk use', 'Pcs', 28, 65, 18, '4911', 0);
+      upsertSlab.run('SLAB-CAL-1', 'PROD-CAL-01', null, 10, 49, 95, 38, '10-50 Pcs');
+      upsertSlab.run('SLAB-CAL-2', 'PROD-CAL-01', null, 50, 199, 75, 30, '50-200 Pcs');
+      upsertSlab.run('SLAB-CAL-3', 'PROD-CAL-01', null, 200, null, 55, 22, '200+ Corporate');
+
+      upsertProd.run(
+        'PROD-CAL-02', 'PRD-WCL-01', 'Wall Calendar (12 Months Single Sheet)', 'CAL-WLL-12SH', null,
+        'Calendars & Stationery',
+        'Single-sheet or booklet style 12-month wall calendar. Customised with client branding. Printed on 150-200gsm art paper with wire-o or string hanger.',
+        'Pcs', 45, 18, 18, '4911', 25, 'SLAB',
+        JSON.stringify([{ type: 'Format', options: ['12-Sheet Booklet (A3)', 'Single Sheet (12-Month)', 'Poster Calendar (A2)'] }]),
+        '{}');
+      upsertSpec.run('SPEC-CAL-021', 'PROD-CAL-02', 'A3 12-Sheet Wall Calendar (Wire-O)', '150gsm Art Paper + Wire-O + A3 Size', 'Full-colour 12-page A3 wall calendar, wire-o bound', 'Pcs', 18, 45, 18, '4911', 1);
+      upsertSlab.run('SLAB-WCL-1', 'PROD-CAL-02', null, 25, 99, 45, 18, '25-100 Pcs');
+      upsertSlab.run('SLAB-WCL-2', 'PROD-CAL-02', null, 100, null, 32, 13, '100+ Corporate Run');
+
+      // =====================================================================
+      // CATEGORY 10: DIGITAL PHOTO PRINT
+      // =====================================================================
+      upsertProd.run(
+        'PROD-PHT-01', 'PRD-PHT-01', 'Photograph / Digital Photo Print (Gloss)', 'PHT-GLS-4X6', null,
+        'Digital Photo Print',
+        'High-fidelity digital photo printing on premium Fuji / Kodak photo paper. Available from 4x6 wallet size to 20x30 inch large format. Matte, gloss and lustre finishes.',
+        'Pcs', 5, 1.8, 18, '4911', 1, 'FIXED',
+        JSON.stringify([{ type: 'Size', options: ['4x6" (10x15cm)', '5x7" (13x18cm)', '8x10" (20x25cm)', '10x15" (25x38cm)', '12x18" (30x45cm)', '20x30" (50x75cm)'] }, { type: 'Finish', options: ['Gloss', 'Matte', 'Lustre (Silk)'] }]),
+        JSON.stringify({ printer: 'Fujifilm Frontier / Epson SureLab', inkType: 'Silver Halide / Pigment' })
+      );
+      upsertSpec.run('SPEC-PHT-011', 'PROD-PHT-01', '4x6" Gloss Photo Print (10x15cm)', 'Fuji Pro Crystal Archive Gloss Paper', 'Standard 4x6 glossy photo print on professional photo paper', 'Pcs', 1.8, 5, 18, '4911', 1);
+      upsertSpec.run('SPEC-PHT-012', 'PROD-PHT-01', '8x10" Lustre/Silk Photo Print (20x25cm)', 'Fuji Professional Lustre Paper 8x10"', 'Professional 8x10 lustre finish portrait photo print', 'Pcs', 6, 18, 18, '4911', 0);
+
+      // =====================================================================
+      // Update Balloons product
+      // =====================================================================
+      upsertProd.run(
+        'PROD-BLN-01', 'PRD-BLN-01', 'Custom Screen Printed Latex Balloons', 'BLN-LTX-9IN', '8901234500029',
+        'Promotional Items',
+        '100% biodegradable natural latex balloons with 1 to 4 colour screen printing. Available in 9" and 12" round. For brand events, exhibitions, retail launches and parties.',
+        'Pcs', 10, 2.5, 18, '9505', 100, 'SLAB',
+        JSON.stringify([{ type: 'Color', options: ['Assorted Standard', 'Metallic Silver', 'Metallic Gold', 'Pastel Pink', 'Royal Blue', 'Neon'] }, { type: 'Size', options: ['9 Inch Standard', '12 Inch Large'] }, { type: 'Print', options: ['1 Colour Logo', '2 Colour', '4 Colour CMYK'] }]),
+        '{}'
+      );
+
+      database.prepare('INSERT INTO schema_migrations (migration_name) VALUES (?)').run(mig021Name);
+    });
+    try {
+      tx021(db);
+      console.log('✅ Applied migration: 021_full_printing_shop_catalogue');
+    } catch(e) {
+      console.error('❌ Migration 021 failed:', e.message);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // MIGRATION 022: Designer Desk, Mixed Item Pricing Responsibility & Sales Queue
+  // -------------------------------------------------------------------------
+  applyMigration('022_designer_desk_and_pricing_queue', (database) => {
+    // 1. Designer Customer Sessions Table
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS designer_sessions (
+        id TEXT PRIMARY KEY,
+        session_number TEXT UNIQUE NOT NULL,
+        session_status TEXT DEFAULT 'Active',
+        customer_id TEXT,
+        customer_name TEXT,
+        customer_mobile TEXT,
+        customer_email TEXT,
+        designer_id TEXT,
+        designer_name TEXT NOT NULL,
+        sales_order_id TEXT,
+        order_number TEXT,
+        design_requirements TEXT,
+        session_notes TEXT,
+        draft_items_json TEXT,
+        started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        ended_at TEXT,
+        last_active_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        version INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+        FOREIGN KEY (designer_id) REFERENCES employees(id) ON DELETE SET NULL,
+        FOREIGN KEY (sales_order_id) REFERENCES sales_orders(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_designer_sessions_cust ON designer_sessions(customer_id);
+      CREATE INDEX IF NOT EXISTS idx_designer_sessions_des ON designer_sessions(designer_id);
+      CREATE INDEX IF NOT EXISTS idx_designer_sessions_order ON designer_sessions(sales_order_id);
+      CREATE INDEX IF NOT EXISTS idx_designer_sessions_status ON designer_sessions(session_status);
+    `);
+
+    // 2. Document Sequence for Sessions
+    try {
+      database.prepare(`
+        INSERT OR IGNORE INTO document_sequences (doc_type, prefix, current_number, padding)
+        VALUES ('SES', 'SES-', 100, 4)
+      `).run();
+    } catch (e) {}
+
+    // 3. Alter sales_order_items for flexible mixed pricing responsibility
+    try { database.prepare("ALTER TABLE sales_order_items ADD COLUMN pricing_responsibility TEXT DEFAULT 'SALES'").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_order_items ADD COLUMN pricing_status TEXT DEFAULT 'COMPLETE'").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_order_items ADD COLUMN item_added_by_id TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_order_items ADD COLUMN item_added_by_name TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_order_items ADD COLUMN item_added_by_role TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_order_items ADD COLUMN price_added_by_id TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_order_items ADD COLUMN price_added_by_name TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_order_items ADD COLUMN price_added_by_role TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_order_items ADD COLUMN manager_approval_status TEXT DEFAULT 'NOT_REQUIRED'").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_order_items ADD COLUMN manager_approved_by_id TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_order_items ADD COLUMN manager_approved_by_name TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_order_items ADD COLUMN is_amendment INTEGER DEFAULT 0").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_order_items ADD COLUMN parent_item_id TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_order_items ADD COLUMN design_notes TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_order_items ADD COLUMN artwork_notes TEXT").run(); } catch(e) {}
+
+    // 4. Alter sales_orders for pending pricing & session tracking
+    try { database.prepare("ALTER TABLE sales_orders ADD COLUMN designer_session_id TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_orders ADD COLUMN pricing_status TEXT DEFAULT 'COMPLETE'").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_orders ADD COLUMN has_pending_pricing INTEGER DEFAULT 0").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_orders ADD COLUMN is_amendment INTEGER DEFAULT 0").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE sales_orders ADD COLUMN parent_order_id TEXT").run(); } catch(e) {}
+
+    // 5. Alter products for designer pricing permissions
+    try { database.prepare("ALTER TABLE products ADD COLUMN allow_designer_pricing INTEGER DEFAULT 0").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE products ADD COLUMN default_pricing_responsibility TEXT DEFAULT 'SALES'").run(); } catch(e) {}
+
+    // Grant designer pricing permission on standard fast-moving retail products
+    try {
+      database.prepare(`
+        UPDATE products 
+        SET allow_designer_pricing = 1, default_pricing_responsibility = 'DESIGNER'
+        WHERE category IN ('Visiting Cards', 'Promotional Items', 'Mugs', 'Stationery', 'Stamps', 'Digital Prints')
+           OR id IN ('PROD-VC-01', 'PROD-MUG-01', 'PROD-CMR-01', 'PROD-SLM-01')
+           OR name LIKE '%Visiting Card%' OR name LIKE '%Mug%' OR name LIKE '%Stamp%'
+      `).run();
+    } catch (e) {}
+
+    // 6. Alter artwork_versions for session linking & revision reasons
+    try { database.prepare("ALTER TABLE artwork_versions ADD COLUMN session_id TEXT").run(); } catch(e) {}
+    try { database.prepare("ALTER TABLE artwork_versions ADD COLUMN revision_reason TEXT").run(); } catch(e) {}
+
+    // 7. Seed Designer Desk & Pricing Permissions
+    const deskPermissions = [
+      { id: 'module.designer_desk', module: 'designer_desk', category: 'MODULE', name: 'Designer Desk Module', description: 'Access Designer Desk counter workspace & customer sessions', is_dangerous: 0, display_order: 16 },
+      { id: 'designer.create_session', module: 'designer_desk', category: 'ACTION', name: 'Create Design Session', description: 'Start walk-in or phone customer design sessions', is_dangerous: 0, display_order: 36 },
+      { id: 'designer.add_products', module: 'designer_desk', category: 'ACTION', name: 'Add Products to Order', description: 'Select products & configure specifications in session', is_dangerous: 0, display_order: 37 },
+      { id: 'designer.enter_pricing', module: 'designer_desk', category: 'ACTION', name: 'Enter Permitted Pricing', description: 'Enter selling price for permitted retail products', is_dangerous: 0, display_order: 38 },
+      { id: 'sales.pricing_queue', module: 'sales', category: 'ACTION', name: 'Sales Pricing Queue', description: 'Review design session items pending commercial pricing', is_dangerous: 0, display_order: 54 },
+      { id: 'sales.enter_pricing', module: 'sales', category: 'ACTION', name: 'Set Selling Prices', description: 'Enter rates and apply discounts on pending order items', is_dangerous: 0, display_order: 55 },
+      { id: 'manager.approve_pricing', module: 'sales', category: 'ACTION', name: 'Approve Special Pricing', description: 'Authorize manager pricing overrides or discounts', is_dangerous: 1, display_order: 56 },
+      { id: 'manager.approve_amendment', module: 'sales', category: 'ACTION', name: 'Approve Order Amendments', description: 'Authorize additional work on confirmed orders', is_dangerous: 1, display_order: 57 }
+    ];
+
+    const insertPerm = database.prepare(`
+      INSERT OR REPLACE INTO permissions (id, module, category, name, description, is_dangerous, display_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    deskPermissions.forEach(p => insertPerm.run(p.id, p.module, p.category, p.name, p.description, p.is_dangerous, p.display_order));
+
+    // Assign to roles
+    const insertRolePerm = database.prepare(`
+      INSERT OR IGNORE INTO role_permissions (id, role_id, permission_id)
+      VALUES (?, ?, ?)
+    `);
+
+    const rolePermAssignments = [
+      { roleId: 'ROLE-ADMIN', perms: deskPermissions.map(p => p.id) },
+      { roleId: 'ROLE-MGT', perms: ['module.designer_desk', 'sales.pricing_queue', 'sales.enter_pricing', 'manager.approve_pricing', 'manager.approve_amendment'] },
+      { roleId: 'ROLE-SALES', perms: ['module.designer_desk', 'sales.pricing_queue', 'sales.enter_pricing'] },
+      { roleId: 'ROLE-DESIGNER', perms: ['module.designer_desk', 'designer.create_session', 'designer.add_products', 'designer.enter_pricing'] }
+    ];
+
+    rolePermAssignments.forEach(({ roleId, perms }) => {
+      perms.forEach(permId => {
+        insertRolePerm.run(`RP-${roleId}-${permId}`, roleId, permId);
+      });
+    });
+  });
+
   console.log('✅ All migrations processed successfully!');
 }
 

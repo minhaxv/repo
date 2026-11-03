@@ -150,6 +150,7 @@ export const ERPProvider = ({ children }) => {
   const [productionProcesses, setProductionProcesses] = useState(() => loadStorage('production_processes', initialProductionProcesses || []));
   const [productionTasks, setProductionTasks] = useState(() => loadStorage('production_tasks', []));
   const [followUps, setFollowUps] = useState(() => loadStorage('follow_ups', []));
+  const [designerSessions, setDesignerSessions] = useState(() => loadStorage('designer_sessions', []));
 
   // Phase 1-5 Production Hardening States (SQLite Authoritative & Live Sync)
   const [expenses, setExpenses] = useState(() => loadStorage('expenses', []));
@@ -332,6 +333,10 @@ export const ERPProvider = ({ children }) => {
           try { localStorage.setItem('stitch_erp_order_audit_logs', JSON.stringify(data.orderAuditLogs)); } catch (e) {}
         }
         if (data.deliveryNotes) setDeliveries(data.deliveryNotes);
+        if (data.designerSessions) {
+          setDesignerSessions(data.designerSessions);
+          try { localStorage.setItem('stitch_erp_designer_sessions', JSON.stringify(data.designerSessions)); } catch (e) {}
+        }
         if (data.users) setUsersList(data.users);
         return;
       }
@@ -2331,6 +2336,9 @@ export const ERPProvider = ({ children }) => {
       convertedFromQuotation: !!orderPayload.convertedFromQuotation,
       quotationId: isQuote ? newOrderId : (orderPayload.quotationId || null),
       quotationStatus: isQuote ? (orderPayload.quotationStatus || 'Draft') : null,
+      designerSessionId: orderPayload.designerSessionId || null,
+      pricingStatus: orderPayload.pricingStatus || 'COMPLETE',
+      hasPendingPricing: Boolean(orderPayload.hasPendingPricing),
       productionStatus: initialProdStatus,
       billedByStaff: orderPayload.billedByStaff || activeUser?.name || 'Admin User',
       billedByStaffId: orderPayload.billedByStaffId || activeUser?.id || '',
@@ -3501,6 +3509,80 @@ export const ERPProvider = ({ children }) => {
     }
 
     return true;
+  };
+
+  // -------------------------------------------------------------
+  // Designer Desk & Counter Customer Sessions Methods
+  // -------------------------------------------------------------
+  const createDesignerSession = async (sessionData) => {
+    try {
+      const res = await api.createDesignerSession(sessionData);
+      if (res && res.session) {
+        setDesignerSessions((prev) => [res.session, ...(prev || []).filter(s => s.id !== res.session.id)]);
+      }
+      await fetchAllERPData();
+      return res;
+    } catch (err) {
+      console.error("createDesignerSession error:", err);
+      throw err;
+    }
+  };
+
+  const updateDesignerSession = async (id, sessionData) => {
+    try {
+      const res = await api.updateDesignerSession(id, sessionData);
+      setDesignerSessions((prev) =>
+        (prev || []).map((s) => (s.id === id ? { ...s, ...sessionData, version: res.version || (s.version || 1) + 1 } : s))
+      );
+      return res;
+    } catch (err) {
+      console.error("updateDesignerSession error:", err);
+      throw err;
+    }
+  };
+
+  const submitSessionToSales = async (id, payload = {}) => {
+    try {
+      const res = await api.submitSessionToSales(id, payload);
+      await fetchAllERPData();
+      return res;
+    } catch (err) {
+      console.error("submitSessionToSales error:", err);
+      throw err;
+    }
+  };
+
+  const uploadSessionArtwork = async (sessionId, artworkData) => {
+    try {
+      const res = await api.uploadSessionArtwork(sessionId, artworkData);
+      await fetchAllERPData();
+      return res;
+    } catch (err) {
+      console.error("uploadSessionArtwork error:", err);
+      throw err;
+    }
+  };
+
+  const updateItemPrice = async (orderId, itemId, priceData) => {
+    try {
+      const res = await api.updateItemPrice(orderId, itemId, priceData);
+      await fetchAllERPData();
+      return res;
+    } catch (err) {
+      console.error("updateItemPrice error:", err);
+      throw err;
+    }
+  };
+
+  const addOrderAmendment = async (orderId, amendmentData) => {
+    try {
+      const res = await api.addOrderAmendment(orderId, amendmentData);
+      await fetchAllERPData();
+      return res;
+    } catch (err) {
+      console.error("addOrderAmendment error:", err);
+      throw err;
+    }
   };
 
   // Record Customer Payment Received
@@ -4822,7 +4904,15 @@ export const ERPProvider = ({ children }) => {
         deleteCustomerPricingRule,
         saveProductBOM,
         deleteProductBOM,
-        saveProductYieldConfig
+        saveProductYieldConfig,
+        designerSessions,
+        setDesignerSessions,
+        createDesignerSession,
+        updateDesignerSession,
+        submitSessionToSales,
+        uploadSessionArtwork,
+        updateItemPrice,
+        addOrderAmendment
       }}
     >
       {children}

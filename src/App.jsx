@@ -15,6 +15,8 @@ import CareOfManagementView from './views/CareOfManagementView';
 import { HRManagementView } from './views/HRManagementView';
 import { ProductsView } from './views/ProductsView';
 import { DesignersView } from './views/DesignersView';
+import { DesignerDeskView } from './views/DesignerDeskView';
+import { SalesPricingQueueView } from './views/SalesPricingQueueView';
 import { ProductionView } from './views/ProductionView';
 import { MachinesView } from './views/MachinesView';
 import { WorkflowsView } from './views/WorkflowsView';
@@ -119,6 +121,10 @@ const MainAppContent = () => {
       setHrTab('payroll');
     } else if (tab === 'report-order-audit') {
       canonicalTab = 'sales-order-audit';
+    } else if (tab === 'designer-desk' || tab === 'designers-desk' || tab === 'counter-desk') {
+      canonicalTab = 'designer-desk';
+    } else if (tab === 'sales-pricing-queue' || tab === 'pricing-queue') {
+      canonicalTab = 'sales-pricing-queue';
     }
 
     if (canonicalTab === 'quotations') {
@@ -135,7 +141,7 @@ const MainAppContent = () => {
   // Auto-switch primary tab based on Role Context
   useEffect(() => {
     if (activeRole === 'Designer') {
-      setActiveTab('designers');
+      setActiveTab('designer-desk');
     } else if (activeRole === 'Production') {
       setActiveTab('production');
     } else if (activeRole === 'Delivery') {
@@ -251,6 +257,8 @@ const MainAppContent = () => {
             {activeTab === 'machines' && <MachinesView />}
             {activeTab === 'workflows' && <WorkflowsView />}
             {activeTab === 'wastage' && <WastageView />}
+            {activeTab === 'designer-desk' && <DesignerDeskView onNavigate={handleNavigate} />}
+            {activeTab === 'sales-pricing-queue' && <SalesPricingQueueView onNavigate={handleNavigate} />}
             {activeTab === 'designers' && <DesignersView />}
             {activeTab === 'production' && (
               <ProductionView

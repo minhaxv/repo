@@ -1187,6 +1187,103 @@ export const api = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to reset database');
     return data;
+  },
+
+  // -------------------------------------------------------------
+  // Designer Desk & Customer Sessions API
+  // -------------------------------------------------------------
+  async fetchDesignerSessions(params = {}) {
+    const searchParams = new URLSearchParams();
+    if (params.status) searchParams.append('status', params.status);
+    if (params.designerId) searchParams.append('designerId', params.designerId);
+    if (params.customerId) searchParams.append('customerId', params.customerId);
+    const res = await fetch(`${API_BASE}/designer-sessions?${searchParams.toString()}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch designer sessions');
+    return await res.json();
+  },
+
+  async fetchDesignerSession(id) {
+    const res = await fetch(`${API_BASE}/designer-sessions/${id}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch designer session');
+    return await res.json();
+  },
+
+  async createDesignerSession(sessionData) {
+    const res = await fetch(`${API_BASE}/designer-sessions`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(sessionData)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to create designer session');
+    return data;
+  },
+
+  async updateDesignerSession(id, sessionData) {
+    const res = await fetch(`${API_BASE}/designer-sessions/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(sessionData)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to update designer session');
+    return data;
+  },
+
+  async submitSessionToSales(id, payload = {}) {
+    const res = await fetch(`${API_BASE}/designer-sessions/${id}/submit-to-sales`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to submit session to Sales');
+    return data;
+  },
+
+  async uploadSessionArtwork(sessionId, artworkData) {
+    const res = await fetch(`${API_BASE}/designer-sessions/${sessionId}/artwork`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(artworkData)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to upload session artwork');
+    return data;
+  },
+
+  // -------------------------------------------------------------
+  // Sales Pricing Queue API
+  // -------------------------------------------------------------
+  async fetchSalesPricingQueue() {
+    const res = await fetch(`${API_BASE}/sales-pricing-queue`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch sales pricing queue');
+    return await res.json();
+  },
+
+  async updateItemPrice(orderId, itemId, priceData) {
+    const res = await fetch(`${API_BASE}/sales-pricing-queue/${orderId}/items/${itemId}/price`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(priceData)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to update item price');
+    return data;
+  },
+
+  // -------------------------------------------------------------
+  // Order Amendments API (Extra Product / Additional Work)
+  // -------------------------------------------------------------
+  async addOrderAmendment(orderId, amendmentData) {
+    const res = await fetch(`${API_BASE}/sales-orders/${orderId}/amendments`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(amendmentData)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to add order amendment');
+    return data;
   }
 };
 

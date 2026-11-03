@@ -711,7 +711,67 @@ export function initDatabase() {
       authorized_at TEXT DEFAULT CURRENT_TIMESTAMP,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
+
+    -- 24. Designer Customer Sessions
+    CREATE TABLE IF NOT EXISTS designer_sessions (
+      id TEXT PRIMARY KEY,
+      session_number TEXT UNIQUE NOT NULL,
+      session_status TEXT DEFAULT 'Active',
+      customer_id TEXT,
+      customer_name TEXT,
+      customer_mobile TEXT,
+      customer_email TEXT,
+      designer_id TEXT,
+      designer_name TEXT NOT NULL,
+      sales_order_id TEXT,
+      order_number TEXT,
+      design_requirements TEXT,
+      session_notes TEXT,
+      draft_items_json TEXT,
+      started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      ended_at TEXT,
+      last_active_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      version INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+      FOREIGN KEY (designer_id) REFERENCES employees(id) ON DELETE SET NULL,
+      FOREIGN KEY (sales_order_id) REFERENCES sales_orders(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_designer_sessions_cust ON designer_sessions(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_designer_sessions_des ON designer_sessions(designer_id);
+    CREATE INDEX IF NOT EXISTS idx_designer_sessions_order ON designer_sessions(sales_order_id);
+    CREATE INDEX IF NOT EXISTS idx_designer_sessions_status ON designer_sessions(session_status);
   `);
+
+  // Migration 022 column safety
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN pricing_responsibility TEXT DEFAULT 'SALES'").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN pricing_status TEXT DEFAULT 'COMPLETE'").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN item_added_by_id TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN item_added_by_name TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN item_added_by_role TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN price_added_by_id TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN price_added_by_name TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN price_added_by_role TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN manager_approval_status TEXT DEFAULT 'NOT_REQUIRED'").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN manager_approved_by_id TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN manager_approved_by_name TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN is_amendment INTEGER DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN parent_item_id TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN design_notes TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_order_items ADD COLUMN artwork_notes TEXT").run(); } catch(e) {}
+
+  try { db.prepare("ALTER TABLE sales_orders ADD COLUMN designer_session_id TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_orders ADD COLUMN pricing_status TEXT DEFAULT 'COMPLETE'").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_orders ADD COLUMN has_pending_pricing INTEGER DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_orders ADD COLUMN is_amendment INTEGER DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE sales_orders ADD COLUMN parent_order_id TEXT").run(); } catch(e) {}
+
+  try { db.prepare("ALTER TABLE products ADD COLUMN allow_designer_pricing INTEGER DEFAULT 0").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE products ADD COLUMN default_pricing_responsibility TEXT DEFAULT 'SALES'").run(); } catch(e) {}
+
+  try { db.prepare("ALTER TABLE artwork_versions ADD COLUMN session_id TEXT").run(); } catch(e) {}
+  try { db.prepare("ALTER TABLE artwork_versions ADD COLUMN revision_reason TEXT").run(); } catch(e) {}
 }
 
 // Call schema initialization & migration runner

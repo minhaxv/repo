@@ -45,12 +45,20 @@ export const NAVIGATION_MODULES = [
     subItems: []
   },
   {
+    id: 'designer-desk',
+    label: 'Designer Desk',
+    icon: Palette,
+    roles: ['Admin', 'Manager', 'Designer', 'Sales'],
+    subItems: []
+  },
+  {
     id: 'sales',
     label: 'Sales',
     icon: ShoppingCart,
     roles: ['Admin', 'Manager', 'Sales', 'Accounts'],
     subItems: [
       { id: 'sales-orders', label: 'Sales Orders', icon: ShoppingCart, highlight: true, roles: ['Admin', 'Manager', 'Sales', 'Accounts'] },
+      { id: 'sales-pricing-queue', label: 'Sales Pricing Queue', icon: FileText, highlight: true, roles: ['Admin', 'Manager', 'Sales'] },
       { id: 'quotations', label: 'Quotations', icon: FileText, roles: ['Admin', 'Manager', 'Sales'] },
       { id: 'gst-invoicing', label: 'Tax Invoices', icon: Receipt, roles: ['Admin', 'Manager', 'Sales', 'Accounts'] },
       { id: 'delivery', label: 'Delivery & Dispatch', icon: Truck, roles: ['Admin', 'Manager', 'Delivery', 'Production'] }
@@ -64,6 +72,7 @@ export const NAVIGATION_MODULES = [
     subItems: [
       { id: 'production', label: 'Production Board', icon: Factory, highlight: true, roles: ['Admin', 'Manager', 'Production'] },
       { id: 'employee-tasks', label: 'Employee Tasks', icon: UserCheck, highlight: true, roles: ['Admin', 'Manager', 'Production'] },
+      { id: 'designer-desk', label: 'Designer Desk (Counter)', icon: Palette, highlight: true, roles: ['Admin', 'Manager', 'Designer'] },
       { id: 'designers', label: 'Designing Queue', icon: Palette, roles: ['Admin', 'Manager', 'Designer'] },
       { id: 'wastage', label: 'Wastage Tracking', icon: Trash2, roles: ['Admin', 'Manager', 'Production'] }
     ]
